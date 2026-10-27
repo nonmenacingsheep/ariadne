@@ -244,6 +244,14 @@ Two processes, talking over one local socket.
 - **desk** draws everything and holds no logic: it renders state and events
   from the core, and sends back what you did ("you pressed skip", "you typed
   this").
+- **The desk's widgets are a web page** (`desk/web/`) inside a transparent
+  WebKitGTK view on the GTK layer (decided 2026-10-27 after the flat GTK
+  drawing looked poor): CSS does the acrylic-slab look and the working
+  effect. `layer.py` forwards core messages into it and reports the widget
+  rectangles back for the input region. Without a GPU in the container,
+  anything animating costs CPU, so nothing redraws at rest, each wire has its
+  own small canvas, and blend-mode effects exist only while a widget is
+  being worked on (idle ≈ 0.2 cores; continuous demo actions ≈ 4).
 - **The socket** carries JSON lines: state snapshots per widget, action
   events (started, progress, done, failed — what drives the wires), chat
   deltas, and your input. One documented schema in `protocol.py`.

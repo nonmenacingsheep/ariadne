@@ -1,0 +1,119 @@
+/* Acrylic slabs: ink faces you can see the wallpaper through, with an
+   edge-lit red thickness (drawn by desk.js as stacked shadows, so it needs
+   no 3D compositing). */
+:root {
+  --red: #ff2a3d; --red-hot: #ff4d5e; --blue: #6d8cff; --cyan: #00e5ff;
+  --amber: #ffb347; --paper: #f8eef0; --soft: #ffd0d4;
+}
+@property --erode { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --sweep { syntax: "<percentage>"; inherits: true; initial-value: -60%; }
+@property --ang { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent;
+  font-family: "Noto Sans", Cantarell, sans-serif; color: var(--paper); user-select: none; cursor: default; }
+canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
+#wires canvas { position: absolute; }
+#front { z-index: 50; }
+
+.w { position: absolute; }
+.face { position: absolute; inset: 0; overflow: hidden;
+  background:
+    linear-gradient(115deg, transparent 20%, rgba(255,255,255,.12) 24%, transparent 30%),
+    linear-gradient(170deg, rgba(255,255,255,.18), rgba(255,255,255,.02) 30%),
+    rgba(16, 12, 32, .74);
+  border-top: 1px solid rgba(255,255,255,.4);
+  box-shadow: inset 0 0 0 1px rgba(255, 120, 130, .35);
+  text-shadow: 0 1px 1px rgba(0,0,0,.9);
+  display: flex; flex-direction: column; }
+.hd { display: flex; justify-content: space-between; align-items: center; padding: 11px 16px 7px; cursor: grab; flex: none; }
+.hd:active { cursor: grabbing; }
+.ttl { font: 700 13px/1 Rajdhani, sans-serif; letter-spacing: .26em; text-transform: uppercase; color: var(--soft); }
+.tag { font: 11px "Fira Code", monospace; color: var(--amber); white-space: nowrap; }
+.tag.on { color: var(--cyan); }
+.tag.bad { color: var(--red-hot); }
+.bd { padding: 4px 16px 14px; display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+.dim { opacity: .55; font-size: 13px; }
+.kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.kv span:last-child { font-family: "Fira Code", monospace; font-size: 12.5px; opacity: .85; }
+.grip { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; z-index: 8;
+  background: linear-gradient(135deg, transparent 55%, rgba(255,120,130,.5) 55% 60%, transparent 60% 70%, rgba(255,120,130,.5) 70% 75%, transparent 75%); }
+
+/* chat */
+.msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; padding: 6px 8px;
+  background: rgba(6, 4, 14, .35); scrollbar-width: none; }
+.msgs::-webkit-scrollbar { display: none; }
+.msg { font-size: 14px; line-height: 1.42; max-width: 92%; white-space: pre-wrap; }
+.msg.you { align-self: flex-end; text-align: right; color: var(--cyan); }
+.say { flex: none; font: 14px "Noto Sans", sans-serif; color: var(--paper); background: rgba(6, 4, 14, .7);
+  border: 1px solid rgba(255, 120, 130, .4); padding: 8px 10px; outline: none; caret-color: var(--cyan); }
+.say:focus { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,229,255,.25); }
+
+/* her core */
+.core .face { background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0) 40%), linear-gradient(90deg, var(--red) 0 4px, rgba(14, 8, 26, .78) 4px); }
+.core-row { display: flex; align-items: center; gap: 18px; padding: 0 20px; flex: 1; min-height: 0; }
+.mark { position: relative; font: 700 46px/1 Rajdhani, sans-serif; letter-spacing: .02em; }
+.mark span { position: absolute; left: 0; top: 0; }
+.mark .r { color: var(--red); transform: translate(-2px, 0); opacity: .85; }
+.mark .cy { color: var(--cyan); transform: translate(2px, 1px); opacity: .55; }
+.mark .wt { position: relative; color: #fff; }
+.core.acting .mark .r { animation: jit .12s steps(2) 4; }
+.core.acting .mark .cy { animation: jit .12s steps(2) 4 reverse; }
+@keyframes jit { 0% { transform: translate(-6px, -1px); } 50% { transform: translate(5px, 2px); } 100% { transform: translate(-2px, 0); } }
+.line { flex: 1; min-width: 0; font: 13px "Fira Code", monospace; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wave { display: flex; gap: 3px; align-items: center; height: 28px; color: var(--red-hot); }
+.wave i { width: 3px; height: 4px; background: currentColor; opacity: .75; }
+.core.acting .wave i { animation: wv .5s ease-in-out infinite alternate; }
+.wave i:nth-child(2n) { animation-delay: -.2s !important; } .wave i:nth-child(3n) { animation-delay: -.35s !important; }
+@keyframes wv { to { height: 24px; } }
+
+/* system */
+.meters { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.meter { font: 11px "Fira Code", monospace; opacity: .9; }
+.meter .v { font: 500 22px/1.1 "Fira Code", monospace; opacity: 1; }
+.bar { height: 4px; background: rgba(255,255,255,.12); margin-top: 6px; position: relative; color: var(--blue); }
+.bar b { position: absolute; left: 0; top: 0; bottom: 0; background: currentColor; transition: width .6s; }
+
+/* ---------- she's working on it: holographic sheen + crumbling edges ---------- */
+.sheen { position: absolute; inset: -2px; pointer-events: none; opacity: 0; z-index: 5;
+  background:
+    repeating-linear-gradient(115deg, rgba(255,255,255,.07) 0 1px, transparent 1px 5px),
+    linear-gradient(115deg, transparent calc(var(--sweep) + 0%), rgba(255, 40, 140, .8) calc(var(--sweep) + 10%),
+      rgba(0, 229, 255, .8) calc(var(--sweep) + 20%), rgba(255, 236, 120, .7) calc(var(--sweep) + 28%),
+      rgba(140, 90, 255, .7) calc(var(--sweep) + 36%), transparent calc(var(--sweep) + 48%)),
+    linear-gradient(115deg, rgba(255,60,160,.16), rgba(0,229,255,.16), rgba(255,236,120,.12), rgba(140,90,255,.16));
+  mix-blend-mode: screen; }
+.sheen::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent calc(var(--sweep) + 4%), rgba(230,255,255,.75) calc(var(--sweep) + 14%), transparent calc(var(--sweep) + 24%)); }
+.rim { position: absolute; inset: 0; pointer-events: none; z-index: 6; opacity: 0; border: 2px solid transparent;
+  border-image: conic-gradient(from var(--ang), #ff2a8a, #00e5ff, #ffe066, #9d6bff, #ff2a8a) 1; }
+.w.working .sheen { opacity: 1; animation: sweep 1.15s linear infinite, huey 2.3s linear infinite; }
+.w.working .rim { opacity: 1; animation: spin 1.4s linear infinite; }
+.w.mending .rim { opacity: 1; animation: spin 1.4s linear infinite, fadeout .55s forwards; }
+.w.working .ttl { text-shadow: -2px 0 #ff2a8a, 2px 0 #00e5ff; animation: jit .14s steps(2) infinite; }
+@keyframes sweep { from { --sweep: -60%; } to { --sweep: 110%; } }
+@keyframes huey { to { filter: hue-rotate(360deg); } }
+@keyframes spin { to { --ang: 360deg; } }
+@keyframes fadeout { to { opacity: 0; } }
+.w.working .face, .w.mending .face, .w.failed .face {
+  mask-image: var(--noise),
+    linear-gradient(90deg, transparent, #000 var(--erode), #000 calc(100% - var(--erode)), transparent),
+    linear-gradient(180deg, transparent, #000 var(--erode), #000 calc(100% - var(--erode)), transparent);
+  mask-composite: add, intersect;
+  mask-size: 150px 150px, 100% 100%, 100% 100%;
+  mask-repeat: repeat, no-repeat, no-repeat; }
+.w.working .face { animation: erodeIn .5s ease-out forwards, crawl .45s steps(5) infinite; }
+.w.mending .face { animation: erodeOut .55s ease-in forwards; }
+.w.failed .face { animation: erodeFail 1.2s steps(10) forwards, crawl .2s steps(3) infinite; }
+@keyframes erodeIn { from { --erode: 0px; } to { --erode: 26px; } }
+@keyframes erodeOut { from { --erode: 26px; } to { --erode: 0px; } }
+@keyframes erodeFail { 0% { --erode: 26px; } 30% { --erode: 40px; } 100% { --erode: 0px; } }
+@keyframes crawl { from { mask-position: 0 0, 0 0, 0 0; } to { mask-position: 150px 75px, 0 0, 0 0; } }
+.w.failed { animation: failflash .12s steps(2) 6; }
+@keyframes failflash { 50% { filter: brightness(1.6) saturate(2) hue-rotate(-12deg); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; } }
+
+/* Out of the page entirely unless she's working: a blend mode on a hidden
+   layer still makes every repaint composite each widget off-screen. */
+.sheen, .rim { display: none; }
+.w.working .sheen, .w.working .rim, .w.mending .rim { display: block; }
+.bar b { transition: none; }

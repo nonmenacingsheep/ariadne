@@ -40,7 +40,7 @@ def rgba(rgb: tuple, alpha: float = 1.0) -> Gdk.RGBA:
 
 
 CSS = """
-window.ariadne2-layer, window.ariadne2-layer > * { background: transparent; }
+window.ariadne2-layer, window.ariadne2-layer > *, window.ariadne2-layer webview { background: transparent; }
 
 .a2-header {
   font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 15px;

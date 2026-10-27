@@ -1,28 +1,31 @@
 """The desk: one transparent full-screen layer on the ultrawide.
 
-It holds no logic. It draws what the core sends (state, actions, chat), sends
-back what you did, and owns only the things that are purely visual: where
-widgets sit, the wires between them, and whether the layer is raised.
+The widgets themselves are a web page (web/desk.html) in a transparent
+WebKit view: CSS does the slab look, the sheen and the crumbling edges far more
+easily than hand-drawn GTK. This file is the glue. It forwards the core's
+messages into the page, sends back what you did, saves the layout, keeps the
+input region to the widgets, and owns raise/drop with KWin.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import logging
+from pathlib import Path
 
 import cairo
-from gi.repository import Gdk, Gio, Gtk
+import gi
 
-from .. import protocol
-from . import frame, kwin, layout, theme, wires
-from .link import CoreLink
+gi.require_version("WebKit", "6.0")
+from gi.repository import Gdk, Gio, Gtk, WebKit  # noqa: E402
+
+from .. import protocol  # noqa: E402
+from . import kwin, layout, theme  # noqa: E402
+from .link import CoreLink  # noqa: E402
 
 log = logging.getLogger(__name__)
-
-TITLES = {"chat": "Chat", "core": "Aries", "spotify": "Spotify",
-          "steam": "Steam", "discord": "Discord", "browser": "Browser",
-          "dolphin": "Dolphin", "claude": "Claude", "system": "System",
-          "flows": "Flows"}
-HALO = 10   # input region margin around each widget, so the glow is grabbable
+PAGE = Path(os.environ.get("ARIADNE2_PAGE", Path(__file__).with_name("web") / "desk.html"))
 
 
 class Layer(Gtk.Window):
@@ -33,121 +36,79 @@ class Layer(Gtk.Window):
         self.set_default_size(*layout.SCREEN)
         self.add_css_class("ariadne2-layer")
         self.raised = False
-        self.area = (0, 0) + layout.SCREEN   # until KWin reports panels
-
+        self.ready = False
+        self.area = (0, 0) + layout.SCREEN      # until KWin reports panels
         self.rects = layout.load()
-        self.frames: dict[str, frame.Frame] = {}
-        self.wires = wires.Wires()
-        self.fixed = Gtk.Fixed()
-        overlay = Gtk.Overlay()
-        overlay.set_child(self.wires)
-        overlay.add_overlay(self.fixed)
-        self.set_child(overlay)
+        self.hit_rects: list = []
 
-        for name in protocol.WIDGETS:
-            self._add_frame(name)
-        self._reroute()
+        ucm = WebKit.UserContentManager()
+        ucm.register_script_message_handler("desk", None)
+        ucm.connect("script-message-received::desk", self._from_page)
+        self.view = WebKit.WebView(user_content_manager=ucm)
+        transparent = Gdk.RGBA()
+        transparent.parse("rgba(0,0,0,0)")
+        self.view.set_background_color(transparent)
+        settings = self.view.get_settings()
+        settings.set_allow_file_access_from_file_urls(True)
+        settings.set_enable_developer_extras(True)
+        self.view.load_uri(PAGE.as_uri())
+        self.set_child(self.view)
 
         self.link = CoreLink(self._on_message, self._on_status)
-        self._drag = None
-        drag = Gtk.GestureDrag()
-        drag.connect("drag-begin", self._drag_begin)
-        drag.connect("drag-update", self._drag_update)
-        drag.connect("drag-end", self._drag_end)
-        self.fixed.add_controller(drag)
-        click = Gtk.GestureClick()
-        click.connect("pressed", self._clicked)
-        self.fixed.add_controller(click)
-        keys = Gtk.EventControllerKey()
-        keys.connect("key-pressed", self._key)
-        self.add_controller(keys)
-
         self.connect("realize", lambda *_: self._update_input())
         self.connect("map", lambda *_: kwin.load_layer_script())
-        self.link.start()
 
-    # -- widgets ----------------------------------------------------------
-    def _add_frame(self, name: str) -> None:
-        if name == "chat":
-            f = frame.ChatFrame(name, TITLES[name], self._send_chat)
-        elif name == "core":
-            f = frame.CoreFrame(name, TITLES[name])
-        elif name == "system":
-            f = frame.SystemFrame(name, TITLES[name])
-        else:
-            f = frame.Frame(name, TITLES[name])
-        x, y, w, h = self.rects[name]
-        f.set_size_request(w, h)
-        self.fixed.put(f, x, y)
-        self.frames[name] = f
-
-    def _send_chat(self, text: str) -> bool:
-        return self.link.send(protocol.text("chat", text))
-
-    def _reroute(self) -> None:
-        core = self.rects["core"]
-        others = {n: r for n, r in self.rects.items() if n != "core"}
-        self.wires.set_routes(wires.route(core, others))
-
-    def _place(self, name: str, rect: tuple) -> None:
-        self.rects[name] = rect
-        f = self.frames[name]
-        self.fixed.move(f, rect[0], rect[1])
-        f.set_size_request(rect[2], rect[3])
-
-    # -- the core ---------------------------------------------------------
-    def _on_message(self, msg: dict) -> None:
-        t = msg["t"]
-        core: frame.CoreFrame = self.frames["core"]
-        if t == "state":
-            self.frames[msg["widget"]].set_state(msg["data"])
-        elif t == "line":
-            core.set_line(msg["text"])
-        elif t == "chat":
-            self.frames["chat"].chat(msg)
-        elif t == "action":
-            self._action(msg)
-
-    def _action(self, msg: dict) -> None:
-        name, phase = msg["widget"], msg["phase"]
-        f = self.frames.get(name)
-        if f is None or name == "core":
+    # -- page <-> python --------------------------------------------------
+    def _js(self, fn: str, *args) -> None:
+        if not self.ready:
             return
-        if phase == "started":
-            self.wires.send(name, "out")
-            self.frames["core"].mark.twitch()
-            f.flare()
-            f.touched(msg.get("control"))
-        elif phase in ("done", "failed"):
-            failed = phase == "failed"
-            self.wires.send(name, "back", failed)
-            if failed:
-                f.flare(failed=True)
-                f.failed(msg.get("note"))
+        call = f"desk.{fn}({', '.join(json.dumps(a) for a in args)})"
+        self.view.evaluate_javascript(call, -1, None, None, None, None, None)
+
+    def _layout_args(self):
+        return {n: list(r) for n, r in self.rects.items()}, list(self.area)
+
+    def _from_page(self, _ucm, value) -> None:
+        try:
+            msg = json.loads(value.to_string())
+        except (ValueError, AttributeError):
+            return
+        t = msg.get("t")
+        if t == "ready":
+            self.ready = True
+            self._js("init", *self._layout_args())
+            self.link.start()
+        elif t == "send":
+            self.link.send(msg["msg"])
+        elif t == "layout":
+            self.rects = {n: tuple(int(v) for v in r) for n, r in msg["widgets"].items()}
+            layout.save(self.rects)
+        elif t == "rects":
+            self.hit_rects = msg["rects"]
+            self._update_input()
+        elif t == "drop":
+            kwin.drop()
+
+    def _on_message(self, msg: dict) -> None:
+        self._js("message", msg)
 
     def _on_status(self, status: str) -> None:
-        core = self.frames["core"]
-        core.status.set_label("" if status == "connected" else "RECONNECTING")
-        if status != "connected":
-            core.set_line("")
+        self._js("setStatus", status)
 
+    # -- screen area, raise / drop -----------------------------------------
     def set_area(self, area: tuple) -> None:
         if area[2] < 400 or area[3] < 300 or area == self.area:
             return
         self.area = area
-        fitted = layout.fit(self.rects, area, scale=not layout.path().exists())
-        for name, rect in fitted.items():
-            self._place(name, rect)
-        self._reroute()
-        self._update_input()
+        self.rects = layout.fit(self.rects, area, scale=not layout.path().exists())
+        self._js("layout", *self._layout_args())
 
-    # -- raise / drop -----------------------------------------------------
     def set_raised(self, up: bool) -> None:
         self.raised = up
         self._update_input()
         if up:
-            self.frames["core"].mark.twitch()
-            self.frames["chat"].entry.grab_focus()
+            self.view.grab_focus()
+        self._js("setRaised", up)
 
     def _update_input(self) -> None:
         surface = self.get_surface()
@@ -157,73 +118,11 @@ class Layer(Gtk.Window):
             w, h = layout.SCREEN
             region = cairo.Region(cairo.RectangleInt(0, 0, w, h))
         else:
-            region = cairo.Region([
-                cairo.RectangleInt(int(x - HALO), int(y - HALO),
-                                   int(w + 2 * HALO), int(h + 2 * HALO))
-                for x, y, w, h in self.rects.values()])
+            rects = self.hit_rects or [
+                (x - 28, y - 28, w + 56, h + 56) for x, y, w, h in self.rects.values()]
+            region = cairo.Region([cairo.RectangleInt(int(x), int(y), int(w), int(h))
+                                   for x, y, w, h in rects])
         surface.set_input_region(region)
-
-    def _hit(self, x: float, y: float) -> str | None:
-        for name, (rx, ry, rw, rh) in self.rects.items():
-            if rx - HALO <= x <= rx + rw + HALO and ry - HALO <= y <= ry + rh + HALO:
-                return name
-        return None
-
-    def _clicked(self, _g, _n, x, y) -> None:
-        if self.raised and self._hit(x, y) is None:
-            kwin.drop()
-
-    def _key(self, _c, keyval, _code, _state) -> bool:
-        if keyval == Gdk.KEY_Escape and self.raised:
-            kwin.drop()
-            return True
-        return False
-
-    # -- move / resize ----------------------------------------------------
-    def _drag_begin(self, gesture, x, y) -> None:
-        name = self._hit(x, y)
-        if name is None:
-            gesture.set_state(Gtk.EventSequenceState.DENIED)
-            return
-        rx, ry, rw, rh = self.rects[name]
-        if x >= rx + rw - frame.GRIP and y >= ry + rh - frame.GRIP:
-            mode = "size"
-        elif y <= ry + theme.HEADER_H:
-            mode = "move"
-        else:
-            gesture.set_state(Gtk.EventSequenceState.DENIED)
-            return
-        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
-        self._drag = (name, mode, self.rects[name])
-
-    def _drag_rect(self, dx, dy) -> tuple:
-        name, mode, (x, y, w, h) = self._drag
-        if mode == "move":
-            return (x + dx, y + dy, w, h)
-        return (x, y, w + dx, h + dy)
-
-    def _drag_update(self, _g, dx, dy) -> None:
-        if self._drag:
-            self._place(self._drag[0], self._fit_one(self._drag_rect(dx, dy)))
-            self._reroute()
-
-    def _fit_one(self, rect: tuple) -> tuple:
-        return layout.fit({"r": rect}, self.area)["r"]
-
-    def _drag_end(self, _g, dx, dy) -> None:
-        if not self._drag:
-            return
-        name, mode, _ = self._drag
-        x, y, w, h = self._drag_rect(dx, dy)
-        if mode == "move":
-            x, y = layout.snap(x), layout.snap(y)
-        else:
-            w, h = layout.snap(x + w) - x, layout.snap(y + h) - y
-        self._place(name, self._fit_one((x, y, w, h)))
-        self._drag = None
-        self._reroute()
-        self._update_input()
-        layout.save(self.rects)
 
 
 class DeskApp(Gtk.Application):

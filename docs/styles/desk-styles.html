@@ -360,7 +360,7 @@ canvas.front { z-index: 20; }
 <div class="page">
   <header class="top">
     <h1>Aries <span>desk</span> styles</h1>
-    <p>Eight directions for the widget layer, each with its own wires and its own version of the working effect: a holographic sheen sweeps the widget while its edges crumble away, then the pieces fly back when she's done. Every sample runs on its own loop; use the buttons to fire an action now or make the next one fail. The first four are flat; the last four are 3D (move your mouse over them).</p>
+    <p>Your pick is first: the acrylic slabs with braided wires. Below it are the eight directions it came from. Each sample runs on its own loop: a packet runs out, the widget is worked on (a holographic sheen sweeps it while its edges crumble away), and the pieces fly back when she's done. Use the buttons to fire an action now or make the next one fail. Move your mouse over the 3D ones.</p>
   </header>
   <div class="controls" role="toolbar" aria-label="Demo controls">
     <div class="grp"><span class="lbl">Behind</span>
@@ -436,6 +436,11 @@ function content(name) {
 
 /* --------- the eight styles --------- */
 const STYLES = [
+  { id: "pick", look: "slab", hues: [350, 228, 200], title: "Acrylic Slabs, braided wires", kind: "3D", wires: "braid", frag: "shard",
+    pitch: "Your pick: the edge-lit acrylic slabs, cabled with three-strand braids that twist around each other. The braid turns slowly at rest and spins up while data runs through it.",
+    notes: ["Three strands (red, blue, pale) wound around a sagging cable; the strand in front is bright, the ones behind are dim, so the twist reads as depth.",
+            "The acrylic chips off at the edges, a holographic sheen sweeps it, and the pieces fly back when she's done.",
+            "The braid is three offset curves per wire, cheap to draw. The slabs need 3D transforms, which GTK and WebKit both do."] },
   { id: "glass", hues: [350, 186, 38], title: "Arasaka Glass", kind: "flat", wires: "ortho", frag: "shard",
     pitch: "Your current direction, done properly: dark frosted glass you can see the wallpaper through, red kept for edges and her core, cyan and amber as second voices, and specular edges that catch light.",
     notes: ["Three-strand ribbon cables with a glowing white core, amber solder pads at the turns and data trickling outward; packets are comets that throw sparks at every corner.",
@@ -480,9 +485,10 @@ const STYLES = [
 
 /* --------- building a stage --------- */
 function widgetHTML(style, name) {
+  const look = style.look || style.id;
   const L = LAYOUT[name];
   let extra = "", vars = `--x:${L.x};--y:${L.y};--wd:${L.w};--ht:${L.h};`;
-  if (style.id === "slab") {
+  if (look === "slab") {
     extra = '<div class="bk"></div><div class="sd t"></div><div class="sd b"></div><div class="sd l"></div><div class="sd r"></div><div class="shadow"></div>';
     const cx = L.x + L.w / 2, cy = L.y + L.h / 2;
     vars += `--ry0:${((600 - cx) / 600 * 22).toFixed(1)}deg;--rx0:${((cy - 240) / 240 * -8).toFixed(1)}deg;`;
@@ -516,9 +522,9 @@ const gallery = document.getElementById("gallery");
 STYLES.forEach((s, i) => {
   const sec = document.createElement("section");
   sec.className = "sample";
-  sec.innerHTML = `<div class="cap"><h2><b>${i + 1}</b>${s.title}</h2><span class="kind">${s.kind}</span></div>
+  sec.innerHTML = `<div class="cap"><h2><b>${s.id === "pick" ? "Pick" : i}</b>${s.title}</h2><span class="kind">${s.kind}</span></div>
     <p class="pitch">${s.pitch}</p>
-    <div class="wrap s-${s.id}">${stageHTML(s)}</div>
+    <div class="wrap s-${s.look || s.id}">${stageHTML(s)}</div>
     <div class="notes"><div><b>Wires</b>${s.notes[0]}</div><div><b>Working effect</b>${s.notes[1]}</div><div><b>Building it</b>${s.notes[2]}</div></div>`;
   gallery.appendChild(sec);
 });
@@ -673,6 +679,38 @@ const WIRES = {
     for (const p of [w.pts[0], w.pts[w.pts.length - 1]]) { ctx.fillStyle = "#2a2023"; ctx.fillRect(p[0] - 6, p[1] - 5, 12, 10); ctx.fillStyle = "#ff2a3d"; ctx.fillRect(p[0] - 2, p[1] - 2, 4, 4); }
     flow(ctx, w, t, "rgba(255,150,160,.9)", 2, 60, 2.2);
   },
+  // Three strands wound round the cable's path. Each strand's offset from the
+  // centre line is sin(phase), its depth cos(phase); the back halves are drawn
+  // first and dim, the front halves last and bright, so the twist reads as 3D.
+  braid(ctx, w, t, active) {
+    const STR = [[255, 42, 61], [109, 140, 255], [255, 214, 218]], R = 5, TWIST = .085;
+    w.spin = (w.spin || 0) + (active ? 7 : .7) / 60;
+    const pts = w.pts, L = w.L, nrm = pts.map((p, i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+      return [-dy / l, dx / l];
+    });
+    ctx.lineCap = "round";
+    stroke(ctx, pts.map(p => [p[0] + 6, p[1] + 16]), 9, "rgba(0,0,0,.25)");   // its shadow on the wallpaper
+    stroke(ctx, pts, 12, "rgba(8,4,12,.55)");                                  // the dark sleeve the strands sit in
+    for (const front of [false, true]) {
+      STR.forEach((c, k) => {
+        ctx.beginPath(); let pen = false;
+        for (let i = 0; i < pts.length; i++) {
+          const ph = L[i] * TWIST - w.spin + k * 2.094, depth = Math.cos(ph), off = Math.sin(ph) * R;
+          const x = pts[i][0] + nrm[i][0] * off, y = pts[i][1] + nrm[i][1] * off;
+          if ((depth >= 0) === front) { pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y); pen = true; } else pen = false;
+        }
+        ctx.save();
+        if (front) { ctx.shadowColor = `rgb(${c})`; ctx.shadowBlur = active ? 14 : 8; }
+        ctx.lineWidth = front ? 2.6 : 1.6;
+        ctx.strokeStyle = `rgba(${c},${front ? (active ? 1 : .92) : .32})`;
+        ctx.stroke(); ctx.restore();
+      });
+    }
+    ctx.lineCap = "butt";
+    for (const p of [pts[0], pts[pts.length - 1]]) { ctx.fillStyle = "#2a2023"; ctx.fillRect(p[0] - 7, p[1] - 6, 14, 12); ctx.fillStyle = "#ff2a3d"; ctx.fillRect(p[0] - 2, p[1] - 2, 4, 4); }
+    flow(ctx, w, t, "rgba(255,240,240,.95)", 2, 65, 2.2);
+  },
   beam(ctx, w, t, active) {
     const [a, b1, b2] = w.cone;
     const g = ctx.createLinearGradient(a[0], a[1], (b1[0] + b2[0]) / 2, (b1[1] + b2[1]) / 2);
@@ -745,7 +783,7 @@ function drawPacket(ctx, st, w, u, back, failed, t) {
 /* ---------- a running stage ---------- */
 class Stage {
   constructor(wrap, style) {
-    this.wrap = wrap; this.style = style; this.id = style.id;
+    this.wrap = wrap; this.style = style; this.id = style.look || style.id;
     this.stage = wrap.querySelector(".stage");
     this.back = wrap.querySelector("canvas.back");
     this.front = wrap.querySelector("canvas.front");
@@ -798,7 +836,7 @@ class Stage {
     } else if (st.wires === "floor") {
       const rects = {}; TARGETS.forEach(n => rects[n] = LAYOUT[n]);
       const r = route(LAYOUT.core, rects); TARGETS.forEach((n, i) => wires[n] = mk(r[n], n, i));
-    } else if (st.wires === "nerve" || st.wires === "cable") {
+    } else if (st.wires === "nerve" || st.wires === "cable" || st.wires === "braid") {
       const core = this.box("core");
       TARGETS.forEach((n, i) => {
         const b = this.box(n), cx = core.x + core.w / 2;
@@ -807,7 +845,7 @@ class Stage {
         else if (b.x + b.w < core.x) { a = [core.x + 6, core.y + core.h * .6]; e = [b.x + b.w - 4, b.y + b.h / 2]; }
         else { a = [cx, core.y + core.h - 4]; e = [b.x + b.w / 2, b.y + 4]; }
         let raw;
-        if (st.wires === "cable") {
+        if (st.wires === "cable" || st.wires === "braid") {
           const sag = 40 + dist(a, e) * .18, m = [(a[0] + e[0]) / 2, Math.max(a[1], e[1]) + sag];
           raw = []; for (let k = 0; k <= 30; k++) { const u = k / 30; raw.push([(1 - u) ** 2 * a[0] + 2 * u * (1 - u) * m[0] + u * u * e[0], (1 - u) ** 2 * a[1] + 2 * u * (1 - u) * m[1] + u * u * e[1]]); }
         } else raw = this.bez(a, e, 0, 0);

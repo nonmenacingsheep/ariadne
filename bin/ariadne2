@@ -1,0 +1,9 @@
+#!/bin/bash
+# Start the core and the desk together; stopping this stops both.
+#   bin/ariadne2          normal
+#   bin/ariadne2 --demo   fake actions every few seconds, to test the wires
+cd "$(dirname "$0")/.." || exit 1
+python3 -m ariadne2.core "$@" &
+core=$!
+trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
+python3 -m ariadne2.desk

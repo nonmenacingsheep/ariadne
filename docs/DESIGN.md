@@ -1,7 +1,6 @@
 # Ariadne 2.0 — design
 
-Status: open questions answered and Flows added (2026-10-27). Nothing is
-built yet; next is step 1 of the build order (§11).
+Status: step 1 (skeleton) built 2026-10-27; next is step 2 (§11).
 
 ## 1. What it is
 
@@ -68,12 +67,15 @@ The layer lives behind your windows, so anything maximised hides it.
   so a "click away" never lands by accident in the app underneath. Switching
   to another window (Alt+Tab, a notification) drops it too. An unsent chat
   draft is kept.
-- How: the shortcut is registered through the XDG GlobalShortcuts portal, so
-  it shows up in System Settings → Shortcuts and can be rebound there (if
-  Plasma already uses Meta+A, the portal reports the clash and we free it
-  there). Raising and dropping go through the KWin script carried over from
-  1.x: keep-below off and keep-above on, then the reverse. Her mark gives one
-  glitch twitch as the layer comes up.
+- How: one KWin script (`desk/kwin_layer.js`), loaded while the desk runs,
+  pins the layer, registers Meta+A (it shows up in System Settings →
+  Shortcuts under KWin as "Ariadne 2: bring to front", rebindable there),
+  flips keep-below/keep-above, and drops the layer when another window takes
+  focus. It calls back to the desk over D-Bus (`io.ariadne2.desk`). Esc and
+  click-away use a one-shot script. Her mark gives one glitch twitch as the
+  layer comes up.
+- KWin keeps the layer itself out from under the Plasma panel and reports
+  the usable area; the starting layout is squeezed to fit it.
 
 ### Starting layout
 
@@ -557,10 +559,11 @@ graph.
 
 ## 11. Build order
 
-1. **Skeleton:** core and desk processes, the socket protocol, the
+1. **Skeleton** — *done 2026-10-27:* core and desk processes, the socket protocol, the
    transparent layer pinned below windows on the ultrawide with the
    wallpaper showing through, the theme, the starting layout with drag by
-   header, Meta+A to raise and drop.
+   header, Meta+A to raise and drop. Run it with `bin/ariadne2 --demo`
+   (fake actions every 4 s, so the wires animate).
 2. **Chat + core widget:** conversation streaming in the chat widget, her
    mark, voice and mic carried over, the Aries personality, the sound
    player. At this point 2.0 can replace 1.x day to day for talking.

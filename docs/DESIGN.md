@@ -1,6 +1,7 @@
 # Ariadne 2.0 — design
 
-Status: draft for Ronald to mark up (2026-10-26). Nothing is built yet.
+Status: open questions answered and Flows added (2026-10-27). Nothing is
+built yet; next is step 1 of the build order (§11).
 
 ## 1. What it is
 
@@ -41,22 +42,100 @@ not like a chatbot with a tool list.
 - **Ultrawide only** (DP-2, 3440×1440).
 - One **transparent full-screen layer**, kept below all windows by KWin and
   shown on every virtual desktop. There are no desktop icons to cover.
+  It has **no background of its own**: your Waywallen wallpaper shows
+  through everywhere a widget isn't.
   - Why one layer rather than separate KDE widgets: the wires between widgets
     have to be drawn across the gaps between them, which needs one canvas.
     It also lets widgets move freely, overlap and animate together.
   - Clicks on empty parts of the layer pass through to the wallpaper (an
     input region covering only the widgets).
-- **Widgets are draggable and resizable**, and snap to a soft grid. Their
-  layout is saved.
-- An **edit mode** (hotkey) shows the grid, lets you add or remove widgets,
-  and shows where the wires run.
+- **Widgets are draggable and resizable**, and snap to a soft 24 px grid.
+  Drag any widget by its header at any time; resize from its corners. The
+  layout is saved to `~/.config/ariadne2/layout.json` and can be reset to
+  the starting one.
+- An **edit mode** (Meta+Shift+A) shows the grid, lets you add or remove
+  widgets, and shows where the wires run.
+
+### Meta+A: bring her to the front
+
+The layer lives behind your windows, so anything maximised hides it.
+
+- **Meta+A** lifts the layer above every window and focuses the chat input,
+  so you can type straight away. Nothing behind it dims — it's the same
+  transparent layer, just on top.
+- **Meta+A again, Esc, or a click on empty space** drops it back behind.
+  While it's up, empty space catches clicks instead of passing them through,
+  so a "click away" never lands by accident in the app underneath. Switching
+  to another window (Alt+Tab, a notification) drops it too. An unsent chat
+  draft is kept.
+- How: the shortcut is registered through the XDG GlobalShortcuts portal, so
+  it shows up in System Settings → Shortcuts and can be rebound there (if
+  Plasma already uses Meta+A, the portal reports the clash and we free it
+  there). Raising and dropping go through the KWin script carried over from
+  1.x: keep-below off and keep-above on, then the reverse. Her mark gives one
+  glitch twitch as the layer comes up.
+
+### Starting layout
+
+Proposed for 3440×1440, for you to drag around. The idea: a centred
+1920-wide window leaves a 760 px strip on each side, and the two columns sit
+exactly in those strips, so the busiest widgets stay visible while you work.
+Her things are on the left (chat, her hands in Claude), your apps on the
+right, the core is the hub at top centre so the wires fan out evenly, and
+the bottom-centre row is what you see when a window is moved or Meta+A is
+pressed.
+
+```
+ ┌────────────────┐                 ┌────────────┐                 ┌────────────────┐
+ │ CHAT           │                 │ CORE       │                 │ SPOTIFY        │
+ │                │                 └────────────┘                 │                │
+ │                │                                                │                │
+ │                │┊                                              ┊│                │
+ │                │┊                                              ┊└────────────────┘
+ │                │┊                                              ┊┌────────────────┐
+ │                │┊                                              ┊│ DISCORD        │
+ │                │┊                                              ┊│                │
+ │                │┊                                              ┊│                │
+ │                │┊   (a centred 1920-wide window sits here)     ┊└────────────────┘
+ │                │┊                                              ┊
+ │                │┊                                              ┊┌────────────────┐
+ │                │┊                                              ┊│ STEAM          │
+ │                │┊                                              ┊│                │
+ └────────────────┘┊                                              ┊│                │
+ ┌────────────────┐┊                                              ┊│                │
+ │ CLAUDE         │┊                                              ┊└────────────────┘
+ │                │┊                                              ┊┌────────────────┐
+ │                │                                                │ BROWSER        │
+ │                │ ┌────────────────────┐ ┌─────────────┐┌──────┐ │                │
+ │                │ │ DOLPHIN            │ │ FLOWS       ││SYSTEM│ │                │
+ │                │ │                    │ │             ││      │ │                │
+ └────────────────┘ └────────────────────┘ └─────────────┘└──────┘ └────────────────┘
+```
+
+| Widget | x, y | w × h |
+|---|---|---|
+| Chat | 24, 24 | 736 × 912 |
+| Claude | 24, 960 | 736 × 456 |
+| Core | 1440, 24 | 560 × 144 |
+| Spotify | 2680, 24 | 736 × 336 |
+| Discord | 2680, 384 | 736 × 288 |
+| Steam | 2680, 696 | 736 × 360 |
+| Browser | 2680, 1080 | 736 × 336 |
+| Dolphin | 784, 1176 | 912 × 240 |
+| Flows | 1720, 1176 | 584 × 240 |
+| System | 2328, 1176 | 328 × 240 |
+
+If a Plasma panel sits on DP-2, the layout fits inside KWin's usable area
+for the screen rather than these raw numbers.
 
 ### Visual language — red cyberpunk
 
 Taken from the mock, then made to feel like one piece:
 
-- **Ground:** near-black (#0b0708) with a faint dark-red marble/circuit
-  texture; your wallpaper shows through wherever there's no widget.
+- **Ground:** none. The wallpaper is the ground. Because it moves and can be
+  bright, the glass is a little more opaque than the mock (~80%), text gets
+  a soft dark shadow, and every wire carries a 1 px dark under-stroke so it
+  reads over anything.
 - **Glass:** widgets are dark translucent red (#2a0a0e at ~70%) with a 1 px
   inner hairline (#ff2a3d at 35%) and a soft red outer glow. GTK can't blur
   what's behind a widget, so the "glass" is a tinted wash plus grain; on this
@@ -84,6 +163,39 @@ Taken from the mock, then made to feel like one piece:
   - **Result:** a packet travels back. A failure sends back a red flicker
     and the widget shows why.
 - Wires reroute live when you drag widgets.
+- When a flow (§10) fires, the packet starts at the widget where the trigger
+  happened, runs *up* its wire to the core, and then out to the widgets it
+  acts in, so you see cause and effect cross the desk.
+
+### Sounds
+
+Small sound effects when she acts, each one mutable on its own, plus a
+master switch.
+
+| Sound | When |
+|---|---|
+| `send` | a packet leaves the core for a widget (she starts an action) |
+| `done` | the result packet arrives back |
+| `fail` | an action failed (red flicker) |
+| `flow` | a flow fires |
+| `spotify` | a track change, play or pause she caused |
+| `steam` | a game launch or close she caused |
+| `discord` | a mute, deafen or join she caused |
+| `browser` | a tab opened, closed or switched by her |
+| `dolphin` | a file moved, sorted or binned by her |
+| `claude` | a hand starts or finishes |
+| `mic` | the mic opens or closes (the 1.x chime) |
+| `raise` | Meta+A lifts or drops the layer |
+
+- The desk plays them, since it's the one drawing the events. Short OGG
+  files in `desk/sounds/`, played through PipeWire.
+- Settings: master on/off, master volume, and an on/off per sound, all in
+  the settings page (with a play button to preview each); right-click a
+  widget to mute just its sound.
+- Bursts are coalesced: one sound of a kind per 150 ms at most, so sorting
+  200 files is a short patter, not 200 clicks.
+- **Quiet while a fullscreen window is focused** (a game), on by default and
+  one switch to turn off. Her voice is unaffected.
 
 ## 3. The widgets (first set)
 
@@ -100,9 +212,16 @@ animates whenever she acts through its adapter.
 | **Dolphin** | the folder you're in, recent folders and files, a drop zone | open, drop files on it | `open(path)`, `sort(folder)`, `move(a, b)`, `trash(path)` — every move animates in the widget |
 | **Claude** | running Claude Code sessions and her hands: what each is doing, steps, time | stop one, open one | `start(task, folder)`, `status`, `stop` |
 | **System** (small) | CPU, GPU, memory, disks (home and Olympus), volume | — | read-only |
+| **Flows** | your flows, each with a one-line summary, on/off, last fired; rows light when one fires | toggle, run, open in the editor, new flow | `flow.*` (§10) |
 
 Later candidates: a project widget (her task list while she builds), a
-"what she's watching for" widget (rules and reminders), a downloads widget.
+downloads widget. ("What she's watching for" is now the Flows widget.)
+
+**Discord access:** she reads your DMs and mentions through your Opera GX
+Discord login, over the same debugging port the browser adapter uses. That's
+decided (§12). Two guards come with it: what's in a message is always *data*
+— quoted to her, never followed as an instruction — and she never sends a
+message as you without you saying so in that moment.
 
 ## 4. Architecture
 
@@ -136,6 +255,9 @@ One file per app in `adapters/`. Each adapter:
 - owns its **state** (polled or pushed) and publishes it for its widget.
 - **emits action events** around every verb — that's what makes the widget
   animate and the wire pulse, with no extra work.
+- declares its **events**: the things that happen in the app on their own
+  (`spotify.track_changed`, `steam.download_done`, `discord.dm`), with typed
+  fields. These are what flows start from (§10).
 - talks to the app the most reliable way available: MPRIS/DBus or the Web
   API for Spotify, the `steam://` protocol plus local files for Steam, the
   browser's debugging port for tabs and Discord's web client, KDE DBus for
@@ -152,6 +274,8 @@ Adding an app means adding an adapter and a widget, and nothing else.
   read a page, screenshot/look at the screen, place a window, the fallback
   window control for apps with no other way in, open project, todo, hand off
   to a second hand.
+- Three **flow** tools: `flow.nodes(query)`, `flow.save(graph)`,
+  `flow.manage(id, op)` (§10).
 - Target: **about 30 tools in total**, all offered every turn: small enough
   that per-message tool selection and its cache problems go away.
 
@@ -160,7 +284,11 @@ Adding an app means adding an adapter and a widget, and nothing else.
 - **One model** for conversation (Sonnet 5.5 by default, switchable), and one
   for work and hands (Opus 5.5). DeepSeek stays as a cheap option.
 - **The prompt is rebuilt from scratch, and short:**
-  1. Who she is: the personality file (Bright, Unleashed or others; one file).
+  1. Who she is: the personality file. **Default: Aries**
+     (`personalities/aries.md`): she acts on anything that's part of what
+     you already asked, and asks only about new directions, things that
+     can't be undone, or a real two-way choice. Bright and Unleashed can
+     be carried over as alternatives; one file each.
   2. How she works: about a page, written as **whole example exchanges**
      rather than rules (the lesson from the benches).
   3. The live state: a compact version of the current dashboard, built from
@@ -171,7 +299,8 @@ Adding an app means adding an adapter and a widget, and nothing else.
   after work, the "said she'd do it" guard, per-model thinking switches, the
   promise and background-launch fixes.
 - **Dropped:** the preflight block, mentions queue, curiosity, the inner
-  layer, journal and episodes, recipes, and the long rulebook sections.
+  layer, journal and episodes, and the long rulebook sections. Recipes and
+  "watch for this" rules are replaced by flows (§10).
 
 ## 6. Memory
 
@@ -218,8 +347,10 @@ Everything carried over is copied in and trimmed, not imported from 1.x.
 ```
 ariadne2/
   core/        loop.py  prompt.py  memory.py  voice/  ears/  tools.py  protocol.py
+  core/flows/  graph.py  catalog.py  engine.py  store.py
   adapters/    spotify.py  steam.py  discord.py  browser.py  dolphin.py  claude.py  system.py
-  desk/        layer.py  widgets/  wires.py  theme.py
+  desk/        layer.py  widgets/  wires.py  theme.py  sounds.py  hotkey.py
+  desk/editor/ canvas.py  palette.py  inspector.py
   personalities/
   tests/       one per module; adapters tested against recorded app responses
 docs/          DESIGN.md (this), PROTOCOL.md
@@ -232,34 +363,234 @@ Rules for staying revampable:
 - Every adapter has the same shape and can be tested without the app running.
 - Comments say *why*, briefly.
 
-## 10. Build order
+## 10. Flows
+
+Flows replace two 1.x things: **recipes** (hints from repeated requests) and
+**"watch for this" rules** (a trigger plus a sentence for her to act on).
+A flow is a small visual program, like an Unreal Blueprint: a **start node**
+(something happens) wired to **checks** and **actions**. When the start
+fires and the checks pass, the actions run.
+
+```
+ ┌─ Steam: game started ─┐     ┌─ Time between ─┐ true ┌─ Spotify: volume ─┐
+ │                     ▶─┼────►│ 22:00 – 07:00  ├─────►│ level  20         │
+ │ game ●                │     └────────────────┘      └───────────────────┘
+ └───────────────────────┘
+```
+
+### What a flow is made of
+
+- **Nodes** with **pins**. Like Blueprints there are two kinds of wire:
+  - **Exec wires** (thick, red) say what happens next. A node runs when an
+    exec wire reaches it.
+  - **Data wires** (thin, coloured by type) carry values: the game that
+    started, the DM text, the track title.
+- **Types** are few: `text`, `number`, `yes/no`, `time`, `duration`, `path`,
+  `list`, and app things that adapters define (`track`, `game`, `tab`,
+  `message`, `session`). A data wire only connects matching types (any type
+  goes into a `text` input, written out as text).
+- An input with no wire takes a typed-in value on the node itself.
+
+### Node types
+
+**Starts** — one exec output, plus data outputs for what happened.
+
+| Group | Nodes |
+|---|---|
+| Time | `At` (time of day, chosen days), `Every` (interval), `After` (once, after a delay) |
+| App events | one per event an adapter declares: `Spotify: track changed`, `Steam: game started / closed / download done`, `Discord: DM / mention / someone joined voice`, `Browser: video ended / tab opened`, `Dolphin: file appeared in folder`, `Claude: hand finished`, `System: disk low` … |
+| State | `Becomes` — any adapter state crossing a line ("GPU above 90%", "Spotify stops playing"), with a *for at least* hold so it doesn't flap |
+| Desktop | `Window opened / closed / focused` (KWin), `Idle for`, `Back from idle`, `Ariadne started` |
+| You | `You say` (a phrase in chat or voice), `Run button` (fires from the Flows widget, or "run <flow name>") |
+
+**Checks** — decide whether and where to go on.
+
+| Node | Does |
+|---|---|
+| `Branch` | yes/no in → *true* or *false* exec out |
+| `Compare` | = ≠ < > *contains* *matches*, gives yes/no |
+| `And`, `Or`, `Not` | combine yes/no |
+| `Time between`, `Day is` | clock checks |
+| `Read state` | any adapter state as a value: *what's playing*, *game running*, *focused window is fullscreen*, *free space* (one per state field the adapter declares) |
+| `Cooldown` | passes at most once per duration |
+| `Once per day` | passes the first time each day |
+| `Settle` | waits until the start has stopped firing for a duration, then passes once (for downloads, bursts of files) |
+| `Count` | passes when the start has fired N times within a duration |
+
+**Actions** — do something; each has *done* and *failed* exec outputs.
+
+| Group | Nodes |
+|---|---|
+| App verbs | one per adapter verb, inputs = its arguments: `Spotify: play / pause / next / volume / queue`, `Steam: launch / close`, `Discord: mute / join`, `Browser: open / close tab`, `Dolphin: move / sort / trash`, `Claude: start hand` … |
+| General | `Move / copy file`, `Run command` (same hard refusals as her shell), `Place window`, `Notify` (a desktop toast) |
+| Her | `Say` (she speaks a line), `Tell` (a line in chat), `Ask Aries` (hands her a sentence plus the wired-in values as one turn; outputs her reply as text), `Decide` (same, but she picks *yes/no* or one of named choices, each its own exec out) |
+| You | `Ask Ronald` (a question in chat with buttons, one exec out per answer, and a *timed out* out) |
+
+`Ask Aries` and `Decide` are the escape hatch for anything a graph can't say
+("if this DM sounds urgent…"). They cost a model call, so they're drawn
+in a different shade, and the Flows widget shows which flows use them.
+
+**Flow control and data**
+
+| Node | Does |
+|---|---|
+| `Sequence` | runs its outputs in order |
+| `Wait` | pauses for a duration |
+| `Wait for` | pauses until an event (with a timeout out) |
+| `For each` | runs its body once per item in a list |
+| `Run flow` | calls another flow and waits for it |
+| `Stop` | ends this run |
+| `Get / Set` | a variable kept by the flow between runs ("last game played") |
+| `Text` | a template: "now playing {title} by {artist}" |
+| `Math`, `List` | the small arithmetic and pick/filter you need |
+
+That's about 40 built-in node types; every adapter adds its own events,
+verbs and state reads automatically, with no flow code knowing about it.
+It's the same rule as the widgets: **a new adapter means new nodes for
+free**.
+
+### How flows are built
+
+**By you, in the editor.** Open the Flows widget → *new* or *open*. The
+editor fills the raised layer (Meta+A style) as one large canvas:
+
+- Pan with middle-drag, zoom with the wheel. Nodes are chamfered red cards;
+  start nodes have a bright header, actions the normal one, `Ask Aries` a
+  cyan-edged one.
+- **Space** or right-click opens a search palette ("spot vol" finds
+  `Spotify: volume`). **Drag out from a pin** and drop on empty space, and
+  the palette shows only nodes that fit that pin, as in Blueprints.
+- Inline fields for unwired inputs, comment boxes, undo, copy/paste.
+- Problems show on the node as you work: a required input with nothing in
+  it glows, a type mismatch won't connect.
+- **Test** fires the start with the last real event it saw (or a sample) in
+  *dry run*: wires animate and values appear on them, but actions only
+  pretend.
+- Save, and the toggle on the flow turns it on.
+
+**By her, from conversation.** "Whenever a Steam download finishes, tell
+me" is part of what you asked, so under Aries she just builds it:
+
+1. `flow.nodes("steam download")` looks up the node types she needs — the
+   catalog stays out of the prompt, so the 4k budget holds.
+2. `flow.save(graph)` sends a compact JSON graph (nodes, links, values). The
+   core checks it against the catalog; anything wrong comes back to her by
+   name ("Tell.text needs a value") and she fixes it, at most twice.
+3. The new flow appears in the Flows widget and draws itself node by node,
+   so you see what she made. She says one line: "made a flow: when a Steam
+   download finishes, I'll tell you."
+
+- `flow.manage(id, op)` lists, explains, runs, turns on or off, edits and
+  deletes. She edits your flows only when you ask.
+- **Instead of recipes:** when you've asked for the same multi-step thing
+  about three times, she offers once to make it a flow. That's a new
+  direction, so under Aries it's a question, not an action.
+- Every flow has a **one-line summary written from the graph itself**, not
+  by the model ("When Steam starts a game → if 22:00–07:00 → Spotify volume
+  20"), so it's always true to what the flow does.
+
+### How they run in the core
+
+- **Events.** Adapters already publish state and action events for the
+  desk; they now also publish their declared events on one in-process bus.
+  The engine subscribes once and keeps an index from event name to the
+  start nodes that want it, so an event only touches the flows that care.
+- **Time** starts sit in one scheduler (a single timer to the next due
+  time), not a polling tick. `Becomes` starts compare each new state
+  snapshot with the last one. Polling only happens inside adapters that
+  have no push, at their own rate.
+- **A run** is one firing: it walks the exec wires from the start, pulls
+  data inputs on demand from the nodes wired into them (as Blueprints do),
+  and awaits each action. `Wait`, `Wait for` and `Ask Ronald` pause the run;
+  paused runs are saved, so a restart resumes them.
+- **If a flow fires while it's still running**, its mode decides: *ignore*
+  the new one (default), *restart*, *queue*, or run *in parallel*.
+- **Failures** follow the action's *failed* wire if there is one. Otherwise
+  the run stops, the flow's row goes red with the reason, and she mentions
+  it once — not on every repeat.
+- **Loops.** Flows' own actions cause events (`Spotify: next` causes
+  *track changed*). Each event carries what caused it; a flow can't
+  retrigger itself from its own action, chains stop at depth 3, and a flow
+  that fires more than 6 times a minute pauses itself and tells you.
+- **Safety.** Flow actions go through the same tool layer as her own calls:
+  hard refusals, credential guards and redaction all apply.
+  - Verbs that can't be undone or that speak for you (`trash`, `close
+    game`, `run command`, sending a message) are marked in their adapter.
+  - A flow **she** built that uses one of them is saved **off**, with an
+    *Approve* button that shows you the graph. Flows you build are trusted.
+  - A flow started by **outside content** (a DM, a page, a file's name)
+    can't reach a marked verb without an `Ask Ronald` node in front of it;
+    saving refuses otherwise. Message text reaching `Ask Aries` arrives
+    quoted, as data.
+- **Storage.** One JSON file per flow in `~/.local/share/ariadne2/flows/`
+  (readable, diffable), plus the last 50 runs per flow: what fired it, the
+  path taken, values, time, result.
+- **1.x import.** Each 1.x watch rule becomes a flow: its trigger as the
+  start node and its sentence as an `Ask Aries` node, which is exactly what
+  it was. Recipes aren't imported; they were hints, not programs.
+
+### How they show in the widgets
+
+- **Flows widget:** a row per flow: name, the one-line summary, on/off,
+  "fired 2 h ago", and a small glyph if it uses `Ask Aries`. A row flares
+  when its flow fires; a *Run* button on manual ones; *open* takes you to
+  the editor.
+- **On the wires:** a firing flow sends a packet from the widget where the
+  trigger happened, up to the core (whose action line reads "flow: late
+  gaming"), then out to each widget it acts in, with the usual flash on the
+  control used. The `flow` sound plays once.
+- **On the widgets they watch:** a small flow mark in the corner of a
+  widget, or next to the item inside it (the Downloads folder in Dolphin,
+  a game in Steam), shows something is watching it. Click it to open that
+  flow.
+- **In chat:** a flow that acts leaves one folded line ("late gaming:
+  volume to 20"). It only speaks if it has a `Say` node.
+- **In the editor, live:** with a flow open, each real run lights its
+  nodes and wires in turn and shows the values on the wires, so you can
+  watch it work and see where it stopped.
+
+The protocol gains: the flow list snapshot, run events (*started*, *node
+entered*, *node done*, *finished*, *failed*), the node catalog with types
+(so the editor can show only fitting nodes), and your edits (save, test,
+toggle). The desk still holds no logic: the core checks and saves every
+graph.
+
+## 11. Build order
 
 1. **Skeleton:** core and desk processes, the socket protocol, the
-   transparent layer pinned below windows on the ultrawide, the theme.
+   transparent layer pinned below windows on the ultrawide with the
+   wallpaper showing through, the theme, the starting layout with drag by
+   header, Meta+A to raise and drop.
 2. **Chat + core widget:** conversation streaming in the chat widget, her
-   mark, voice and mic carried over. At this point 2.0 can replace 1.x day to
-   day for talking.
-3. **Spotify end to end:** adapter, widget, wire animation. **Ronald tries
-   the "watch her do it" feel here before the rest is built.**
+   mark, voice and mic carried over, the Aries personality, the sound
+   player. At this point 2.0 can replace 1.x day to day for talking.
+3. **Spotify end to end:** adapter (verbs, events, state), widget, wire
+   animation, its sounds. **Ronald tries the "watch her do it" feel here
+   before the rest is built.**
 4. Steam, browser, Discord.
-5. Dolphin, Claude, system.
-6. Memory page, settings, edit mode; then retire 1.x.
+5. **Flows:** engine, store, the Flows widget, her building flows from
+   conversation, the 1.x watch import, trigger packets on the wires.
+6. Dolphin, Claude, system.
+7. The flow editor.
+8. Memory page, settings (sound switches among them), edit mode; then
+   retire 1.x.
 
-## 11. Open questions for Ronald
+## 12. Decisions
 
-1. **Starting layout:** do you have a picture of where widgets sit on the
-   ultrawide, e.g. chat bottom-left, Spotify top-right? Or should I propose a
-   starting layout for you to drag around?
-2. **Behind your windows only?** The layer sits below your apps, so it's
-   hidden whenever something is maximised. Should a hotkey bring it to the
-   front temporarily ("show me Aries"), or a gesture like moving the cursor
-   into a corner?
-3. **The wallpaper:** keep your current Waywallen wallpaper showing through,
-   or should the layer have its own dark-red background?
-4. **Sound design:** should the wires and widgets make small sounds when she
-   acts (soft ticks, data chirps), or stay silent apart from her voice and the
-   chime?
-5. **Personality:** which personality is the default for 2.0: Unleashed,
-   Bright, or a new one written for it?
-6. **Discord:** is reading DMs and mentions through your browser's Discord
-   login okay, given that she'd see your messages?
+Ronald's answers, 2026-10-27:
+
+1. **Layout:** proposed starting layout in §2, draggable.
+2. **Hotkey:** Meta+A raises the layer; again, Esc, or a click away drops
+   it (§2).
+3. **Wallpaper:** Waywallen shows through; the layer has no background.
+4. **Sounds:** small effects when she acts, each mutable, plus a master
+   switch (§2).
+5. **Personality:** Aries is the default (§5).
+6. **Discord:** reading DMs through the browser login is fine (§3).
+7. **Flows** replace recipes and watch rules (§10).
+
+Still open, none blocking step 1:
+
+- Should she ever raise the layer herself, e.g. when a flow's `Ask Ronald`
+  needs an answer while a game is fullscreen? Proposed: no — she says it
+  aloud and the question waits in chat.

@@ -150,10 +150,19 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .sp-title { font: 600 18px/1.2 "Noto Sans", sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-artist { font-size: 14px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-album { font-size: 12px; opacity: .55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sp-prog .bar { height: 5px; cursor: pointer; margin-top: 0; }
-.sp-prog .bar b { background: var(--blue); transition: none; }
-.sp-prog.on .bar b { background: var(--cyan); }
-.sp-times { display: flex; justify-content: space-between; font: 11px "Fira Code", monospace; opacity: .65; margin-top: 4px; }
+/* sleek progress: a hairline track that thickens on hover; the fill runs from
+   dark red into its current heat, with a glowing head */
+.sp-prog { padding-top: 2px; }
+.sp-track { position: relative; height: 3px; background: rgba(255,255,255,.07); cursor: pointer; transition: height .15s; --f: 0%; --heat: rgb(90,8,20); }
+.sp-track::after { content: ""; position: absolute; left: 0; right: 0; top: -7px; bottom: -7px; }   /* a fatter click target */
+.sp-track:hover { height: 5px; }
+.sp-track b { position: absolute; left: 0; top: 0; bottom: 0; width: var(--f);
+  background: linear-gradient(90deg, rgb(58,4,12), var(--heat)); box-shadow: 0 0 10px -2px var(--heat); }
+.sp-track i { position: absolute; top: 50%; left: var(--f); width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%;
+  background: var(--heat); box-shadow: 0 0 8px var(--heat), 0 0 2px #fff; opacity: .85; transition: opacity .15s; }
+.sp-track:hover i { opacity: 1; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; }
+.sp-prog.on .sp-track b { box-shadow: 0 0 12px var(--cyan); }
+.sp-times { display: flex; justify-content: space-between; font: 10.5px "Fira Code", monospace; opacity: .55; margin-top: 5px; }
 .sp-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .sp-ctl { display: flex; gap: 8px; }
 .sp-ctl button { width: 38px; height: 32px; display: grid; place-items: center; cursor: pointer; color: var(--paper);
@@ -163,14 +172,27 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .sp-ctl button:hover { border-color: rgba(255, 140, 150, .8); }
 .sp-ctl button.on, .sp-vol.on { color: var(--cyan); border-color: var(--cyan); box-shadow: inset 0 0 12px rgba(0,229,255,.35); }
 .sp-like.liked { color: var(--red-hot); }
-.sp-vol { display: flex; align-items: center; gap: 8px; font: 600 10px Rajdhani, sans-serif; letter-spacing: .14em; color: var(--soft); border: 1px solid transparent; padding: 2px 6px; }
-.sp-vol input { width: 110px; accent-color: var(--blue); }
-.sp-queue { display: grid; gap: 3px; min-height: 0; overflow: hidden; }
+.sp-vol { display: flex; align-items: center; gap: 9px; font: 600 10px Rajdhani, sans-serif; letter-spacing: .16em; color: var(--soft); padding: 4px 6px; cursor: ns-resize; }
+.sp-vtrack { position: relative; width: 120px; height: 3px; background: rgba(255,255,255,.08); cursor: pointer; }
+.sp-vtrack::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; }
+.sp-vtrack b { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, rgb(58,4,12), var(--red)); }
+.sp-vtrack i { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--red-hot); box-shadow: 0 0 6px var(--red); }
+.sp-vn { font: 11px "Fira Code", monospace; color: var(--paper); opacity: .7; min-width: 2ch; text-align: right; letter-spacing: 0; white-space: pre; }
+.sp-vol.on .sp-vtrack b { background: var(--cyan); }
+.sp-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; scrollbar-width: none;
+  mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent); }
+.sp-list::-webkit-scrollbar { display: none; }
+.sp-list > * { flex: none; }   /* rows scroll; they must never be squashed to fit */
+.sp-qi.jump { cursor: pointer; }
+.sp-qi.jump:hover span:first-child { color: #fff; }
+.sp-qi.past { opacity: .5; }
+.sp-qi.going span:first-child { color: var(--cyan); }
+.sp-qh.past { color: var(--soft); opacity: .6; }
 .sp-qh { font: 600 10px Rajdhani, sans-serif; letter-spacing: .2em; color: var(--amber); margin-top: 2px; }
 .sp-qi { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
 .sp-qi span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-qi span:last-child { opacity: .55; white-space: nowrap; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
-.w.sp-off .sp-ctl, .w.sp-off .sp-prog, .w.sp-off .sp-vol { opacity: .35; pointer-events: none; }
+.w.sp-off .sp-ctl, .w.sp-off .sp-prog, .w.sp-off .sp-vol, .w.sp-off .sp-list { opacity: .35; pointer-events: none; }
 
 .power { position: absolute; top: 8px; right: 10px; width: 24px; height: 22px; z-index: 7; cursor: pointer;
   display: grid; place-items: center; color: var(--soft); background: rgba(10, 6, 20, .7); border: 1px solid rgba(255,120,130,.35);

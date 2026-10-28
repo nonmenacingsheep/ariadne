@@ -12,32 +12,52 @@ const Spotify = (() => {
     like: '<svg viewBox="0 0 16 16"><path d="M8 14S1 9.5 1 5.3A3.3 3.3 0 0 1 8 4a3.3 3.3 0 0 1 7 1.3C15 9.5 8 14 8 14z"/></svg>',
   };
   const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
-  let w = null, st = {}, timer = null, artUrl = "";
+  let w = null, st = {}, timer = null, artUrl = "", volTimer = null, dragging = false, listKey = "", trackKey = "";
 
   function build(widget, send) {
     w = widget;
     w.bd.innerHTML = `
       <div class="sp-np"><div class="sp-art"><img alt=""></div>
         <div class="sp-meta"><div class="sp-title"></div><div class="sp-artist"></div><div class="sp-album"></div></div></div>
-      <div class="sp-prog" data-c="scrub"><div class="bar"><b></b></div><div class="sp-times"><span class="sp-pos"></span><span class="sp-len"></span></div></div>
+      <div class="sp-prog" data-c="scrub"><div class="sp-track"><b></b><i></i></div><div class="sp-times"><span class="sp-pos"></span><span class="sp-len"></span></div></div>
       <div class="sp-row">
         <div class="sp-ctl"><button data-c="prev" title="Previous">${ICON.prev}</button><button data-c="play" class="sp-play" title="Play or pause">${ICON.play}</button>
           <button data-c="next" title="Next">${ICON.next}</button><button data-c="like" class="sp-like" title="Like">${ICON.like}</button></div>
-        <label class="sp-vol" data-c="volume" title="Volume"><span>VOL</span><input type="range" min="0" max="100" step="1"></label>
+        <div class="sp-vol" data-c="volume" title="Volume (scroll to change)"><span class="sp-vl">VOL</span><div class="sp-vtrack"><b></b><i></i></div><span class="sp-vn"></span></div>
       </div>
-      <div class="sp-queue"></div>`;
+      <div class="sp-list"></div>`;
     const q = sel => w.bd.querySelector(sel);
     for (const b of w.bd.querySelectorAll(".sp-ctl button")) b.addEventListener("click", () => {
       const c = b.dataset.c;
       if (c === "play") { st.status = st.status === "playing" ? "paused" : "playing"; render(); }   // flip now; the core confirms
       send({ t: "press", widget: "spotify", control: c });
     });
-    q(".sp-prog .bar").addEventListener("click", e => {
+    q(".sp-track").addEventListener("click", e => {
       const r = e.currentTarget.getBoundingClientRect(), s = (e.clientX - r.left) / r.width * (st.length_s || 0);
       st.position_s = s; st.updated = Date.now() / 1000; tick();
       send({ t: "press", widget: "spotify", control: "scrub", value: Math.round(s) });
     });
-    q(".sp-vol input").addEventListener("change", e => send({ t: "press", widget: "spotify", control: "volume", value: +e.target.value }));
+    // Volume: drag or click the track, or scroll anywhere on the control.
+    // Changes show at once; the press goes out once you pause, not per notch.
+    const vol = q(".sp-vol"), vt = q(".sp-vtrack");
+    const setVol = v => {
+      st.volume = Math.max(0, Math.min(100, Math.round(v))); paintVol();
+      clearTimeout(volTimer); volTimer = setTimeout(() => send({ t: "press", widget: "spotify", control: "volume", value: st.volume }), 160);
+    };
+    const fromX = x => { const r = vt.getBoundingClientRect(); return (x - r.left) / r.width * 100; };
+    vt.addEventListener("pointerdown", e => {
+      e.stopPropagation(); vt.setPointerCapture(e.pointerId); dragging = true; setVol(fromX(e.clientX));
+      const move = ev => setVol(fromX(ev.clientX));
+      const up = () => { dragging = false; vt.removeEventListener("pointermove", move); vt.removeEventListener("pointerup", up); };
+      vt.addEventListener("pointermove", move); vt.addEventListener("pointerup", up);
+    });
+    vol.addEventListener("wheel", e => { e.preventDefault(); setVol((st.volume || 0) + (e.deltaY < 0 ? 4 : -4)); }, { passive: false });
+    // A song in the list: click to jump to it.
+    q(".sp-list").addEventListener("click", e => {
+      const row = e.target.closest(".sp-qi"); if (!row || !row.dataset.uri) return;
+      row.classList.add("going");
+      send({ t: "press", widget: "spotify", control: "jump", value: row.dataset.uri });
+    });
     q(".sp-art img").addEventListener("error", e => { e.target.style.visibility = "hidden"; });
   }
 
@@ -60,18 +80,49 @@ const Spotify = (() => {
     }
     q(".sp-play").innerHTML = st.status === "playing" ? ICON.pause : ICON.play;
     q(".sp-like").classList.toggle("liked", st.liked === true);
-    const vol = q(".sp-vol input");
-    if (document.activeElement !== vol && typeof st.volume === "number") vol.value = st.volume;
-    q(".sp-queue").innerHTML = (st.queue || []).length
-      ? `<div class="sp-qh">UP NEXT</div>` + st.queue.slice(0, 5).map(t => `<div class="sp-qi"><span></span><span></span></div>`).join("") : "";
-    (st.queue || []).slice(0, 5).forEach((t, i) => {
-      const row = w.bd.querySelectorAll(".sp-qi")[i];
-      row.children[0].textContent = t.title || ""; row.children[1].textContent = t.artist || "";
-    });
+    if (!dragging) paintVol();
+    renderList();
     tick();
     // Tick once a second only while playing: a 1 s repaint of one small bar is cheap.
     if (st.status === "playing" && !timer) timer = setInterval(tick, 1000);
     if (st.status !== "playing" && timer) { clearInterval(timer); timer = null; }
+  }
+
+  function paintVol() {
+    const v = typeof st.volume === "number" ? st.volume : 0;
+    w.bd.querySelector(".sp-vtrack b").style.width = v + "%";
+    w.bd.querySelector(".sp-vtrack i").style.left = v + "%";
+    w.bd.querySelector(".sp-vn").textContent = String(v).padStart(2, " ");
+  }
+
+  // Earlier songs sit above "up next"; the list opens scrolled to "up next",
+  // so scrolling up walks back through the playlist. Rebuilt only when the
+  // songs change, so your scroll position survives the periodic updates.
+  function renderList() {
+    const box = w.bd.querySelector(".sp-list"), hist = st.history || [], queue = (st.queue || []).slice(0, 10);
+    const key = JSON.stringify([hist.map(t => t.uri || t.title), queue.map(t => t.uri || t.title)]);
+    if (key === listKey) return;
+    listKey = key;
+    const row = (t, past) => {
+      const r = document.createElement("div");
+      r.className = `sp-qi${past ? " past" : ""}${t.uri ? " jump" : ""}`; if (t.uri) r.dataset.uri = t.uri;
+      r.innerHTML = "<span></span><span></span>"; r.children[0].textContent = t.title || ""; r.children[1].textContent = t.artist || "";
+      return r;
+    };
+    box.innerHTML = "";
+    if (hist.length) { const h = document.createElement("div"); h.className = "sp-qh past"; h.textContent = "EARLIER"; box.appendChild(h); hist.forEach(t => box.appendChild(row(t, true))); }
+    const next = document.createElement("div"); next.className = "sp-qh"; next.textContent = queue.length ? "UP NEXT" : ""; box.appendChild(next);
+    queue.forEach(t => box.appendChild(row(t, false)));
+    // Room under the last song so "up next" can always scroll to the top,
+    // however short the queue is.
+    const pad = document.createElement("div"); pad.className = "sp-pad"; box.appendChild(pad);
+    requestAnimationFrame(() => {
+      const top = next.offsetTop - box.firstElementChild.offsetTop;
+      pad.style.height = box.clientHeight + "px";
+      const tk = `${st.title}|${st.artist}`;
+      if (tk !== trackKey || !box.dataset.scrolled) { trackKey = tk; box.scrollTop = top; delete box.dataset.scrolled; }
+    });
+    box.onscroll = () => { box.dataset.scrolled = "1"; };
   }
 
   function tick() {
@@ -80,9 +131,20 @@ const Spotify = (() => {
     let pos = st.position_s || 0;
     if (st.status === "playing" && st.updated) pos += Date.now() / 1000 - st.updated;
     pos = Math.min(pos, len || pos);
-    w.bd.querySelector(".sp-prog b").style.width = len ? `${(pos / len * 100).toFixed(2)}%` : "0%";
+    const f = len ? Math.max(0, Math.min(1, pos / len)) : 0, bar = w.bd.querySelector(".sp-track");
+    bar.style.setProperty("--f", (f * 100).toFixed(2) + "%");
+    bar.style.setProperty("--heat", heat(f));
     w.bd.querySelector(".sp-pos").textContent = fmt(pos);
     w.bd.querySelector(".sp-len").textContent = len ? fmt(len) : "";
+  }
+
+  // Dark red at the start of a song, warming to bright red, then almost
+  // pink-white in the last stretch.
+  function heat(f) {
+    const stops = [[0, [90, 8, 20]], [.6, [200, 22, 42]], [.85, [255, 60, 80]], [1, [255, 170, 180]]];
+    let i = 1; while (i < stops.length - 1 && f > stops[i][0]) i++;
+    const [f0, a] = stops[i - 1], [f1, b] = stops[i], k = (f - f0) / ((f1 - f0) || 1);
+    return `rgb(${a.map((v, j) => Math.round(v + (b[j] - v) * k)).join(",")})`;
   }
 
   // She used a control: light it until her action finishes.

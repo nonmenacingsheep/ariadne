@@ -33,7 +33,7 @@ then the current `line`.
 | t | fields | meaning |
 |---|---|---|
 | `hello` | `v`, `side="desk"`, `pid` | first line after connect |
-| `press` | `widget`, `control`, optional `value` | you clicked a control in a widget; `value` for sliders (Spotify `volume` 0-100, `scrub` position in seconds) |
+| `press` | `widget`, `control`, optional `value` | you clicked a control in a widget; `value` for sliders (Spotify `volume` 0-100, `scrub` position in seconds; Spotify `jump` takes a track uri from the state's `history` or `queue`) |
 | `text` | `widget`, `text` | you typed something, e.g. into chat |
 
 ```

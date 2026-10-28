@@ -70,12 +70,12 @@ class MapStateTests(unittest.TestCase):
             "status": "playing", "title": "E.T.", "artist": "NovaX, Kat", "album": "Paparazzi X",
             "art_url": "https://i.scdn.co/image/abc123", "position_s": 80.0, "length_s": 146.0,
             "updated": 1000.0, "volume": 40, "liked": None, "shuffle": None, "repeat": None,
-            "queue": []})
+            "queue": [], "history": []})
 
     def test_exact_key_set(self):
         self.assertEqual(set(spotify.blank_state()), {
             "status", "title", "artist", "album", "art_url", "position_s", "length_s", "updated",
-            "volume", "liked", "shuffle", "repeat", "queue"})
+            "volume", "liked", "shuffle", "repeat", "queue", "history"})
 
     def test_not_running_and_statuses(self):
         self.assertEqual(spotify.map_state({"running": False}, None, 1.0)["status"], "not running")
@@ -367,6 +367,145 @@ class PressTests(AdapterCase):
             got[verb] = self.sent[0]["control"]
         self.assertEqual(got, {"pause": "play", "next": "next", "prev": "prev",
                                "volume": "volume", "seek": "scrub", "play": "play"})
+
+
+def _tracks(names, wrap=False):
+    rows = [{"name": n, "uri": f"spotify:track:{n}", "artists": [{"name": "Art"}]} for n in names]
+    return [{"track": r} for r in rows] if wrap else rows
+
+
+class HistoryJumpTests(AdapterCase):
+    PL = {"type": "playlist", "uri": "spotify:playlist:P1"}
+
+    def web(self, ctx=PL, order=None, queue=("Q1", "Q2", "Q3")):
+        order = order or [f"S{i}" for i in range(12)] + ["TRACK1", "S13"]
+        routes = {("GET", "/me/player"): {"context": ctx} if ctx else {},
+                  ("GET", "/me/player/queue"): {"queue": _tracks(queue)},
+                  ("GET", "/playlists/P1/items"): {"items": _tracks(order, wrap=True)},
+                  ("GET", "/me/player/recently-played"): {"items": [
+                      {"track": t} for t in reversed(_tracks([f"R{i}" for i in range(9)] + ["TRACK1"]))]},
+                  ("GET", "/me/player/devices"): {"devices": [{"id": "pc", "is_active": True}]},
+                  ("PUT", "/me/player/play"): {}, ("POST", "/me/player/next"): {}}
+        return FakeWeb(routes=routes)
+
+    def hits(self, web, path):
+        return [c for c in web.calls if c[1] == path]
+
+    async def test_history_from_playlist_context(self):
+        web = self.web()
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        h = a.state()["history"]
+        self.assertEqual([r["title"] for r in h], [f"S{i}" for i in range(2, 12)])   # oldest first
+        self.assertEqual(h[-1], {"title": "S11", "artist": "Art", "uri": "spotify:track:S11"})
+        self.assertEqual(a.state()["queue"][0]["uri"], "spotify:track:Q1")
+        self.assertEqual(self.hits(web, "/me/player/recently-played"), [])
+
+    async def test_context_without_current_track_falls_back_to_recents(self):
+        web = self.web(order=["S0", "S1"])
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        h = a.state()["history"]
+        self.assertEqual([r["title"] for r in h], [f"R{i}" for i in range(9)])        # no TRACK1
+        self.assertEqual(h[0]["uri"], "spotify:track:R0")
+
+    async def test_no_context_uses_recently_played(self):
+        web = self.web(ctx=None)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        self.assertEqual(len(a.state()["history"]), 9)
+        self.assertEqual(self.hits(web, "/playlists/P1/items"), [])
+
+    async def test_scan_is_capped(self):
+        web = self.web(order=[f"S{i}" for i in range(1500)])
+        web.routes[("GET", "/playlists/P1/items")] = lambda b, p: {
+            "items": _tracks([f"S{i}" for i in range(p["offset"], p["offset"] + 100)], wrap=True),
+            "next": "more"}
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        self.assertEqual(len(self.hits(web, "/playlists/P1/items")), 10)              # 1000 tracks
+
+    async def test_history_cached_until_track_or_context_changes(self):
+        web = self.web()
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        n = len(self.hits(web, "/playlists/P1/items"))
+        self.assertEqual(n, 1)
+        await a._refresh_extras()
+        await a._refresh_extras()
+        self.assertEqual(len(self.hits(web, "/playlists/P1/items")), n)
+        self.assertEqual(len(a.state()["history"]), 10)
+        web.routes[("GET", "/me/player")] = {"context": {"type": "playlist", "uri": "spotify:playlist:P2"}}
+        web.routes[("GET", "/playlists/P2/items")] = {"items": _tracks(["X", "TRACK1"], wrap=True)}
+        await a._refresh_extras()
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["X"])
+        self.mpris.snap = snap(meta=dict(META, **{"mpris:trackid": "/com/spotify/track/OTHER",
+                                                   "xesam:title": "Other"}))
+        web.routes[("GET", "/playlists/P2/items")] = {"items": _tracks(["TRACK1", "OTHER"], wrap=True)}
+        await a.refresh()                                  # sees the new track, then the extras follow
+        await asyncio.sleep(0.2)
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["TRACK1"])
+
+    async def test_history_empty_without_web_api(self):
+        a = self.adapter = self.make()
+        await a.start()
+        self.assertEqual((a.state()["history"], a.state()["queue"]), ([], []))
+
+    async def test_jump_inside_playlist_context_plays_with_offset(self):
+        web = self.web()
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await a.press("jump", "spotify:track:S5")
+        play = self.hits(web, "/me/player/play")[-1]
+        self.assertEqual(play[2], {"context_uri": "spotify:playlist:P1",
+                                   "offset": {"uri": "spotify:track:S5"}})
+        self.assertEqual(self.hits(web, "/me/player/next"), [])
+
+    async def test_jump_to_queue_item_skips_forward(self):
+        web = self.web()
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await a.press("jump", "spotify:track:Q3")           # not in the playlist: third in the queue
+        self.assertEqual(len(self.hits(web, "/me/player/next")), 3)
+        self.assertEqual(self.hits(web, "/me/player/play"), [])
+
+    async def test_jump_elsewhere_plays_the_track_directly(self):
+        web = self.web(ctx=None)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await a.press("jump", "spotify:track:R3")
+        self.assertEqual(self.hits(web, "/me/player/play")[-1][2], {"uris": ["spotify:track:R3"]})
+        self.assertEqual(self.hits(web, "/me/player/next"), [])
+
+    async def test_jump_by_title_and_errors(self):
+        web = self.web()
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        out = await a.run("jump", {"title": "s7"})
+        self.assertIn("Jumped", out)
+        self.assertEqual(self.hits(web, "/me/player/play")[-1][2]["offset"],
+                         {"uri": "spotify:track:S7"})
+        with self.assertRaises(AdapterError) as cm:
+            await a.run("jump", {"title": "nothing like it"})
+        self.assertIn("isn't in the up-next", str(cm.exception))
+        with self.assertRaises(AdapterError):
+            await a.press("jump", "not-a-uri")
+        web.routes[("PUT", "/me/player/play")] = WebError("Spotify has no active device", "http")
+        with self.assertRaises(AdapterError):
+            await a.press("jump", "spotify:track:S5")
+
+    async def test_jump_without_login_says_so(self):
+        a = self.adapter = self.make()
+        await a.start()
+        with self.assertRaises(AdapterError) as cm:
+            await a.press("jump", "spotify:track:S5")
+        self.assertIn("Web API isn't authorised", str(cm.exception))
 
 
 class WebClientTests(unittest.TestCase):

@@ -40,6 +40,7 @@ class Layer(Gtk.Window):
         self.area = (0, 0) + layout.SCREEN      # until KWin reports panels
         self.rects = layout.load()
         self.hit_rects: list = []
+        self.hidden = _load_hidden()
 
         # bin/ariadne2 points EGL at the host's NVIDIA driver; the page runs in
         # WebKit's sandbox, which has to be allowed to read those files too.
@@ -83,7 +84,7 @@ class Layer(Gtk.Window):
         t = msg.get("t")
         if t == "ready":
             self.ready = True
-            self._js("init", *self._layout_args())
+            self._js("init", *self._layout_args(), sorted(self.hidden))
             self.link.start()
         elif t == "send":
             self.link.send(msg["msg"])
@@ -93,6 +94,9 @@ class Layer(Gtk.Window):
         elif t == "rects":
             self.hit_rects = msg["rects"]
             self._update_input()
+        elif t == "hidden":
+            self.hidden = set(msg.get("names", []))
+            _save_hidden(self.hidden)
         elif t == "drop":
             kwin.drop()
 
@@ -104,7 +108,10 @@ class Layer(Gtk.Window):
 
     # -- screen area, raise / drop -----------------------------------------
     def set_area(self, area: tuple) -> None:
-        if area[2] < 400 or area[3] < 300 or area == self.area:
+        # Ultrawide only: an area much narrower than it came from the wrong
+        # monitor, and fitting to it would squeeze every widget.
+        if area[2] < layout.SCREEN[0] * .8 or area[3] < 300 or area == self.area:
+            log.warning("ignoring screen area %s", area)
             return
         self.area = area
         self.rects = layout.fit(self.rects, area, scale=not layout.path().exists())
@@ -130,6 +137,23 @@ class Layer(Gtk.Window):
             region = cairo.Region([cairo.RectangleInt(int(x), int(y), int(w), int(h))
                                    for x, y, w, h in rects])
         surface.set_input_region(region)
+
+
+def _hidden_path() -> Path:
+    return layout.path().with_name("hidden.json")
+
+
+def _load_hidden() -> set:
+    try:
+        return set(json.loads(_hidden_path().read_text()))
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def _save_hidden(names: set) -> None:
+    path = _hidden_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sorted(names)))
 
 
 class DeskApp(Gtk.Application):

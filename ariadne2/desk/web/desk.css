@@ -50,8 +50,24 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 
 /* her core */
 .core .face { background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0) 40%), linear-gradient(90deg, var(--red) 0 4px, rgba(14, 8, 26, .78) 4px); }
-.core-row { display: flex; align-items: center; gap: 18px; padding: 0 20px; flex: 1; min-height: 0; }
-.mark { position: relative; font: 700 46px/1 Rajdhani, sans-serif; letter-spacing: .02em; }
+.w.core { z-index: 5; }   /* the hub stays on top of anything dragged under it */
+.core .face { align-items: stretch; padding: 10px 14px 8px; gap: 4px; }
+.core-top { display: flex; align-items: center; justify-content: center; gap: 16px; flex: none; }
+.core .wave:last-child { transform: scaleX(-1); }
+.core .line { flex: none; text-align: center; font-size: 11.5px; min-height: 1.3em; }
+.ports { flex: 1; display: flex; gap: 6px; align-items: flex-end; justify-content: space-between; min-height: 0; }
+.port { flex: 1; min-width: 0; height: 30px; padding: 0 2px 6px; position: relative; cursor: pointer;
+  font: 600 10px/1 Rajdhani, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--soft);
+  background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.02)), rgba(10, 6, 20, .8);
+  border: 1px solid rgba(255, 120, 130, .35); border-bottom-color: rgba(255, 90, 105, .7);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+.port i { position: absolute; left: 50%; bottom: 2px; width: 6px; height: 3px; margin-left: -3px; background: #000; box-shadow: 0 0 0 1px rgba(255,90,105,.6); }
+.port:hover { color: #fff; border-color: rgba(255, 140, 150, .8); }
+.port.live { color: var(--cyan); border-color: var(--cyan); }
+.port.off { opacity: .4; }
+.port:focus-visible { outline: 1px solid var(--cyan); }
+.mark { position: relative; font: 700 40px/1 Rajdhani, sans-serif; letter-spacing: .06em; }
 .mark span { position: absolute; left: 0; top: 0; }
 .mark .r { color: var(--red); transform: translate(-2px, 0); opacity: .85; }
 .mark .cy { color: var(--cyan); transform: translate(2px, 1px); opacity: .55; }

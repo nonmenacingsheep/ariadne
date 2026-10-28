@@ -8,7 +8,7 @@
 const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam", discord: "Discord",
   browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows" };
 const GRID = 24, HALO = 16, DEPTH = 12, MIN = [192, 96];
-const PACKET_MS = 650, MIN_WORK_MS = 900;
+const PACKET_MS = 650, MIN_WORK_MS = 900, GLINT_MS = 1200, GLINT_EVERY = 9000;
 const STRANDS = [[255, 42, 61], [109, 140, 255], [255, 214, 218]];
 
 const post = m => { try { window.webkit.messageHandlers.desk.postMessage(JSON.stringify(m)); } catch (e) { /* not in the layer */ } };
@@ -16,7 +16,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const snap = v => Math.round(v / GRID) * GRID;
 
-let rects = {}, area = [0, 0, innerWidth, innerHeight], raised = false;
+let rects = {}, area = [0, 0, innerWidth, innerHeight], raised = false, hidden = new Set();
 const W = {};            // name -> { root, face, bd, tag, state }
 let wires = {};
 const packets = {};      // name -> { t0, dir, failed }
@@ -38,8 +38,9 @@ function build(name) {
   root.className = `w ${name}`; root.dataset.w = name;
   let inner;
   if (name === "core") {
-    inner = `<div class="face"><div class="core-row"><div class="mark"><span class="r">ARIES</span><span class="cy">ARIES</span><span class="wt">ARIES</span></div>
-      <div class="line"></div><div class="wave">${"<i></i>".repeat(9)}</div></div>`;
+    inner = `<div class="face"><div class="core-top"><div class="wave">${"<i></i>".repeat(7)}</div>
+      <div class="mark"><span class="r">ARIES</span><span class="cy">ARIES</span><span class="wt">ARIES</span></div>
+      <div class="wave">${"<i></i>".repeat(7)}</div></div><div class="line"></div><div class="ports"></div>`;
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
@@ -56,7 +57,7 @@ function build(name) {
     });
     w.lines = {};
   }
-  if (name === "core") w.line = root.querySelector(".line");
+  if (name === "core") { w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports"); }
   W[name] = w;
 }
 
@@ -124,6 +125,7 @@ function action(msg) {
     packets[name] = { t0: now, dir: "out" }; kick();
     work[name] = { phase: "out", t0: now }; frontBox();
     W.core.root.classList.add("acting");
+    W.core.ports.querySelector(`[data-p="${name}"]`)?.classList.add("live");
     if (w.tag) { w.tagWas = w.tagWas ?? w.tag.textContent; w.tag.textContent = `▸ ${msg.control || msg.verb}`; w.tag.className = "tag on"; }
   } else if (msg.phase === "done" || msg.phase === "failed") {
     const s = work[name] || (work[name] = { phase: "work", t0: now - MIN_WORK_MS });
@@ -150,6 +152,7 @@ function stepWork(now) {
       }
     } else if (s.phase === "back" && now - s.t0 > PACKET_MS) {
       delete work[name];
+      W.core.ports.querySelector(`[data-p="${name}"]`)?.classList.remove("live");
       setTimeout(() => { w.root.classList.remove("mending", "failed"); if (s.end.failed) setTimeout(() => restoreTag(w), 2500); }, s.end.failed ? 1300 : 500);
       if (!Object.keys(work).length) W.core.root.classList.remove("acting");
     }
@@ -201,7 +204,7 @@ function at(p, L, d) {
 
 function routeWires() {
   const [cx, cy, cw, ch] = rects.core, ccx = cx + cw / 2, ccy = cy + ch / 2;
-  const names = Object.keys(rects).filter(n => n !== "core");
+  const names = Object.keys(rects).filter(n => n !== "core" && W[n]);
   // Where each cable enters its widget: the edge facing the core.
   const entry = n => {
     const [x, y, w, h] = rects[n];
@@ -211,15 +214,14 @@ function routeWires() {
   };
   const ang = n => { const e = entry(n).p; let a = Math.atan2(e[1] - ccy, e[0] - ccx); if (a < -Math.PI / 2) a += 2 * Math.PI; return a; };
   names.sort((a, b) => ang(b) - ang(a));   // left side, round the bottom, to the right side
-  // Anchors are spread evenly round the core's lower half (left edge, bottom,
-  // right edge) so the cables fan out instead of bunching at one point.
-  const P = ch / 2 + cw + ch / 2;
-  const anchor = t => t < ch / 2 ? { p: [cx, ccy + t], d: [-1, 0] }
-    : t < ch / 2 + cw ? { p: [cx + (t - ch / 2), cy + ch], d: [0, 1] }
-    : { p: [cx + cw, cy + ch - (t - ch / 2 - cw)], d: [1, 0] };
+  // One port button per widget on the core, in the same left-to-right order
+  // the cables fan out, so no two cables cross; each cable plugs into its port.
+  const ports = buildPorts(names);
   const old = wires; wires = {};
+  for (const n of Object.keys(old)) if (!names.includes(n) || hidden.has(n)) old[n].cv.remove();
   names.forEach((n, i) => {
-    const A = anchor((i + .5) / names.length * P), E = entry(n);
+    if (hidden.has(n)) return;
+    const A = { p: ports[n], d: [0, 1] }, E = entry(n);
     const a = A.p, e = E.p, k = Math.min(260, dist(a, e) * .38), sag = 30 + (i % 3) * 18;
     const c1 = [a[0] + A.d[0] * k, a[1] + A.d[1] * k + sag], c2 = [e[0] - E.d[0] * k, e[1] - E.d[1] * k + sag];
     const raw = [];
@@ -236,12 +238,41 @@ function routeWires() {
     const m2 = 26, xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
     const bx = Math.floor(Math.min(...xs) - m2), by = Math.floor(Math.min(...ys) - m2);
     const bw = Math.ceil(Math.max(...xs) + m2) - bx, bh = Math.ceil(Math.max(...ys) + m2) - by;
-    const cv = old[n] ? old[n].cv : document.createElement("canvas");
-    if (!old[n]) document.getElementById("wires").appendChild(cv);
+    const reuse = old[n] && old[n].cv.isConnected, cv = reuse ? old[n].cv : document.createElement("canvas");
+    if (!reuse) document.getElementById("wires").appendChild(cv);
     Object.assign(cv.style, { left: bx + "px", top: by + "px", width: bw + "px", height: bh + "px" });
     cv.width = bw; cv.height = bh;
     wires[n] = { pts, L, nrm, spin: old[n] ? old[n].spin : Math.random() * 6, cv, bx, by };
   });
+}
+
+const SHORT = { chat: "Chat", spotify: "Spotify", steam: "Steam", discord: "Discord", browser: "Browser",
+  dolphin: "Files", claude: "Claude", system: "System", flows: "Flows" };
+function buildPorts(names) {
+  const box = W.core.ports, key = names.join();
+  if (box.dataset.key !== key) {
+    box.dataset.key = key; box.innerHTML = "";
+    for (const n of names) {
+      const b = document.createElement("button");
+      b.className = "port"; b.dataset.p = n; b.title = `Show or hide ${TITLES[n]}`;
+      b.innerHTML = `<span>${SHORT[n] || n}</span><i></i>`;
+      b.addEventListener("click", () => toggle(n));
+      box.appendChild(b);
+    }
+  }
+  const out = {};
+  for (const b of box.children) {
+    b.classList.toggle("off", hidden.has(b.dataset.p));
+    const r = b.getBoundingClientRect();
+    out[b.dataset.p] = [r.left + r.width / 2, r.bottom];
+  }
+  return out;
+}
+function toggle(n) {
+  hidden.has(n) ? hidden.delete(n) : hidden.add(n);
+  W[n].root.style.display = hidden.has(n) ? "none" : "";
+  relayout(true);
+  post({ t: "hidden", names: [...hidden] });
 }
 
 function line(ctx, pts, width, col) {
@@ -252,7 +283,7 @@ function line(ctx, pts, width, col) {
 
 // Three thin black strands wound round the cable: offset sin(phase), depth
 // cos(phase). One colour; the strands behind are just fainter.
-function braid(ctx, w, active, dt) {
+function braid(ctx, w, active, dt, sheen) {
   const R = 2.6, TWIST = .11, { pts, L, nrm } = w;
   if (active) w.spin += 7 * dt;   // still at rest: an idle redraw costs CPU
   ctx.lineCap = "round";
@@ -268,9 +299,29 @@ function braid(ctx, w, active, dt) {
     ctx.lineWidth = front ? 1.6 : 1.1;
     ctx.strokeStyle = front ? "rgba(0,0,0,.95)" : "rgba(0,0,0,.5)";
     ctx.stroke();
+    if (front && sheen) sheenPass(ctx, w, k, sheen);
   }
   ctx.lineCap = "butt";
   for (const p of [pts[0], pts[pts.length - 1]]) { ctx.fillStyle = "#000"; ctx.fillRect(p[0] - 4, p[1] - 4, 8, 8); }
+}
+
+// The holographic sheen: a band of shifting colour slides along the front
+// strands, fading out either side of its centre (s0, a distance along the wire).
+function sheenPass(ctx, w, k, { s0, hue, strength }) {
+  const R = 2.6, TWIST = .11, { pts, L, nrm } = w, BAND = 110;
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineWidth = 1.9; ctx.lineCap = "round";
+  let prev = null;
+  for (let i = 0; i < pts.length; i++) {
+    const ph = L[i] * TWIST - w.spin + k * 2.094, d = Math.abs(L[i] - s0);
+    const x = pts[i][0] + nrm[i][0] * Math.sin(ph) * R, y = pts[i][1] + nrm[i][1] * Math.sin(ph) * R;
+    if (prev && d < BAND && Math.cos(ph) >= 0) {
+      const a = strength * (1 - d / BAND) ** 1.5;
+      ctx.strokeStyle = `hsla(${(hue + L[i] * .9 + k * 40) % 360},100%,68%,${a})`;
+      ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(x, y); ctx.stroke();
+    }
+    prev = [x, y];
+  }
+  ctx.restore();
 }
 
 function drawPacket(ctx, w, pk, now) {
@@ -316,7 +367,8 @@ let last = 0, lastDraw = 0, needsDraw = true;
 let looping = false;
 function kick() { if (!looping) { looping = true; requestAnimationFrame(frame); } }
 function frame(now) {
-  const busy = Object.keys(packets).length || Object.keys(work).length || frags.length || dirtyFront;
+  const glinting = Object.values(wires).some(w => w.glint && now < w.glint + GLINT_MS + 50);
+  const busy = Object.keys(packets).length || Object.keys(work).length || frags.length || dirtyFront || glinting;
   if (busy || needsDraw) requestAnimationFrame(frame); else { looping = false; return; }
   // The desk renders without a GPU, so every full-screen frame costs CPU:
   // nothing is redrawn at rest, and actions animate at 30 fps.
@@ -327,13 +379,17 @@ function frame(now) {
   const full = needsDraw; needsDraw = false;
   stepWork(now);
   for (const [n, w] of Object.entries(wires)) {
-    const active = !!(packets[n] || work[n]);
-    if (!full && !active && !w.wasActive) continue;   // untouched cables stay as drawn
-    w.wasActive = active;
+    const active = !!(packets[n] || work[n]), total = w.L[w.L.length - 1];
+    let sheen = null;
+    if (active) sheen = { s0: ((now / 850) % 1) * (total + 240) - 120, hue: now / 8 % 360, strength: 1 };
+    else if (w.glint && now < w.glint + GLINT_MS) sheen = { s0: (now - w.glint) / GLINT_MS * (total + 240) - 120, hue: now / 8 % 360, strength: .7 };
+    const glinting = !!sheen && !active;
+    if (!full && !active && !w.wasActive && !glinting && !w.wasGlint) continue;   // untouched cables stay as drawn
+    w.wasActive = active; w.wasGlint = glinting;
     const ctx = w.cv.getContext("2d");
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, w.cv.width, w.cv.height);
     ctx.setTransform(1, 0, 0, 1, -w.bx, -w.by);
-    braid(ctx, w, active, dt);
+    braid(ctx, w, active, dt, sheen);
     if (packets[n] && !drawPacket(ctx, w, packets[n], now)) delete packets[n];
   }
   drawFrags(front.getContext("2d"), dt, now);
@@ -398,14 +454,15 @@ function relayout(report) {
 // Where clicks should land on the layer: each slab plus its thickness and glow.
 function reportRects() {
   const m = HALO + DEPTH;
-  post({ t: "rects", rects: Object.values(rects).map(([x, y, w, h]) => [x - m, y - m, w + 2 * m, h + 2 * m]) });
+  post({ t: "rects", rects: Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]) });
 }
 
 /* ---------------- what layer.py calls ---------------- */
 window.desk = {
-  init(layout, ar) {
-    area = ar; rects = layout;
+  init(layout, ar, hid) {
+    area = ar; rects = layout; hidden = new Set(hid || []);
     for (const n of Object.keys(TITLES)) if (rects[n] && !W[n]) build(n);
+    for (const n of hidden) if (W[n]) W[n].root.style.display = "none";
     sizeCanvases(); relayout(true);
   },
   layout(layout, ar) { area = ar; rects = layout; relayout(true); },
@@ -424,5 +481,11 @@ window.desk = {
   setStatus(s) { if (W.core) W.core.line.textContent = s === "connected" ? "" : "reconnecting…"; },
 };
 addEventListener("resize", () => { sizeCanvases(); needsDraw = true; kick(); });
+// At rest a glint runs down one wire every few seconds; only that small
+// canvas redraws while it does.
+setInterval(() => {
+  const ws = Object.values(wires); if (!ws.length || Object.keys(work).length) return;
+  ws[Math.floor(Math.random() * ws.length)].glint = performance.now(); kick();
+}, GLINT_EVERY / 2);
 kick();
 post({ t: "ready" });

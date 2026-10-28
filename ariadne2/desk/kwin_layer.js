@@ -51,10 +51,13 @@ function pin(w) {
     drop(w);
     // The usable part of the screen (minus panels), relative to the layer,
     // so the desk can keep widgets out from under a panel.
-    var a = workspace.clientArea(KWin.MaximizeArea, w);
-    var f = w.frameGeometry;
-    callDBus(SERVICE, PATH, IFACE, "Area", Math.round(a.x - f.x),
-             Math.round(a.y - f.y), Math.round(a.width), Math.round(a.height));
+    // Asked of the ultrawide itself, not the window: right after the move the
+    // window can still count as being on another monitor.
+    if (!o) return;
+    var a = workspace.clientArea(KWin.MaximizeArea, o, workspace.currentDesktop);
+    var g = o.geometry;
+    callDBus(SERVICE, PATH, IFACE, "Area", Math.round(a.x - g.x),
+             Math.round(a.y - g.y), Math.round(a.width), Math.round(a.height));
 }
 
 registerShortcut("Ariadne2 Raise", "Ariadne 2: bring to front", "Meta+A",

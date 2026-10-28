@@ -318,17 +318,72 @@ Adding an app means adding an adapter and a widget, and nothing else.
 
 Two things, both plain files:
 
-- **Facts about you:** one line each, dated, superseded rather than
-  duplicated, picked each turn by relevance (meaning ≥ 0.36 or word overlap
-  ≥ 0.4) plus the newest few.
+- **Facts about you** (`facts.jsonl`): dated records with their source,
+  what replaced them, and why. Details below.
 - **Old conversations:** the full transcript on disk, searched by meaning
-  (≥ 0.45) when something you say refers back.
+  (≥ 0.45) when something you say refers back. Every line keeps its date,
+  and anything recalled is framed as past ("on the 3rd you said…").
 
 Both are read and edited in one Memory widget page, where you can see why
-something was shown. The facts and transcript come over from 1.x as they are.
+something was shown.
 
 Cut: biography and self-beliefs, the case file, journal, episodes, summaries
 of summaries, the nightly tidy beyond deduplication.
+
+### Facts: dated, superseded, with reasons
+
+Three ideas taken from DREAM (an event-aware memory graph for role-play
+agents), minus its main purpose (stopping a character leaking future plot),
+which an assistant doesn't have. Not a graph either: a flat store of records
+whose links are just ids in fields.
+
+```json
+{"id": 41, "text": "uses Opera GX as his browser", "kind": "preference",
+ "date": "2026-10-01", "source": "said in chat", "status": "current",
+ "replaces": 17, "because": "Discord's web client works better in it",
+ "rejected": []}
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | `preference`, `fact`, `plan`, `decision` or `event` (decides how it ages) |
+| `date` | when it became true or was said; every record has one |
+| `source` | where it came from: said in chat, seen in an app, inferred by her |
+| `status` | `current`, `replaced` (see `replaced_by`) or `done` (a finished plan or past event) |
+| `replaces` / `replaced_by` | the link both ways when something changed |
+| `because` | why: "chose X because Y"; optional |
+| `rejected` | for decisions: the options turned down, each with its reason |
+
+**1. Time on everything.** Retrieval scores each record by relevance
+(meaning ≥ 0.36 or word overlap ≥ 0.4, as now), then weights it by age:
+events and plans fade over about a month, decisions more slowly, and
+preferences and facts barely at all until something replaces them. A
+recalled record shows its date, and old events and plans are worded as past
+("three weeks ago you were working on the tea bench"), never as now.
+
+**2. Superseded, not stacked.** When something changes (a tool switch, a new
+plan, a corrected preference), the old record is marked `replaced` and
+linked to the new one, so the two never sit side by side for retrieval to
+pick at random. Replaced records are left out of normal recall and only
+come back for history questions. How a replacement is spotted: when she
+saves a fact, the closest existing ones (meaning ≥ 0.6) come back to her in
+the tool result ("#17 'uses Firefox' (2026-09-02): same subject?"), and she
+decides. That's cheaper and more reliable than a separate judging pass.
+
+**3. Why, not just what.** `because` and `rejected` let her answer "why did
+we do it this way?" by following the chain (Firefox → Opera GX on the 1st,
+because of Discord's web client), and stop her re-suggesting an option
+already turned down for a known reason: when a topic comes up, its
+decision's rejected options come with it.
+
+**Her tools:** `remember(text, kind, because?, replaces?, rejected?)`,
+`forget(id)` and `recall(query, history?)`. Writing stays deliberate: she
+saves what you'd expect a friend to remember, not every remark.
+
+**From 1.x:** the facts come over with their dates and sources, marked
+`current`; obvious duplicates are merged, and any pairs that contradict
+each other are listed in the Memory page for you to settle, not guessed at.
+The transcript comes over as it is.
 
 ## 7. Cut entirely
 

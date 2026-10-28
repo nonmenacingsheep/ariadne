@@ -171,3 +171,10 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .sp-qi span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-qi span:last-child { opacity: .55; white-space: nowrap; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
 .w.sp-off .sp-ctl, .w.sp-off .sp-prog, .w.sp-off .sp-vol { opacity: .35; pointer-events: none; }
+
+.power { position: absolute; top: 8px; right: 10px; width: 24px; height: 22px; z-index: 7; cursor: pointer;
+  display: grid; place-items: center; color: var(--soft); background: rgba(10, 6, 20, .7); border: 1px solid rgba(255,120,130,.35);
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); }
+.power svg { width: 12px; height: 12px; fill: currentColor; }
+.power:hover { color: #fff; border-color: rgba(255,140,150,.8); }
+.power.armed { color: #fff; background: var(--red); border-color: var(--red); }

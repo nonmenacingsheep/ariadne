@@ -100,6 +100,9 @@ class Layer(Gtk.Window):
             _save_hidden(self.hidden)
         elif t == "drop":
             kwin.drop()
+        elif t == "quit":
+            # Closing the desk ends bin/ariadne2, which stops the core with it.
+            self.get_application().quit()
 
     def _on_message(self, msg: dict) -> None:
         self._js("message", msg)

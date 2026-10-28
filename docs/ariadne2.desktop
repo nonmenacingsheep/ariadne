@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Ariadne 2
+Comment=Aries on your desktop
+Exec=/usr/bin/distrobox-enter -n claude -- "/home/Nonmenacinghseep/Claude Projects/ariadne2/bin/ariadne2"
+Icon=view-grid-symbolic
+Terminal=false
+Categories=Utility;
+Actions=demo;stop;
+
+[Desktop Action demo]
+Name=Start demo
+Exec=/usr/bin/distrobox-enter -n claude -- "/home/Nonmenacinghseep/Claude Projects/ariadne2/bin/ariadne2" --demo
+
+[Desktop Action stop]
+Name=Stop Ariadne 2
+Exec=/usr/bin/distrobox-enter -n claude -- "/home/Nonmenacinghseep/Claude Projects/ariadne2/bin/ariadne2" --stop

@@ -40,7 +40,8 @@ function build(name) {
   if (name === "core") {
     inner = `<div class="face"><div class="core-top"><div class="wave">${"<i></i>".repeat(7)}</div>
       <div class="mark"><span class="r">ARIES</span><span class="cy">ARIES</span><span class="wt">ARIES</span></div>
-      <div class="wave">${"<i></i>".repeat(7)}</div></div><div class="line"></div><div class="ports"></div>`;
+      <div class="wave">${"<i></i>".repeat(7)}</div></div><div class="line"></div><div class="ports"></div>
+      <button class="power" title="Close Aries">${POWER}</button>`;
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
@@ -58,7 +59,16 @@ function build(name) {
     w.lines = {};
   }
   if (name === "spotify") Spotify.build(w, msg => post({ t: "send", msg }));
-  if (name === "core") { w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports"); }
+  if (name === "core") {
+    w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports");
+    // Two clicks to close, so a stray click can't shut her down.
+    const btn = root.querySelector(".power"); let armed = 0;
+    btn.addEventListener("click", () => {
+      if (Date.now() - armed < 3000) { w.line.textContent = "closing…"; post({ t: "quit" }); return; }
+      armed = Date.now(); btn.classList.add("armed"); w.line.textContent = "click again to close Aries";
+      setTimeout(() => { if (Date.now() - armed >= 3000) { btn.classList.remove("armed"); if (w.line.textContent.startsWith("click again")) w.line.textContent = ""; } }, 3100);
+    });
+  }
   W[name] = w;
 }
 
@@ -253,6 +263,7 @@ function routeWires() {
   });
 }
 
+const POWER = '<svg viewBox="0 0 16 16"><path d="M7 1h2v7H7z"/><path d="M4.2 3.4l1.3 1.4A4.5 4.5 0 1 0 10.5 4.8l1.3-1.4A6.5 6.5 0 1 1 4.2 3.4z"/></svg>';
 const SHORT = { chat: "Chat", spotify: "Spotify", steam: "Steam", discord: "Discord", browser: "Browser",
   dolphin: "Files", claude: "Claude", system: "System", flows: "Flows" };
 function buildPorts(names) {

@@ -2,17 +2,23 @@
 # Start the core and the desk together; stopping this stops both.
 #   bin/ariadne2          normal
 #   bin/ariadne2 --demo   fake actions every few seconds, to test the wires
+#   bin/ariadne2 --stop   close whatever is running
 cd "$(dirname "$0")/.." || exit 1
+
+stop_running() {
+  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "m ariadne2.core" >/dev/null || return 0
+    sleep 0.3
+  done
+}
+if [ "$1" = "--stop" ]; then stop_running; echo "Ariadne 2 stopped"; exit 0; fi
 
 # The desk allows one copy, and a second launch would just hand over to the
 # old one and quit, so launching again means replacing what's running.
 if pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "ariadne2.core" >/dev/null; then
   echo "stopping the Ariadne 2 that's already running"
-  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "m ariadne2.core" >/dev/null || break
-    sleep 0.3
-  done
+  stop_running
 fi
 
 # The container has no GPU driver of its own, so GTK would draw the desk with

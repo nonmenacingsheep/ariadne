@@ -200,46 +200,48 @@ function at(p, L, d) {
 }
 
 function routeWires() {
-  const [cx, cy, cw, ch] = rects.core, sides = { left: [], right: [], below: [] };
-  for (const n of Object.keys(rects)) {
-    if (n === "core") continue;
+  const [cx, cy, cw, ch] = rects.core, ccx = cx + cw / 2, ccy = cy + ch / 2;
+  const names = Object.keys(rects).filter(n => n !== "core");
+  // Where each cable enters its widget: the edge facing the core.
+  const entry = n => {
     const [x, y, w, h] = rects[n];
-    if (x >= cx + cw) sides.right.push(n); else if (x + w <= cx) sides.left.push(n); else sides.below.push(n);
-  }
-  const wires_old = wires; wires = {};
-  const mid = n => rects[n][1] + rects[n][3] / 2;
-  for (const [side, names] of Object.entries(sides)) {
-    names.sort((a, b) => side === "below" ? rects[a][0] - rects[b][0] : mid(a) - mid(b));
-    names.forEach((n, i) => {
-      const [x, y, w, h] = rects[n], f = (i + 1) / (names.length + 1);
-      let a, e;
-      if (side === "right") { a = [cx + cw, cy + ch * f]; e = [x, y + h / 2]; }
-      else if (side === "left") { a = [cx, cy + ch * f]; e = [x + w, y + h / 2]; }
-      else { a = [cx + cw * f, cy + ch]; e = [x + w / 2, y]; }
-      // Mostly-sideways cables sag under gravity; mostly-vertical ones bow
-      // sideways instead, so they never dip through the widget they enter.
-      const m = Math.abs(e[0] - a[0]) > Math.abs(e[1] - a[1])
-        ? [(a[0] + e[0]) / 2, Math.max(a[1], e[1]) + Math.min(170, 40 + dist(a, e) * .14)]
-        : [(a[0] + e[0]) / 2 + (side === "below" ? (f - .5) * 120 : 0), (a[1] + e[1]) / 2];
-      const raw = [];
-      for (let k = 0; k <= 40; k++) { const u = k / 40; raw.push([(1 - u) ** 2 * a[0] + 2 * u * (1 - u) * m[0] + u * u * e[0], (1 - u) ** 2 * a[1] + 2 * u * (1 - u) * m[1] + u * u * e[1]]); }
-      const pts = densify(raw), L = lengths(pts);
-      const nrm = pts.map((p, j) => {
-        const q0 = pts[Math.max(0, j - 1)], q1 = pts[Math.min(pts.length - 1, j + 1)], dx = q1[0] - q0[0], dy = q1[1] - q0[1], l = Math.hypot(dx, dy) || 1;
-        return [-dy / l, dx / l];
-      });
-      // Each wire gets its own canvas sized to the cable: an action then
-      // repaints one cable, not the whole screen.
-      const m2 = 30, xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
-      const bx = Math.floor(Math.min(...xs) - m2), by = Math.floor(Math.min(...ys) - m2);
-      const bw = Math.ceil(Math.max(...xs) + m2 + 10) - bx, bh = Math.ceil(Math.max(...ys) + m2 + 20) - by;
-      const old = wires_old[n], cv = old ? old.cv : document.createElement("canvas");
-      if (!old) document.getElementById("wires").appendChild(cv);
-      Object.assign(cv.style, { left: bx + "px", top: by + "px", width: bw + "px", height: bh + "px" });
-      cv.width = bw; cv.height = bh;
-      wires[n] = { pts, L, nrm, spin: old ? old.spin : Math.random() * 6, cv, bx, by };
+    if (x >= cx + cw) return { p: [x, y + h / 2], d: [1, 0] };
+    if (x + w <= cx) return { p: [x + w, y + h / 2], d: [-1, 0] };
+    return y > cy ? { p: [x + w / 2, y], d: [0, 1] } : { p: [x + w / 2, y + h], d: [0, -1] };
+  };
+  const ang = n => { const e = entry(n).p; let a = Math.atan2(e[1] - ccy, e[0] - ccx); if (a < -Math.PI / 2) a += 2 * Math.PI; return a; };
+  names.sort((a, b) => ang(b) - ang(a));   // left side, round the bottom, to the right side
+  // Anchors are spread evenly round the core's lower half (left edge, bottom,
+  // right edge) so the cables fan out instead of bunching at one point.
+  const P = ch / 2 + cw + ch / 2;
+  const anchor = t => t < ch / 2 ? { p: [cx, ccy + t], d: [-1, 0] }
+    : t < ch / 2 + cw ? { p: [cx + (t - ch / 2), cy + ch], d: [0, 1] }
+    : { p: [cx + cw, cy + ch - (t - ch / 2 - cw)], d: [1, 0] };
+  const old = wires; wires = {};
+  names.forEach((n, i) => {
+    const A = anchor((i + .5) / names.length * P), E = entry(n);
+    const a = A.p, e = E.p, k = Math.min(260, dist(a, e) * .38), sag = 30 + (i % 3) * 18;
+    const c1 = [a[0] + A.d[0] * k, a[1] + A.d[1] * k + sag], c2 = [e[0] - E.d[0] * k, e[1] - E.d[1] * k + sag];
+    const raw = [];
+    for (let q = 0; q <= 48; q++) { const u = q / 48, v = 1 - u;
+      raw.push([v ** 3 * a[0] + 3 * v * v * u * c1[0] + 3 * v * u * u * c2[0] + u ** 3 * e[0],
+                v ** 3 * a[1] + 3 * v * v * u * c1[1] + 3 * v * u * u * c2[1] + u ** 3 * e[1]]); }
+    const pts = densify(raw), L = lengths(pts);
+    const nrm = pts.map((p, j) => {
+      const q0 = pts[Math.max(0, j - 1)], q1 = pts[Math.min(pts.length - 1, j + 1)], dx = q1[0] - q0[0], dy = q1[1] - q0[1], l = Math.hypot(dx, dy) || 1;
+      return [-dy / l, dx / l];
     });
-  }
+    // Each wire gets its own canvas sized to the cable: an action then
+    // repaints one cable, not the whole screen.
+    const m2 = 26, xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+    const bx = Math.floor(Math.min(...xs) - m2), by = Math.floor(Math.min(...ys) - m2);
+    const bw = Math.ceil(Math.max(...xs) + m2) - bx, bh = Math.ceil(Math.max(...ys) + m2) - by;
+    const cv = old[n] ? old[n].cv : document.createElement("canvas");
+    if (!old[n]) document.getElementById("wires").appendChild(cv);
+    Object.assign(cv.style, { left: bx + "px", top: by + "px", width: bw + "px", height: bh + "px" });
+    cv.width = bw; cv.height = bh;
+    wires[n] = { pts, L, nrm, spin: old[n] ? old[n].spin : Math.random() * 6, cv, bx, by };
+  });
 }
 
 function line(ctx, pts, width, col) {
@@ -248,15 +250,13 @@ function line(ctx, pts, width, col) {
   ctx.lineWidth = width; ctx.strokeStyle = col; ctx.stroke();
 }
 
-// Three strands wound round the cable: offset sin(phase), depth cos(phase).
-// Back halves are drawn first and dim, front halves last and bright.
+// Three thin black strands wound round the cable: offset sin(phase), depth
+// cos(phase). One colour; the strands behind are just fainter.
 function braid(ctx, w, active, dt) {
-  const R = 5, TWIST = .085, { pts, L, nrm } = w;
+  const R = 2.6, TWIST = .11, { pts, L, nrm } = w;
   if (active) w.spin += 7 * dt;   // still at rest: an idle redraw costs CPU
   ctx.lineCap = "round";
-  line(ctx, pts.map(p => [p[0] + 6, p[1] + 16]), 9, "rgba(0,0,0,.22)");
-  line(ctx, pts, 12, "rgba(8,4,12,.55)");
-  for (const front of [false, true]) STRANDS.forEach((c, k) => {
+  for (const front of [false, true]) for (let k = 0; k < 3; k++) {
     ctx.beginPath(); let pen = false;
     for (let i = 0; i < pts.length; i++) {
       const ph = L[i] * TWIST - w.spin + k * 2.094, off = Math.sin(ph) * R;
@@ -265,15 +265,12 @@ function braid(ctx, w, active, dt) {
         pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y); pen = true;
       } else pen = false;
     }
-    // Glow as a wide faint stroke under the strand: shadowBlur is far too
-    // slow on a full-screen canvas without a GPU.
-    if (front) { ctx.lineWidth = active ? 8 : 6; ctx.strokeStyle = `rgba(${c},${active ? .28 : .16})`; ctx.stroke(); }
-    ctx.lineWidth = front ? 2.6 : 1.6;
-    ctx.strokeStyle = `rgba(${c},${front ? (active ? 1 : .92) : .32})`;
+    ctx.lineWidth = front ? 1.6 : 1.1;
+    ctx.strokeStyle = front ? "rgba(0,0,0,.95)" : "rgba(0,0,0,.5)";
     ctx.stroke();
-  });
+  }
   ctx.lineCap = "butt";
-  for (const p of [pts[0], pts[pts.length - 1]]) { ctx.fillStyle = "#2a2023"; ctx.fillRect(p[0] - 7, p[1] - 6, 14, 12); ctx.fillStyle = "#ff2a3d"; ctx.fillRect(p[0] - 2, p[1] - 2, 4, 4); }
+  for (const p of [pts[0], pts[pts.length - 1]]) { ctx.fillStyle = "#000"; ctx.fillRect(p[0] - 4, p[1] - 4, 8, 8); }
 }
 
 function drawPacket(ctx, w, pk, now) {
@@ -284,15 +281,15 @@ function drawPacket(ctx, w, pk, now) {
   const col = pk.failed ? (Math.floor(now / 55) % 2 ? "#ff1030" : "rgba(255,16,48,.25)") : back ? "#ffe9ec" : "#ff4d5e";
   ctx.save(); ctx.globalCompositeOperation = "lighter";
   if (seg.length > 1) {
-    line(ctx, seg, 18, pk.failed ? "rgba(255,16,48,.2)" : "rgba(255,60,80,.2)");
+    line(ctx, seg, 8, pk.failed ? "rgba(255,16,48,.22)" : "rgba(255,60,80,.22)");
     for (let i = 1; i < seg.length; i++) {
       const k = back ? 1 - i / seg.length : i / seg.length;
-      ctx.globalAlpha = .15 + .85 * k; line(ctx, [seg[i - 1], seg[i]], 1 + 3.5 * k, col);
+      ctx.globalAlpha = .15 + .85 * k; line(ctx, [seg[i - 1], seg[i]], 1 + 1.6 * k, col);
     }
   }
   ctx.globalAlpha = 1;
   const hp = at(w.pts, w.L, head);
-  ctx.beginPath(); ctx.arc(hp[0], hp[1], 5, 0, 7); ctx.fillStyle = "#fff"; ctx.shadowColor = col; ctx.shadowBlur = 18; ctx.fill();
+  ctx.beginPath(); ctx.arc(hp[0], hp[1], 3, 0, 7); ctx.fillStyle = "#fff"; ctx.fill();
   ctx.restore();
   return u < 1;
 }

@@ -3,7 +3,26 @@
 #   bin/ariadne2          normal
 #   bin/ariadne2 --demo   fake actions every few seconds, to test the wires
 cd "$(dirname "$0")/.." || exit 1
+
+# The container has no GPU driver of its own, so GTK would draw the desk with
+# llvmpipe (OpenGL on the CPU). Borrow the host's NVIDIA EGL driver instead,
+# the same way ~/.local/bin/godot-gate.sh does for Vulkan: link its versioned
+# libraries into a user dir and point EGL at them. Nothing system-wide changes.
+if ls /run/host/usr/lib64/libEGL_nvidia.so.0 >/dev/null 2>&1; then
+  NV=$HOME/.local/lib/nvidia-host
+  mkdir -p "$NV" "$HOME/.local/share/glvnd/egl_vendor.d"
+  for f in /run/host/usr/lib64/libnvidia-* /run/host/usr/lib64/libEGL_nvidia*; do
+    [ -e "$NV/$(basename "$f")" ] || ln -sf "$f" "$NV/$(basename "$f")"
+  done
+  VENDOR=$HOME/.local/share/glvnd/egl_vendor.d/10_nvidia_host.json
+  [ -e "$VENDOR" ] || printf '{"file_format_version":"1.0.0","ICD":{"library_path":"/run/host/usr/lib64/libEGL_nvidia.so.0"}}\n' > "$VENDOR"
+  export LD_LIBRARY_PATH="$NV${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  export __EGL_VENDOR_LIBRARY_DIRS="$HOME/.local/share/glvnd/egl_vendor.d"
+  export __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS=/run/host/usr/share/egl/egl_external_platform.d
+  export GBM_BACKENDS_PATH=/run/host/usr/lib64/gbm
+fi
+
 python3 -m ariadne2.core "$@" &
 core=$!
 trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
-python3 -m ariadne2.desk
+python3 -m ariadne2.desk 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" -e "^$" >&2)

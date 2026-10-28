@@ -251,7 +251,9 @@ Two processes, talking over one local socket.
   rectangles back for the input region. Without a GPU in the container,
   anything animating costs CPU, so nothing redraws at rest, each wire has its
   own small canvas, and blend-mode effects exist only while a widget is
-  being worked on (idle ≈ 0.2 cores; continuous demo actions ≈ 4).
+  being worked on. `bin/ariadne2` borrows the host's NVIDIA EGL driver so GTK
+  composites on the GPU instead of llvmpipe, and the WebKit sandbox is allowed
+  to read those driver files (idle ≈ 2% of a core; continuous demo ≈ 0.9 cores).
 - **The socket** carries JSON lines: state snapshots per widget, action
   events (started, progress, done, failed — what drives the wires), chat
   deltas, and your input. One documented schema in `protocol.py`.

@@ -41,6 +41,13 @@ class Layer(Gtk.Window):
         self.rects = layout.load()
         self.hit_rects: list = []
 
+        # bin/ariadne2 points EGL at the host's NVIDIA driver; the page runs in
+        # WebKit's sandbox, which has to be allowed to read those files too.
+        ctx = WebKit.WebContext.get_default()
+        for d in ("/run/host/usr/lib64", "/run/host/usr/share/egl", "/run/host/usr/share/glvnd",
+                  str(Path.home() / ".local/lib/nvidia-host"), str(Path.home() / ".local/share/glvnd")):
+            if Path(d).exists():
+                ctx.add_path_to_sandbox(d, True)
         ucm = WebKit.UserContentManager()
         ucm.register_script_message_handler("desk", None)
         ucm.connect("script-message-received::desk", self._from_page)

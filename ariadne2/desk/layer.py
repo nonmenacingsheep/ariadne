@@ -59,6 +59,7 @@ class Layer(Gtk.Window):
         settings = self.view.get_settings()
         settings.set_allow_file_access_from_file_urls(True)
         settings.set_enable_developer_extras(True)
+        settings.set_media_playback_requires_user_gesture(False)   # her sounds play unprompted
         self.view.load_uri(PAGE.as_uri())
         self.set_child(self.view)
 
@@ -84,7 +85,7 @@ class Layer(Gtk.Window):
         t = msg.get("t")
         if t == "ready":
             self.ready = True
-            self._js("init", *self._layout_args(), sorted(self.hidden))
+            self._js("init", *self._layout_args(), sorted(self.hidden), _load_sounds())
             self.link.start()
         elif t == "send":
             self.link.send(msg["msg"])
@@ -148,6 +149,23 @@ def _load_hidden() -> set:
         return set(json.loads(_hidden_path().read_text()))
     except (OSError, ValueError, TypeError):
         return set()
+
+
+SOUND_DEFAULTS = {"master": True, "volume": 0.5, "muted": []}
+
+
+def _load_sounds() -> dict:
+    """Sound settings: master switch, volume, and the kinds muted one by one
+    (send, done, fail, flow, mic, raise, drop, and one per app widget)."""
+    path = layout.path().with_name("sounds.json")
+    try:
+        found = json.loads(path.read_text())
+        return {**SOUND_DEFAULTS, **{k: found[k] for k in SOUND_DEFAULTS if k in found}}
+    except (OSError, ValueError, TypeError):
+        if not path.exists():   # write the defaults once so there's a file to edit
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(SOUND_DEFAULTS, indent=2))
+        return dict(SOUND_DEFAULTS)
 
 
 def _save_hidden(names: set) -> None:

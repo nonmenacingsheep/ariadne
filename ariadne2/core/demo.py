@@ -17,6 +17,8 @@ class Demo:
         self.server = server
         self.period = period
         self.hold = hold
+        # Off when the real conversation loop answers chat instead.
+        self.echo_chat = True
         self._ids = itertools.count(1)
         self._task: asyncio.Task | None = None
         self._side: set[asyncio.Task] = set()
@@ -66,7 +68,7 @@ class Demo:
         t = msg.get("t")
         if t == "press":
             coro = self.touch(msg["widget"], msg["control"])
-        elif t == "text" and msg["widget"] == "chat":
+        elif t == "text" and msg["widget"] == "chat" and self.echo_chat:
             coro = self.echo(msg["text"])
         else:
             return

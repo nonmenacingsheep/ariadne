@@ -123,6 +123,7 @@ function action(msg) {
   const now = performance.now();
   if (msg.phase === "started") {
     packets[name] = { t0: now, dir: "out" }; kick();
+    Sounds.play("send"); Sounds.play(name);
     work[name] = { phase: "out", t0: now }; frontBox();
     W.core.root.classList.add("acting");
     W.core.ports.querySelector(`[data-p="${name}"]`)?.classList.add("live");
@@ -144,6 +145,7 @@ function stepWork(now) {
       if (s.end && now - s.t0 > MIN_WORK_MS) {
         w.root.classList.remove("working");
         packets[name] = { t0: now, dir: "back", failed: s.end.failed };
+        Sounds.play(s.end.failed ? "fail" : "done");
         if (s.end.failed) {
           w.root.classList.add("failed"); burst(name, 60, true);
           if (w.tag) { w.tag.textContent = `✕ ${s.end.note || "failed"}`; w.tag.className = "tag bad"; }
@@ -459,8 +461,8 @@ function reportRects() {
 
 /* ---------------- what layer.py calls ---------------- */
 window.desk = {
-  init(layout, ar, hid) {
-    area = ar; rects = layout; hidden = new Set(hid || []);
+  init(layout, ar, hid, sounds) {
+    area = ar; rects = layout; hidden = new Set(hid || []); Sounds.configure(sounds);
     for (const n of Object.keys(TITLES)) if (rects[n] && !W[n]) build(n);
     for (const n of hidden) if (W[n]) W[n].root.style.display = "none";
     sizeCanvases(); relayout(true);
@@ -475,9 +477,12 @@ window.desk = {
     }
   },
   setRaised(up) {
+    if (up !== raised) Sounds.play(up ? "raise" : "drop");
     raised = up; document.body.classList.toggle("raised", up);
     if (up && W.chat) W.chat.say.focus();
   },
+  sound(kind) { Sounds.play(kind); },
+  configureSounds(c) { Sounds.configure(c); },
   setStatus(s) { if (W.core) W.core.line.textContent = s === "connected" ? "" : "reconnecting…"; },
 };
 addEventListener("resize", () => { sizeCanvases(); needsDraw = true; kick(); });

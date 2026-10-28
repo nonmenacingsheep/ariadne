@@ -35,6 +35,10 @@ class CoreServer:
         self._system_task: asyncio.Task | None = None
         self._demo = Demo(self) if demo else None
 
+    @property
+    def demo(self) -> Demo | None:
+        return self._demo
+
     async def start(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:

@@ -8,6 +8,7 @@ import logging
 import re
 import time
 
+from .. import adapters as adapters_mod
 from .. import protocol
 from . import models, prompt
 
@@ -15,6 +16,7 @@ log = logging.getLogger("ariadne2.core.loop")
 
 MAX_TURNS = 40                  # exchanges kept in memory (you + her = one)
 THINKING = "thinking…"
+MAX_TOOL_ROUNDS = 8             # model calls that may end in tool use, per turn
 
 # A sentence ends at . ! ? … (plus closing quotes) followed by whitespace, or
 # at a newline. Needing the whitespace keeps "3.5" and "e.g.x" whole.
@@ -48,12 +50,13 @@ class Conversation:
     `publish` is the server's publish; `snapshots` returns the current widget
     state; `model` is `models.stream`-shaped (swapped for a fake in tests).
     `on_sentence(text)` gets each finished sentence as it streams, so a voice
-    can start speaking before the reply is done.
+    can start speaking before the reply is done. `adapters` is the registry
+    (name -> Adapter); its verbs are offered to the model as tools every turn.
     """
 
     def __init__(self, publish, snapshots=None, model=None, model_name: str = models.DEFAULT_MODEL,
                  personality: str = prompt.DEFAULT_PERSONALITY, on_sentence=None,
-                 max_turns: int = MAX_TURNS) -> None:
+                 max_turns: int = MAX_TURNS, adapters=None) -> None:
         self.publish = publish
         self.snapshots = snapshots or (lambda: {})
         self.model = model or models.stream
@@ -61,6 +64,7 @@ class Conversation:
         self.personality = personality
         self.on_sentence = on_sentence
         self.max_turns = max_turns
+        self.adapters = adapters or {}
         self.history: list[dict] = []
         # Boot stamp in ids: a restarted core must not reuse ids a desk still holds.
         self._boot = format(int(time.time()), "x")
@@ -113,18 +117,48 @@ class Conversation:
         await self.publish(protocol.core_line(THINKING))
         self.history.append({"role": "user", "content": text})
         system = prompt.build(self.personality, self.snapshots())
+        tools = adapters_mod.tools(self.adapters) if self.adapters else None
+        # Tool calls and results live only inside the turn; history keeps her words.
+        messages = list(self.history)
         splitter = SentenceSplitter()
         reply = ""
+        used: list[str] = []
         try:
-            async for delta in self.model(system, list(self.history), self.model_name):
-                if not delta:
-                    continue
-                if not reply:
-                    await self.publish(protocol.core_line(""))   # first word is here
-                reply += delta
-                await self.publish(protocol.chat(her_id, "aries", delta))
-                for sentence in splitter.feed(delta):
+            for rnd in range(MAX_TOOL_ROUNDS + 1):
+                # After the cap she gets no tools, so the last call has to be words.
+                offered = tools if rnd < MAX_TOOL_ROUNDS else None
+                kw = {"tools": offered} if offered else {}
+                calls: list[models.ToolUse] = []
+                content = None
+                round_text = ""
+                async for item in self.model(system, list(messages), self.model_name, **kw):
+                    if isinstance(item, models.ToolUse):
+                        calls.append(item)
+                        continue
+                    if isinstance(item, models.Done):
+                        content = item.content
+                        continue
+                    if not item:
+                        continue
+                    if not round_text and reply and not reply[-1].isspace():
+                        item = " " + item          # words after a tool call join the same bubble
+                    if not reply:
+                        await self.publish(protocol.core_line(""))   # first word is here
+                    round_text += item
+                    reply += item
+                    await self.publish(protocol.chat(her_id, "aries", item))
+                    for sentence in splitter.feed(item):
+                        await self._sentence(sentence)
+                if not calls or offered is None:
+                    break
+                for sentence in splitter.flush():       # speak it before the tool runs
                     await self._sentence(sentence)
+                messages.append({"role": "assistant",
+                                 "content": content or self._blocks(round_text, calls)})
+                messages.append({"role": "user",
+                                 "content": [await self._tool(c) for c in calls]})
+                used += [c.name for c in calls]
+                await self.publish(protocol.core_line(THINKING))
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -132,6 +166,12 @@ class Conversation:
             return
         finally:
             await self.publish(protocol.core_line(""))
+        if not reply and used:
+            # Acted without a word: no bubble, but history must still alternate.
+            self.history.append({"role": "assistant",
+                                 "content": f"(no words; used {', '.join(used)})"})
+            self._trim()
+            return
         if not reply:
             # An empty stream still has to close the bubble the user is waiting on.
             reply = "(no answer came back)"
@@ -141,6 +181,28 @@ class Conversation:
             await self._sentence(sentence)
         self.history.append({"role": "assistant", "content": reply})
         self._trim()
+
+    @staticmethod
+    def _blocks(text: str, calls: list) -> list[dict]:
+        """The assistant message for a round, when the model didn't hand us its own."""
+        blocks = [{"type": "text", "text": text}] if text else []
+        return blocks + [{"type": "tool_use", "id": c.id, "name": c.name, "input": c.input}
+                         for c in calls]
+
+    async def _tool(self, call: models.ToolUse) -> dict:
+        """Run one tool; a failure goes back to the model as an error result."""
+        await self.publish(protocol.core_line(call.name.replace("_", " ") + "…"))
+        result = {"type": "tool_result", "tool_use_id": call.id}
+        try:
+            result["content"] = await adapters_mod.call_tool(self.adapters, call.name, call.input)
+        except asyncio.CancelledError:
+            raise
+        except adapters_mod.AdapterError as e:
+            result.update(content=str(e), is_error=True)
+        except Exception:
+            log.exception("tool %s crashed", call.name)
+            result.update(content="that tool broke on my side.", is_error=True)
+        return result
 
     async def _failed(self, exc: Exception, partial: str, her_id: str, n: int) -> None:
         if isinstance(exc, models.ModelError):

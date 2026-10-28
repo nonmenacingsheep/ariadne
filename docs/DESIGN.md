@@ -634,7 +634,7 @@ graph.
    carried over, the Aries personality, the sound player. At this point 2.0
    can replace 1.x day to day for talking. (The core borrows 1.x's venv for
    faster-whisper/CUDA until 2.0 gets its own; push-to-talk has no hotkey yet.)
-3. **Spotify end to end:** adapter (verbs, events, state), widget, wire
+3. **Spotify end to end** — *built 2026-10-27, awaiting Ronald's try:* adapter (verbs, events, state), widget, wire
    animation, its sounds. **Ronald tries the "watch her do it" feel here
    before the rest is built.**
 4. Steam, browser, Discord.

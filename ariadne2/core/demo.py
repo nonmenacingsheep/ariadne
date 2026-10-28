@@ -19,6 +19,8 @@ class Demo:
         self.hold = hold
         # Off when the real conversation loop answers chat instead.
         self.echo_chat = True
+        # Widgets a real adapter drives; the demo leaves their wires alone.
+        self.skip: set[str] = set()
         self._ids = itertools.count(1)
         self._task: asyncio.Task | None = None
         self._side: set[asyncio.Task] = set()
@@ -35,6 +37,8 @@ class Demo:
     async def _loop(self) -> None:
         for n, widget in enumerate(itertools.cycle(ROTATION), start=1):
             await asyncio.sleep(self.period)
+            if widget in self.skip:
+                continue
             await self.touch(widget, "demo", fail=(n % 6 == 0), speak_line=True)
 
     async def touch(self, widget: str, control: str, fail: bool = False,
@@ -66,6 +70,8 @@ class Demo:
     async def on_desk_message(self, msg: dict) -> None:
         # Run in a side task: the server's read loop must not stall on our sleeps.
         t = msg.get("t")
+        if t == "press" and msg["widget"] in self.skip:
+            return
         if t == "press":
             coro = self.touch(msg["widget"], msg["control"])
         elif t == "text" and msg["widget"] == "chat" and self.echo_chat:

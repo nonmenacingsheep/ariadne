@@ -32,6 +32,26 @@ class PromptTests(unittest.TestCase):
         line = [l for l in block.splitlines() if l.startswith("browser:")][0]
         self.assertLessEqual(len(line), prompt.LINE_MAX)
 
+    def test_spotify_one_line(self):
+        d = {"status": "playing", "title": "Paparazzi X E.T.", "artist": "NovaX",
+             "position_s": 80.0, "length_s": 146.0, "updated": NOW.timestamp(), "volume": 40,
+             "liked": None, "shuffle": False, "repeat": "off", "queue": []}
+        block = prompt.state_block({"spotify": d}, NOW)
+        self.assertIn("Spotify: playing Paparazzi X E.T. — NovaX, 1:20/2:26, vol 40", block)
+        self.assertNotIn("spotify:", block)
+        # the bar keeps moving while playing, and stops when paused
+        later = prompt._spotify_line(d, NOW.timestamp() + 10)
+        self.assertIn("1:30/2:26", later)
+        self.assertIn("1:20/2:26", prompt._spotify_line(dict(d, status="paused"), NOW.timestamp() + 10))
+        self.assertEqual(prompt._spotify_line({"status": "not running"}), "Spotify: not running")
+        self.assertIn(", liked, shuffle on, repeat track",
+                      prompt._spotify_line(dict(d, liked=True, shuffle=True, repeat="track"), NOW.timestamp()))
+
+    def test_she_knows_she_has_spotify_only(self):
+        text = prompt.build("aries", {}, NOW)
+        self.assertIn("reach Spotify and nothing", text)
+        self.assertNotIn("aren't wired in", text)
+
     def test_size_bound(self):
         text = prompt.build("aries", {"system": {"cpu": 1.0}}, NOW)
         self.assertLess(len(text) // 4, 2000)     # ~tokens, well under 2k

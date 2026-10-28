@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -48,6 +49,22 @@ class ModelError(Exception):
         super().__init__(message)
         self.message = message
         self.kind = kind
+
+
+@dataclass
+class ToolUse:
+    """The model asked for a tool; yielded by `stream` after its text."""
+    id: str
+    name: str
+    input: dict = field(default_factory=dict)
+
+
+@dataclass
+class Done:
+    """End of one model call: the full assistant content, exactly as received
+    (thinking blocks must go back to the API unmodified in a tool loop)."""
+    content: list
+    stop_reason: str | None = None
 
 
 def provider_for(model: str) -> str:
@@ -151,9 +168,10 @@ def classify(exc: Exception) -> ModelError:
     return ModelError(f"the model call failed ({name}).", "internal")
 
 
-async def stream(system: str, messages: list[dict],
-                 model: str = DEFAULT_MODEL) -> AsyncIterator[str]:
-    """Yield the reply's text deltas as they arrive. Raises ModelError."""
+async def stream(system: str, messages: list[dict], model: str = DEFAULT_MODEL,
+                 tools: list[dict] | None = None) -> AsyncIterator:
+    """Yield the reply's text deltas as they arrive, then a ToolUse per tool call and
+    a final Done. Raises ModelError."""
     provider = provider_for(model)
     client = _client(provider)
     sys_block = {"type": "text", "text": system}
@@ -161,6 +179,12 @@ async def stream(system: str, messages: list[dict],
         sys_block["cache_control"] = {"type": "ephemeral"}
     kwargs: dict = dict(model=model, max_tokens=MAX_TOKENS, system=[sys_block],
                         messages=messages)
+    if tools:
+        # The mark on the last tool caches all of them with the system prompt.
+        tools = [dict(t) for t in tools]
+        if provider == "anthropic":
+            tools[-1]["cache_control"] = {"type": "ephemeral"}
+        kwargs["tools"] = tools
     # extra_body so an SDK that doesn't know a thinking mode yet still sends it.
     if provider == "deepseek":
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
@@ -170,6 +194,11 @@ async def stream(system: str, messages: list[dict],
         async with client.messages.stream(**kwargs) as s:
             async for chunk in s.text_stream:
                 yield chunk
+            final = await s.get_final_message()
+        for block in final.content:
+            if block.type == "tool_use":
+                yield ToolUse(block.id, block.name, dict(block.input or {}))
+        yield Done([b.model_dump(exclude_none=True) for b in final.content], final.stop_reason)
     except ModelError:
         raise
     except Exception as e:

@@ -138,3 +138,36 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .core.speaking .wave i { opacity: 1; transition: height .07s; }
 .core.listening .mark .wt { color: var(--cyan); text-shadow: 0 0 14px rgba(0,229,255,.6); }
 .core.listening .face { box-shadow: inset 0 0 0 1px rgba(0,229,255,.7); }
+
+/* ---------- Spotify ---------- */
+.spotify .bd { gap: 10px; }
+.sp-np { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: center; }
+.sp-art { width: 96px; height: 96px; position: relative;
+  background: conic-gradient(from 200deg, #ff2a3d, #3a0a24, #1a1030, #6d8cff, #ff2a3d);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 6px 18px rgba(0,0,0,.45); }
+.sp-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sp-meta { min-width: 0; display: grid; gap: 3px; }
+.sp-title { font: 600 18px/1.2 "Noto Sans", sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-artist { font-size: 14px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-album { font-size: 12px; opacity: .55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-prog .bar { height: 5px; cursor: pointer; margin-top: 0; }
+.sp-prog .bar b { background: var(--blue); transition: none; }
+.sp-prog.on .bar b { background: var(--cyan); }
+.sp-times { display: flex; justify-content: space-between; font: 11px "Fira Code", monospace; opacity: .65; margin-top: 4px; }
+.sp-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.sp-ctl { display: flex; gap: 8px; }
+.sp-ctl button { width: 38px; height: 32px; display: grid; place-items: center; cursor: pointer; color: var(--paper);
+  background: rgba(10, 6, 20, .6); border: 1px solid rgba(255,255,255,.18);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); transition: color .15s, border-color .15s; }
+.sp-ctl button svg { width: 15px; height: 15px; fill: currentColor; }
+.sp-ctl button:hover { border-color: rgba(255, 140, 150, .8); }
+.sp-ctl button.on, .sp-vol.on { color: var(--cyan); border-color: var(--cyan); box-shadow: inset 0 0 12px rgba(0,229,255,.35); }
+.sp-like.liked { color: var(--red-hot); }
+.sp-vol { display: flex; align-items: center; gap: 8px; font: 600 10px Rajdhani, sans-serif; letter-spacing: .14em; color: var(--soft); border: 1px solid transparent; padding: 2px 6px; }
+.sp-vol input { width: 110px; accent-color: var(--blue); }
+.sp-queue { display: grid; gap: 3px; min-height: 0; overflow: hidden; }
+.sp-qh { font: 600 10px Rajdhani, sans-serif; letter-spacing: .2em; color: var(--amber); margin-top: 2px; }
+.sp-qi { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+.sp-qi span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-qi span:last-child { opacity: .55; white-space: nowrap; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+.w.sp-off .sp-ctl, .w.sp-off .sp-prog, .w.sp-off .sp-vol { opacity: .35; pointer-events: none; }

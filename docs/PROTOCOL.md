@@ -33,11 +33,12 @@ then the current `line`.
 | t | fields | meaning |
 |---|---|---|
 | `hello` | `v`, `side="desk"`, `pid` | first line after connect |
-| `press` | `widget`, `control` | you clicked a control in a widget |
+| `press` | `widget`, `control`, optional `value` | you clicked a control in a widget; `value` for sliders (Spotify `volume` 0-100, `scrub` position in seconds) |
 | `text` | `widget`, `text` | you typed something, e.g. into chat |
 
 ```
 {"t":"hello","v":1,"side":"desk","pid":4343}
 {"t":"press","widget":"spotify","control":"next"}
+{"t":"press","widget":"spotify","control":"volume","value":40}
 {"t":"text","widget":"chat","text":"hi"}
 ```

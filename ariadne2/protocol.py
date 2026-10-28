@@ -121,8 +121,13 @@ def hello_desk() -> dict:
     return {"t": "hello", "v": VERSION, "side": "desk", "pid": os.getpid()}
 
 
-def press(widget: str, control: str) -> dict:
-    return {"t": "press", "widget": _widget(widget), "control": control}
+def press(widget: str, control: str, value=None) -> dict:
+    """A click in a widget. `value` rides along for sliders (volume 0-100,
+    scrub position in seconds); plain buttons leave it out."""
+    msg = {"t": "press", "widget": _widget(widget), "control": control}
+    if value is not None:
+        msg["value"] = value
+    return msg
 
 
 def text(widget: str, text: str) -> dict:

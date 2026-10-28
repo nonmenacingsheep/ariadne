@@ -57,6 +57,7 @@ function build(name) {
     });
     w.lines = {};
   }
+  if (name === "spotify") Spotify.build(w, msg => post({ t: "send", msg }));
   if (name === "core") { w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports"); }
   W[name] = w;
 }
@@ -87,6 +88,7 @@ function extrusion(name) {
 function setState(name, data) {
   const w = W[name];
   if (!w || name === "core" || name === "chat") return;
+  if (name === "spotify" && "title" in data || name === "spotify" && data.status === "not running") return Spotify.set(data);
   if (name === "system" && "cpu" in data) {
     if (!w.meters) {
       w.bd.innerHTML = `<div class="meters"><div class="meter"><div class="v cpu"></div>CPU<div class="bar"><b class="cpub"></b></div></div>
@@ -128,6 +130,8 @@ function action(msg) {
     W.core.root.classList.add("acting");
     W.core.ports.querySelector(`[data-p="${name}"]`)?.classList.add("live");
     if (w.tag) { w.tagWas = w.tagWas ?? w.tag.textContent; w.tag.textContent = `▸ ${msg.control || msg.verb}`; w.tag.className = "tag on"; }
+    if (name === "spotify") Spotify.touch(msg.control, true);
+    w.control = msg.control;
   } else if (msg.phase === "done" || msg.phase === "failed") {
     const s = work[name] || (work[name] = { phase: "work", t0: now - MIN_WORK_MS });
     s.end = { failed: msg.phase === "failed", note: msg.note }; kick();
@@ -144,6 +148,7 @@ function stepWork(now) {
       if (Math.random() < .6) burst(name, 2, false);
       if (s.end && now - s.t0 > MIN_WORK_MS) {
         w.root.classList.remove("working");
+        if (name === "spotify") Spotify.touch(w.control, false);
         packets[name] = { t0: now, dir: "back", failed: s.end.failed };
         Sounds.play(s.end.failed ? "fail" : "done");
         if (s.end.failed) {

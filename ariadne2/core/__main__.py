@@ -7,6 +7,7 @@ import logging
 import signal
 import time
 
+from .. import adapters as adapters_mod
 from .. import protocol
 
 from . import models, prompt
@@ -41,28 +42,63 @@ def _make_ears(server, voice, conversation):
                 on_listening=lambda up: asyncio.ensure_future(server.publish(protocol.ears(up))))
 
 
+log = logging.getLogger("ariadne2.core")
+
+
+def _route_press(adapters, msg: dict) -> None:
+    """A click in a widget goes to that widget's adapter, off the server's read loop."""
+    adapter = adapters.get(msg.get("widget"))
+    if adapter is None:
+        return
+
+    async def go() -> None:
+        try:
+            await adapter.press(msg["control"], msg.get("value"))
+        except adapters_mod.AdapterError as e:
+            log.info("press %s/%s: %s", msg["widget"], msg["control"], e)
+        except Exception:
+            log.exception("press %s/%s failed", msg["widget"], msg["control"])
+
+    task = asyncio.ensure_future(go())
+    _press_tasks.add(task)
+    task.add_done_callback(_press_tasks.discard)
+
+
+_press_tasks: set = set()
+
+
 async def run(args: argparse.Namespace) -> None:
     server = CoreServer(demo=args.demo, path=args.socket)
+    adapters = adapters_mod.load_adapters(server.publish)
     voice = ears = None
     if not args.quiet:
         voice = _make_voice(server)
     conversation = Conversation(server.publish, lambda: server.snapshots,
                                 model_name=args.model, personality=args.personality,
-                                on_sentence=voice.say if voice else None)
+                                on_sentence=voice.say if voice else None,
+                                adapters=adapters)
     if voice and not args.no_ears:
         ears = _make_ears(server, voice, conversation)
     def on_desk(msg):
         if voice and msg.get("t") == "text":
             voice.cancel()      # typing to her cuts her off, like talking over her does
+        if msg.get("t") == "press":
+            _route_press(adapters, msg)
         return conversation.on_desk_message(msg)
     server.on_desk_message = on_desk
     if server.demo:
         server.demo.echo_chat = False      # the real loop answers; demo keeps its fake actions
+        server.demo.skip = set(adapters)   # ...except in widgets a real adapter drives
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
     await server.start()
+    for adapter in adapters.values():
+        try:
+            await adapter.start()
+        except Exception:
+            log.exception("adapter %s failed to start", adapter.name)
     for part in (voice, ears):
         if part:
             await part.start()
@@ -73,8 +109,13 @@ async def run(args: argparse.Namespace) -> None:
             if part:
                 await part.stop()
         await conversation.stop()
+        for adapter in adapters.values():
+            try:
+                await adapter.stop()
+            except Exception:
+                log.exception("adapter %s failed to stop", adapter.name)
         await server.stop()
-        logging.getLogger("ariadne2.core").info("stopped")
+        log.info("stopped")
 
 
 def main() -> None:

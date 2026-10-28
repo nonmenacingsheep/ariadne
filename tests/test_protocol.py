@@ -40,6 +40,9 @@ class RoundTrip(unittest.TestCase):
 
     def test_desk_side(self):
         self.rt(p.press("steam", "launch"))
+        self.assertNotIn("value", self.rt(p.press("steam", "launch")))
+        self.assertEqual(self.rt(p.press("spotify", "volume", 40))["value"], 40)
+        self.assertEqual(self.rt(p.press("spotify", "scrub", 0))["value"], 0)
         self.rt(p.text("chat", "héllo ✓"))
 
     def test_constructors_validate(self):

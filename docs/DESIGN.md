@@ -5,7 +5,7 @@ Status: step 1 (skeleton) built 2026-10-27; next is step 2 (§11).
 ## 1. What it is
 
 Ariadne 2.0 is Aries's playground: a live layer on the ultrawide desktop where
-her widgets show the apps she runs for you — Spotify, Steam, Discord, the
+her widgets show the apps she runs for you — Spotify, Steam, the
 browser, Dolphin, Claude — and where you can watch her change things in them
 while you talk to her.
 
@@ -20,7 +20,7 @@ not like a chatbot with a tool list.
 - **Watch her work.** Every action she takes shows up in a widget the moment
   it happens: the control she "pressed" flashes, a trace runs down the wire,
   the widget's state changes in front of you.
-- **Seamless control.** "Skip this", "launch Elden Ring", "mute me on Discord"
+- **Seamless control.** "Skip this", "launch Elden Ring", "next episode"
   happen through the apps' real controls — reliably and fast, not by clicking
   around screenshots.
 - **Code you can revamp.** Small, clear modules. A new app means one adapter
@@ -120,7 +120,6 @@ pressed.
 | Claude | 24, 960 | 736 × 456 |
 | Core | 1440, 24 | 560 × 144 |
 | Spotify | 2680, 24 | 736 × 336 |
-| Discord | 2680, 384 | 736 × 288 |
 | Steam | 2680, 696 | 736 × 360 |
 | Browser | 2680, 1080 | 736 × 336 |
 | Dolphin | 784, 1176 | 912 × 240 |
@@ -182,7 +181,6 @@ master switch.
 | `flow` | a flow fires |
 | `spotify` | a track change, play or pause she caused |
 | `steam` | a game launch or close she caused |
-| `discord` | a mute, deafen or join she caused |
 | `browser` | a tab opened, closed or switched by her |
 | `dolphin` | a file moved, sorted or binned by her |
 | `claude` | a hand starts or finishes |
@@ -265,11 +263,11 @@ One file per app in `adapters/`. Each adapter:
 - **emits action events** around every verb — that's what makes the widget
   animate and the wire pulse, with no extra work.
 - declares its **events**: the things that happen in the app on their own
-  (`spotify.track_changed`, `steam.download_done`, `discord.dm`), with typed
+  (`spotify.track_changed`, `steam.download_done`, `browser.video_ended`), with typed
   fields. These are what flows start from (§10).
 - talks to the app the most reliable way available: MPRIS/DBus or the Web
   API for Spotify, the `steam://` protocol plus local files for Steam, the
-  browser's debugging port for tabs and Discord's web client, KDE DBus for
+  browser's debugging port for tabs, KDE DBus for
   Dolphin, the CLI for Claude Code.
 
 Adding an app means adding an adapter and a widget, and nothing else.

@@ -172,6 +172,7 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .sp-ctl button:hover { border-color: rgba(255, 140, 150, .8); }
 .sp-ctl button.on, .sp-vol.on { color: var(--cyan); border-color: var(--cyan); box-shadow: inset 0 0 12px rgba(0,229,255,.35); }
 .sp-like.liked { color: var(--red-hot); }
+.sp-shuffle.lit { color: var(--red-hot); border-color: rgba(255, 90, 105, .7); }
 .sp-vol { display: flex; align-items: center; gap: 9px; font: 600 10px Rajdhani, sans-serif; letter-spacing: .16em; color: var(--soft); padding: 4px 6px; cursor: ns-resize; }
 .sp-vtrack { position: relative; width: 120px; height: 3px; background: rgba(255,255,255,.08); cursor: pointer; }
 .sp-vtrack::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; }

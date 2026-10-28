@@ -22,7 +22,12 @@ if ls /run/host/usr/lib64/libEGL_nvidia.so.0 >/dev/null 2>&1; then
   export GBM_BACKENDS_PATH=/run/host/usr/lib64/gbm
 fi
 
-python3 -m ariadne2.core "$@" &
+# The core needs faster-whisper, numpy, anthropic and the CUDA libraries for
+# her ears and voice. 1.x's environment already has all of them, so borrow it
+# until 2.0 replaces 1.x and gets its own; ARIADNE2_PYTHON overrides.
+PY=${ARIADNE2_PYTHON:-$HOME/Claude Projects/ariadne/.venv-3.12/bin/python}
+[ -x "$PY" ] || PY=python3
+"$PY" -m ariadne2.core "$@" &
 core=$!
 trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 python3 -m ariadne2.desk 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" -e "^$" >&2)

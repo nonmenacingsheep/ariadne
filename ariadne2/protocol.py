@@ -23,6 +23,8 @@ _REQUIRED = {
     "chat": ("id", "role", "delta"),
     "press": ("widget", "control"),
     "text": ("widget", "text"),
+    "voice": ("speaking", "level"),
+    "ears": ("listening",),
 }
 
 
@@ -125,3 +127,13 @@ def press(widget: str, control: str) -> dict:
 
 def text(widget: str, text: str) -> dict:
     return {"t": "text", "widget": _widget(widget), "text": text}
+
+
+def voice(speaking: bool, level: float = 0.0) -> dict:
+    """Her voice: whether she's audible, and its loudness 0-1 (drives the waveform)."""
+    return {"t": "voice", "speaking": bool(speaking), "level": round(float(level), 3)}
+
+
+def ears(listening: bool) -> dict:
+    """The mic opened (she's listening for a command) or closed."""
+    return {"t": "ears", "listening": bool(listening)}

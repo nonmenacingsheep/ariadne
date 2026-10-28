@@ -2,6 +2,8 @@ import json
 import os
 import unittest
 
+from ariadne2 import protocol
+
 from ariadne2 import protocol as p
 
 
@@ -103,3 +105,15 @@ class SocketPath(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VoiceEarsTest(unittest.TestCase):
+    def test_round_trip(self):
+        for msg in (protocol.voice(True, 0.4321), protocol.voice(False), protocol.ears(True)):
+            self.assertEqual(protocol.decode(protocol.encode(msg)), msg)
+        self.assertEqual(protocol.voice(True, 0.4321)["level"], 0.432)
+
+    def test_missing_fields_rejected(self):
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.decode(b'{"t": "ears"}')
+

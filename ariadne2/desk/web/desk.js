@@ -459,6 +459,17 @@ function reportRects() {
   post({ t: "rects", rects: Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]) });
 }
 
+// Her waveform: bar heights follow her voice level, with a little spread so
+// the bars don't move in lockstep.
+function voiceLevel(msg) {
+  const c = W.core; if (!c) return;
+  c.root.classList.toggle("speaking", msg.speaking && msg.level > 0);
+  c.root.querySelectorAll(".wave i").forEach((bar, i) => {
+    const h = msg.speaking ? 4 + Math.min(1, msg.level * 4) * (10 + 14 * Math.abs(Math.sin(i * 1.7 + performance.now() / 90))) : 4;
+    bar.style.height = h.toFixed(1) + "px";
+  });
+}
+
 /* ---------------- what layer.py calls ---------------- */
 window.desk = {
   init(layout, ar, hid, sounds) {
@@ -474,6 +485,10 @@ window.desk = {
       case "line": if (W.core) W.core.line.textContent = msg.text; break;
       case "chat": if (W.chat) chat(msg); break;
       case "action": action(msg); break;
+      case "voice": voiceLevel(msg); break;
+      case "ears":
+        if (msg.listening) Sounds.play("mic");
+        W.core?.root.classList.toggle("listening", msg.listening); break;
     }
   },
   setRaised(up) {

@@ -102,6 +102,14 @@ def _clock(s: float) -> str:
 class SpotifyAdapter(WebCalls, Adapter):
     name = "spotify"
     events = ("track_changed", "paused", "playing")
+    event_info = {"track_changed": {"phrase": "changes track", "fields": {"title": "text", "artist": "text"}},
+                  "paused": {"phrase": "pauses"},
+                  "playing": {"phrase": "starts playing"}}
+    state_fields = {"status": ("text", "status"), "title": ("text", "title"),
+                    "artist": ("text", "artist"), "album": ("text", "album"),
+                    "volume": ("number", "volume"), "position": ("number", "position_s"),
+                    "length": ("number", "length_s"), "liked": ("yes/no", "liked"),
+                    "shuffle": ("yes/no", "shuffle")}
 
     def __init__(self, publish, mpris=None, web=None) -> None:
         super().__init__(publish)

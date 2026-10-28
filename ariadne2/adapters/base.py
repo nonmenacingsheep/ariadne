@@ -35,6 +35,9 @@ class Verb:
     # "message": the verb speaks for him (sends a message). It only runs when
     # his own words this turn ask for it and name who it's for; see consent.py.
     consent: str | None = None
+    # The verb returns text that came from outside (a web page): in a flow it
+    # taints the path, like an outside-content start does (core/flows/graph.py).
+    outside_content: bool = False
 
     def schema(self) -> dict:
         schema = {"type": "object", "properties": {}}
@@ -44,7 +47,15 @@ class Verb:
 
 class Adapter:
     name = ""                            # = the widget name
-    events: tuple[str, ...] = ()         # declared event names, for flows later
+    events: tuple[str, ...] = ()         # declared event names; flows start from these
+    # Optional richer declarations the flow catalog reads (core/flows/catalog.py):
+    #   event_info = {"game_started": {"phrase": "starts a game",
+    #                                  "fields": {"name": "text", "appid": "number"},
+    #                                  "outside": False}}
+    #   state_fields = {"volume": ("number", "volume")}   # name -> (type, dotted path in state())
+    # "outside" marks events whose fields come from pages or other apps' content.
+    event_info: dict = {}
+    state_fields: dict = {}
 
     def __init__(self, publish) -> None:
         self.publish = publish

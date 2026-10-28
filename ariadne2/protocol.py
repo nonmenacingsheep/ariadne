@@ -13,6 +13,10 @@ WIDGETS = ("chat", "core", "spotify", "steam", "browser",
            "dolphin", "claude", "system", "flows")
 PHASES = ("started", "progress", "done", "failed")
 ROLES = ("aries", "you")
+FLOW_PHASES = ("fired", "node", "done", "failed")
+FLOW_CONTROLS = ("toggle", "run", "approve", "delete")      # presses on the flows widget; value = flow id
+FLOW_ROW = ("id", "name", "summary", "enabled", "approved", "made_by", "uses_ai", "manual",
+            "last_fired", "last_result", "note")
 
 # Required fields per message type (beyond "t"), checked on decode.
 _REQUIRED = {
@@ -25,6 +29,9 @@ _REQUIRED = {
     "text": ("widget", "text"),
     "voice": ("speaking", "level"),
     "ears": ("listening",),
+    "flow": ("flow", "run", "phase"),
+    "ask": ("id", "question", "options"),
+    "answer": ("id", "choice"),
 }
 
 
@@ -60,7 +67,7 @@ def decode(line: bytes | str) -> dict:
     for field in _REQUIRED[t]:
         if field not in msg:
             raise ProtocolError(f"{t}: missing field {field!r}")
-    if "widget" in msg:
+    if msg.get("widget") is not None:
         _widget(msg["widget"])
     if t == "action" and msg["phase"] not in PHASES:
         raise ProtocolError(f"action: bad phase {msg['phase']!r}")
@@ -68,9 +75,34 @@ def decode(line: bytes | str) -> dict:
         raise ProtocolError(f"chat: bad role {msg['role']!r}")
     if t == "state" and not isinstance(msg["data"], dict):
         raise ProtocolError("state: data is not an object")
+    if t == "state" and msg["widget"] == "flows" and "flows" in msg["data"]:
+        _check_flow_rows(msg["data"]["flows"])
+    if t == "flow":
+        if msg["phase"] not in FLOW_PHASES:
+            raise ProtocolError(f"flow: bad phase {msg['phase']!r}")
+        if not isinstance(msg["flow"], str) or not isinstance(msg["run"], str):
+            raise ProtocolError("flow: flow and run must be strings")
+    if t == "ask" and not (isinstance(msg["options"], list) and msg["options"]
+                           and all(isinstance(o, str) for o in msg["options"])):
+        raise ProtocolError("ask: options must be a non-empty list of strings")
+    if t == "answer" and not isinstance(msg["choice"], str):
+        raise ProtocolError("answer: choice must be a string")
+    if t == "press" and msg["widget"] == "flows" and msg["control"] not in FLOW_CONTROLS:
+        raise ProtocolError(f"press: bad flows control {msg['control']!r}")
     if t == "hello" and msg["side"] not in ("core", "desk"):
         raise ProtocolError(f"hello: bad side {msg['side']!r}")
     return msg
+
+
+def _check_flow_rows(rows) -> None:
+    if not isinstance(rows, list):
+        raise ProtocolError("state: flows is not a list")
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ProtocolError("state: a flows row is not an object")
+        for key in FLOW_ROW:
+            if key not in row:
+                raise ProtocolError(f"state: flows row missing {key!r}")
 
 
 def socket_path() -> pathlib.Path:
@@ -115,6 +147,30 @@ def chat(id: str, role: str, delta: str, done: bool = False) -> dict:
     return {"t": "chat", "id": id, "role": role, "delta": delta, "done": done}
 
 
+def flow(flow: str, run: str, phase: str, node: str | None = None, widget: str | None = None,
+         note: str | None = None) -> dict:
+    """A flow run moving: `fired` (with the widget where the trigger happened, or null), `node` (entering
+    one), `done` or `failed` (with a note). Drives the wires and the editor's live view."""
+    if phase not in FLOW_PHASES:
+        raise ProtocolError(f"bad flow phase {phase!r}")
+    if widget is not None:
+        _widget(widget)
+    return {"t": "flow", "flow": flow, "run": run, "phase": phase, "node": node, "widget": widget, "note": note}
+
+
+def flows_state(rows: list[dict]) -> dict:
+    """The flows widget's snapshot: one row per flow (keys in FLOW_ROW)."""
+    _check_flow_rows(rows)
+    return state("flows", {"flows": rows})
+
+
+def ask(id: str, question: str, options: list[str]) -> dict:
+    """An Ask Ronald question for the chat, one button per option."""
+    if not options or not all(isinstance(o, str) for o in options):
+        raise ProtocolError("ask needs a list of option strings")
+    return {"t": "ask", "id": id, "question": question, "options": list(options)}
+
+
 # ---- desk -> core ----
 
 def hello_desk() -> dict:
@@ -128,6 +184,11 @@ def press(widget: str, control: str, value=None) -> dict:
     if value is not None:
         msg["value"] = value
     return msg
+
+
+def answer(id: str, choice: str) -> dict:
+    """The option he picked for an `ask`."""
+    return {"t": "answer", "id": id, "choice": choice}
 
 
 def text(widget: str, text: str) -> dict:

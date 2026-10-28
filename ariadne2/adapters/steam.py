@@ -100,6 +100,12 @@ def _send(pid: int, sig: int) -> None:
 class SteamAdapter(Adapter):
     name = "steam"
     events = ("game_started", "game_closed", "download_done")
+    event_info = {"game_started": {"phrase": "starts a game", "fields": {"name": "text", "appid": "number"}},
+                  "game_closed": {"phrase": "closes a game", "fields": {"name": "text", "appid": "number"}},
+                  "download_done": {"phrase": "finishes a download",
+                                    "fields": {"name": "text", "appid": "number"}}}
+    state_fields = {"status": ("text", "status"), "game": ("text", "playing.name"),
+                    "downloads": ("list", "downloads")}
 
     def __init__(self, publish, files=None, proc="/proc", opener=None, send=None, alive=None) -> None:
         super().__init__(publish)

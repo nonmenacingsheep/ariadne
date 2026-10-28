@@ -634,7 +634,7 @@ graph.
    before the rest is built.**
 4. Steam, browser, Discord — *built 2026-10-27; Steam and browser kept,
    Discord removed at Ronald's request.*
-5. **Flows:** engine, store, the Flows widget, her building flows from
+5. **Flows** — *built 2026-10-27, awaiting Ronald's try:* engine, store, the Flows widget, her building flows from
    conversation, the 1.x watch import, trigger packets on the wires.
 6. Dolphin, Claude, system.
 7. The flow editor.

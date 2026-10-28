@@ -11,6 +11,7 @@ from .. import adapters as adapters_mod
 from .. import protocol
 
 from . import models, prompt
+from .flows.engine import Engine
 from .loop import Conversation
 from .server import CoreServer
 
@@ -67,9 +68,23 @@ def _route_press(adapters, msg: dict) -> None:
 _press_tasks: set = set()
 
 
+def _spawn_flow(coro) -> None:
+    task = asyncio.ensure_future(coro)
+    _press_tasks.add(task)
+    task.add_done_callback(_press_tasks.discard)
+
+
 async def run(args: argparse.Namespace) -> None:
     server = CoreServer(demo=args.demo, path=args.socket)
-    adapters = adapters_mod.load_adapters(server.publish)
+    engine: Engine | None = None
+
+    async def publish(msg: dict) -> None:
+        """What adapters publish: out to the desk, and state snapshots to the flow engine (Becomes)."""
+        await server.publish(msg)
+        if engine is not None:
+            engine.observe(msg)
+
+    adapters = adapters_mod.load_adapters(publish)
     voice = ears = None
     if not args.quiet:
         voice = _make_voice(server)
@@ -77,13 +92,20 @@ async def run(args: argparse.Namespace) -> None:
                                 model_name=args.model, personality=args.personality,
                                 on_sentence=voice.say if voice else None,
                                 adapters=adapters)
+    engine = Engine(server.publish, adapters, conversation=conversation,
+                    say=voice.say if voice else None)
+    conversation.flows = engine
+    conversation.on_text = engine.hear
     if voice and not args.no_ears:
         ears = _make_ears(server, voice, conversation)
+
     def on_desk(msg):
         if voice and msg.get("t") == "text":
             voice.cancel()      # typing to her cuts her off, like talking over her does
         if msg.get("t") == "press":
             _route_press(adapters, msg)
+        if msg.get("t") in ("hello", "answer", "press"):
+            _spawn_flow(engine.on_desk(msg))
         return conversation.on_desk_message(msg)
     server.on_desk_message = on_desk
     if server.demo:
@@ -99,6 +121,7 @@ async def run(args: argparse.Namespace) -> None:
             await adapter.start()
         except Exception:
             log.exception("adapter %s failed to start", adapter.name)
+    await engine.start()
     for part in (voice, ears):
         if part:
             await part.start()
@@ -108,6 +131,7 @@ async def run(args: argparse.Namespace) -> None:
         for part in (ears, voice):
             if part:
                 await part.stop()
+        await engine.stop()
         await conversation.stop()
         for adapter in adapters.values():
             try:

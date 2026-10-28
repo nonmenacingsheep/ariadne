@@ -5,6 +5,7 @@
 // what you did (typing, dragging) and where its widgets are, so the layer can
 // let clicks through everywhere else.
 
+const APPS = { spotify: Spotify, steam: Steam, browser: Browser, discord: Discord };
 const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam", discord: "Discord",
   browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows" };
 const GRID = 24, HALO = 16, DEPTH = 12, MIN = [192, 96];
@@ -58,7 +59,7 @@ function build(name) {
     });
     w.lines = {};
   }
-  if (name === "spotify") Spotify.build(w, msg => post({ t: "send", msg }));
+  if (APPS[name]) APPS[name].build(w, msg => post({ t: "send", msg }));
   if (name === "core") {
     w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports");
     // Two clicks to close, so a stray click can't shut her down.
@@ -98,7 +99,9 @@ function extrusion(name) {
 function setState(name, data) {
   const w = W[name];
   if (!w || name === "core" || name === "chat") return;
-  if (name === "spotify" && "title" in data || name === "spotify" && data.status === "not running") return Spotify.set(data);
+  // An app widget takes over once its adapter sends real state (anything
+  // other than the placeholder "no adapter yet").
+  if (APPS[name] && data.status !== "no adapter yet") return APPS[name].set(data);
   if (name === "system" && "cpu" in data) {
     if (!w.meters) {
       w.bd.innerHTML = `<div class="meters"><div class="meter"><div class="v cpu"></div>CPU<div class="bar"><b class="cpub"></b></div></div>
@@ -140,7 +143,7 @@ function action(msg) {
     W.core.root.classList.add("acting");
     W.core.ports.querySelector(`[data-p="${name}"]`)?.classList.add("live");
     if (w.tag) { w.tagWas = w.tagWas ?? w.tag.textContent; w.tag.textContent = `▸ ${msg.control || msg.verb}`; w.tag.className = "tag on"; }
-    if (name === "spotify") Spotify.touch(msg.control, true);
+    APPS[name]?.touch(msg.control, true);
     w.control = msg.control;
   } else if (msg.phase === "done" || msg.phase === "failed") {
     const s = work[name] || (work[name] = { phase: "work", t0: now - MIN_WORK_MS });
@@ -158,7 +161,7 @@ function stepWork(now) {
       if (Math.random() < .6) burst(name, 2, false);
       if (s.end && now - s.t0 > MIN_WORK_MS) {
         w.root.classList.remove("working");
-        if (name === "spotify") Spotify.touch(w.control, false);
+        APPS[name]?.touch(w.control, false);
         packets[name] = { t0: now, dir: "back", failed: s.end.failed };
         Sounds.play(s.end.failed ? "fail" : "done");
         if (s.end.failed) {

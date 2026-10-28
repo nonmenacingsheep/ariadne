@@ -263,3 +263,41 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .br-tab:hover .br-x { opacity: .8; }
 .br-x:hover { color: #fff; }
 
+
+/* ---------- Flows ---------- */
+.fl-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; scrollbar-width: none; }
+.fl-list::-webkit-scrollbar { display: none; }
+.fl-list > * { flex: none; }
+.fl-row { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-left: 2px solid rgba(255,179,71,.5); }
+.fl-row.off { opacity: .5; border-left-color: rgba(255,255,255,.15); }
+.fl-row.pending { border-left-color: var(--red-hot); }
+.fl-row.fired { animation: flfire 1.4s ease-out; }
+.fl-row.bad { border-left-color: var(--red); background: rgba(255,42,61,.12); }
+@keyframes flfire { 0% { background: rgba(255,179,71,.35); } 100% { background: transparent; } }
+.fl-switch { width: 26px; height: 14px; flex: none; cursor: pointer; position: relative; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); }
+.fl-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 8px; height: 8px; background: var(--soft); transition: left .15s; }
+.fl-switch.on { background: rgba(255,179,71,.35); border-color: var(--amber); }
+.fl-switch.on::after { left: 14px; background: #fff; }
+.fl-txt { flex: 1; min-width: 0; }
+.fl-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-ai { color: var(--cyan); font-weight: 400; }
+.fl-by { font: 10px "Fira Code", monospace; opacity: .5; font-weight: 400; }
+.fl-sum { font: 11px "Fira Code", monospace; opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-note { font-size: 11px; color: var(--amber); }
+.fl-side { display: flex; align-items: center; gap: 6px; flex: none; }
+.fl-last { font: 10.5px "Fira Code", monospace; opacity: .55; }
+.fl-last.failed { color: var(--red-hot); opacity: 1; }
+.fl-btn { font: 600 10px Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--paper); cursor: pointer;
+  background: rgba(10,6,20,.7); border: 1px solid rgba(255,179,71,.5); padding: 3px 8px; }
+.fl-btn.hot { border-color: var(--red-hot); color: #fff; background: rgba(255,42,61,.3); }
+.fl-x { background: none; border: none; color: var(--soft); cursor: pointer; opacity: 0; font-size: 11px; }
+.fl-row:hover .fl-x, .fl-x.armed { opacity: .9; }
+.fl-x.armed { color: var(--red-hot); }
+
+/* a flow asking him something, in the chat */
+.msg.ask { border-left: 2px solid var(--amber); padding-left: 8px; }
+.ask-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ask-opts button { font: 600 11px Rajdhani, sans-serif; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; color: var(--paper);
+  background: rgba(10,6,20,.7); border: 1px solid rgba(255,179,71,.6); padding: 4px 10px; }
+.ask-opts button.chosen { background: var(--amber); color: #160305; }
+.ask-opts button:disabled:not(.chosen) { opacity: .35; cursor: default; }

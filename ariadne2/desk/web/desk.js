@@ -5,7 +5,7 @@
 // what you did (typing, dragging) and where its widgets are, so the layer can
 // let clicks through everywhere else.
 
-const APPS = { spotify: Spotify, steam: Steam, browser: Browser };
+const APPS = { spotify: Spotify, steam: Steam, browser: Browser, flows: Flows };
 const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam",
   browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows" };
 const GRID = 24, HALO = 16, DEPTH = 12, MIN = [192, 96];
@@ -355,7 +355,7 @@ function drawPacket(ctx, w, pk, now) {
   const head = total * (back ? 1 - u : u), len = 140;
   const seg = [];
   for (let d = back ? head : head - len; d <= (back ? head + len : head); d += 3) if (d >= 0 && d <= total) seg.push(at(w.pts, w.L, d));
-  const col = pk.failed ? (Math.floor(now / 55) % 2 ? "#ff1030" : "rgba(255,16,48,.25)") : back ? "#ffe9ec" : "#ff4d5e";
+  const col = pk.flow ? "#ffb347" : pk.failed ? (Math.floor(now / 55) % 2 ? "#ff1030" : "rgba(255,16,48,.25)") : back ? "#ffe9ec" : "#ff4d5e";
   ctx.save(); ctx.globalCompositeOperation = "lighter";
   if (seg.length > 1) {
     line(ctx, seg, 8, pk.failed ? "rgba(255,16,48,.22)" : "rgba(255,60,80,.22)");
@@ -494,6 +494,35 @@ function voiceLevel(msg) {
   });
 }
 
+// A flow fired: an amber packet runs up from the widget where the trigger
+// happened to her core (her actions then animate out as usual).
+function flowEvent(msg) {
+  Flows.event(msg);
+  if (msg.phase === "fired") {
+    Sounds.play("flow");
+    W.core?.ports.querySelector('[data-p="flows"]')?.classList.add("live");
+    setTimeout(() => W.core?.ports.querySelector('[data-p="flows"]')?.classList.remove("live"), 1500);
+    if (msg.widget && wires[msg.widget]) { packets[msg.widget] = { t0: performance.now(), dir: "back", flow: true }; kick(); }
+  }
+}
+
+// A flow asking him something: the question in the chat, with a button per answer.
+function askInChat(msg) {
+  const c = W.chat, box = document.createElement("div");
+  box.className = "msg ask"; box.textContent = msg.question;
+  const opts = document.createElement("div"); opts.className = "ask-opts";
+  for (const choice of msg.options || []) {
+    const b = document.createElement("button"); b.textContent = choice;
+    b.addEventListener("click", () => {
+      post({ t: "send", msg: { t: "answer", id: msg.id, choice } });
+      opts.querySelectorAll("button").forEach(x => { x.disabled = true; x.classList.toggle("chosen", x === b); });
+    });
+    opts.appendChild(b);
+  }
+  box.appendChild(opts); c.msgs.appendChild(box); c.msgs.scrollTop = c.msgs.scrollHeight;
+  Sounds.play("mic");
+}
+
 /* ---------------- what layer.py calls ---------------- */
 window.desk = {
   init(layout, ar, hid, sounds) {
@@ -510,6 +539,8 @@ window.desk = {
       case "chat": if (W.chat) chat(msg); break;
       case "action": action(msg); break;
       case "voice": voiceLevel(msg); break;
+      case "flow": flowEvent(msg); break;
+      case "ask": if (W.chat) askInChat(msg); break;
       case "ears":
         if (msg.listening) Sounds.play("mic");
         W.core?.root.classList.toggle("listening", msg.listening); break;

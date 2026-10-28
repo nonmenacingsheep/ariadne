@@ -9,7 +9,9 @@ const SVG = {
   pause: '<svg viewBox="0 0 16 16"><path d="M3 2h3.5v12H3zM9.5 2H13v12H9.5z"/></svg>',
   next: '<svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg>',
 };
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+// Outside text is normalised (NFKC) so fancy Unicode letters ('𝔱𝔥𝔢') come
+// out as plain ones the desk's fonts can draw, instead of empty boxes.
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text).normalize("NFKC"); return e; };
 const ago = t => {
   const s = Math.max(0, Date.now() / 1000 - t);
   if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min`;
@@ -88,7 +90,7 @@ const Browser = (() => {
   let w, send, st = {}, key = "";
   const host = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
   function build(widget, s) {
-    w = widget; send = s;
+    w = widget; send = s; key = "";
     w.bd.innerHTML = `<div class="br-media"></div><div class="br-tabs"></div>`;
     stepScroll(w.bd.querySelector(".br-tabs"));
   }
@@ -130,11 +132,13 @@ const Browser = (() => {
 /* ---------------- Discord ---------------- */
 const Discord = (() => {
   let w, send, st = {};
+  // A steady colour per name, so a person's tile looks the same every time.
+  const hue = name => [...(name || "")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   function build(widget, s) {
     w = widget; send = s;
     w.bd.innerHTML = `<div class="dc-top"><div class="dc-self">
         <button class="dc-btn" data-c="mute">Mute</button><button class="dc-btn" data-c="deafen">Deafen</button></div>
-        <div class="dc-unread"></div></div><div class="dc-voice"></div><div class="dc-dms"></div>`;
+        <div class="dc-unread"></div></div><div class="dc-voice"></div><div class="dc-head">DIRECT MESSAGES</div><div class="dc-dms"></div>`;
     for (const b of w.bd.querySelectorAll(".dc-btn")) b.addEventListener("click", () => send({ t: "press", widget: "discord", control: b.dataset.c }));
   }
   function set(data) {
@@ -144,13 +148,15 @@ const Discord = (() => {
     w.root.classList.toggle("dc-off", !ok);
     const self = st.self || {};
     w.bd.querySelector('[data-c="mute"]').classList.toggle("lit", !!self.muted);
+    w.bd.querySelector('[data-c="mute"]').textContent = self.muted ? "Muted" : "Mute";
     w.bd.querySelector('[data-c="deafen"]').classList.toggle("lit", !!self.deafened);
+    w.bd.querySelector('[data-c="deafen"]').textContent = self.deafened ? "Deafened" : "Deafen";
     const un = st.unread || {}, ub = w.bd.querySelector(".dc-unread"); ub.innerHTML = "";
-    if (un.dms) ub.append(el("span", "dc-badge", `${un.dms} DM${un.dms > 1 ? "s" : ""}`));
-    if (un.mentions) ub.append(el("span", "dc-badge hot", `${un.mentions} @`));
+    if (un.dms) ub.append(el("span", "dc-badge", `${un.dms} unread DM${un.dms > 1 ? "s" : ""}`));
+    if (un.mentions) ub.append(el("span", "dc-badge hot", `${un.mentions > 99 ? "99+" : un.mentions} mentions`));
     const v = st.voice, vb = w.bd.querySelector(".dc-voice"); vb.innerHTML = "";
     if (v) {
-      vb.append(el("div", "dc-chan", `${v.channel}${v.server ? " · " + v.server : ""}`));
+      vb.append(el("div", "dc-chan", `VOICE · ${v.channel}${v.server ? " · " + v.server : ""}`));
       const people = el("div", "dc-people");
       for (const m of v.members || []) people.append(el("span", `dc-person${m.speaking ? " speaking" : ""}${m.muted ? " muted" : ""}`, m.name));
       vb.append(people);
@@ -158,8 +164,15 @@ const Discord = (() => {
       vb.append(el("div", "dim", st.status === "not open" ? "Discord isn't open in Opera. Ask her to open it." : "Can't reach Opera's debugging port."));
     }
     const dms = w.bd.querySelector(".dc-dms"); dms.innerHTML = "";
-    for (const d of (st.recent_dms || []).slice(0, 5)) {
-      const row = el("div", "dc-dm"); row.append(el("span", "dc-from", d.from), el("span", "dc-prev", d.preview), el("span", "dc-time", d.time || ""));
+    const list = (st.recent_dms || []).slice(0, 6);
+    w.bd.querySelector(".dc-head").style.display = list.length ? "" : "none";
+    for (const d of list) {
+      const n = parseInt(d.preview, 10) || 0;     // the adapter's preview is "N unread messages"
+      const row = el("div", `dc-dm${n ? " unread" : ""}`);
+      const tile = el("span", "dc-tile", (d.from || "?").trim().charAt(0).toUpperCase());
+      tile.style.background = `hsl(${hue(d.from)} 45% 32%)`;
+      row.append(tile, el("span", "dc-from", d.from));
+      if (n) row.append(el("span", "dc-count", String(n)));
       dms.append(row);
     }
   }

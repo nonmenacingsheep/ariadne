@@ -6,6 +6,11 @@
 <div id="wires"></div>
 <div id="widgets"></div>
 <canvas id="front"></canvas>
+<script>
+// Script errors go to the desk's log (layer.py), where they can be seen.
+addEventListener("error", e => { try { window.webkit.messageHandlers.desk.postMessage(JSON.stringify({ t: "log", msg: `${e.message} @ ${(e.filename || "").split("/").pop()}:${e.lineno}` })); } catch (_) {} });
+addEventListener("unhandledrejection", e => { try { window.webkit.messageHandlers.desk.postMessage(JSON.stringify({ t: "log", msg: "promise: " + e.reason })); } catch (_) {} });
+</script>
 <script src="sounds.js"></script>
 <script src="spotify.js"></script>
 <script src="apps.js"></script>

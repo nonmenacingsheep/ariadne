@@ -16,6 +16,10 @@ Real message text comes only from read_dm.
 """
 from __future__ import annotations
 
+import unicodedata
+
+import re
+
 import asyncio
 import logging
 import time
@@ -48,6 +52,17 @@ def _clip(text: str, n: int = PREVIEW_MAX) -> str:
     return text if len(text) <= n else text[:n - 1] + "…"
 
 
+_TAG = re.compile(r"\s*,?\s*Server Tag:.*$", re.I)
+
+
+def clean_name(name: str) -> str:
+    """A display name as a person would read it. Discord's accessible labels
+    append 'Server Tag: X', and fancy-letter names ('𝔱𝔥𝔢') use Unicode math
+    letters no desk font draws; NFKC turns those back into plain letters."""
+    name = unicodedata.normalize("NFKC", str(name or ""))
+    return _TAG.sub("", name).strip()
+
+
 def _unread_label(n: int) -> str:
     return f"{n} unread message{'s' if n != 1 else ''}" if n else ""
 
@@ -59,7 +74,7 @@ def map_state(raw: dict, noticed: dict[str, float]) -> dict:
     v = raw.get("voice")
     if v:
         state["voice"] = {"channel": _clip(v.get("channel")), "server": _clip(v.get("server")),
-                          "members": [{"name": _clip(m.get("name"), 40),
+                          "members": [{"name": _clip(clean_name(m.get("name")), 40),
                                        "speaking": bool(m.get("speaking")),
                                        "muted": bool(m.get("muted"))}
                                       for m in v.get("members") or []]}
@@ -67,7 +82,7 @@ def map_state(raw: dict, noticed: dict[str, float]) -> dict:
     home = raw.get("homeBadge")
     state["unread"] = {"dms": home if home is not None else sum(d["count"] for d in dms),
                        "mentions": sum(g["count"] for g in raw.get("guilds") or [])}
-    state["recent_dms"] = [{"from": _clip(d["name"], 40), "preview": _unread_label(d["count"]),
+    state["recent_dms"] = [{"from": _clip(clean_name(d["name"]), 40), "preview": _unread_label(d["count"]),
                             "time": noticed.get(d["name"]) if d["count"] else None}
                            for d in dms[:RECENT]]
     return state

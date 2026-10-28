@@ -383,3 +383,13 @@ class EventTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CleanNameTest(unittest.TestCase):
+    def test_tags_and_fancy_letters(self):
+        from ariadne2.adapters.discord import clean_name
+        self.assertEqual(clean_name("𝔱𝔥𝔢 Gooner Server Tag: WUWAWUWA"), "the Gooner")
+        self.assertEqual(clean_name("Skyyyyy Server Tag: WUWAWUWA"), "Skyyyyy")
+        self.assertEqual(clean_name("Wilbs"), "Wilbs")
+        self.assertEqual(clean_name("𝔱𝔥𝔢 Gooner, kirene"), "the Gooner, kirene")
+

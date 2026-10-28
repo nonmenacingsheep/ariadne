@@ -59,7 +59,7 @@ function build(name) {
     });
     w.lines = {};
   }
-  if (APPS[name]) APPS[name].build(w, msg => post({ t: "send", msg }));
+  if (APPS[name]) { APPS[name].build(w, msg => post({ t: "send", msg })); w.appBuilt = true; }
   if (name === "core") {
     w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports");
     // Two clicks to close, so a stray click can't shut her down.
@@ -99,9 +99,14 @@ function extrusion(name) {
 function setState(name, data) {
   const w = W[name];
   if (!w || name === "core" || name === "chat") return;
-  // An app widget takes over once its adapter sends real state (anything
-  // other than the placeholder "no adapter yet").
-  if (APPS[name] && data.status !== "no adapter yet") return APPS[name].set(data);
+  // An app widget takes over once its adapter sends real state. The core's
+  // placeholder ("no adapter yet") can arrive first; it mustn't wipe the
+  // app's layout, so the layout is rebuilt when real state follows.
+  if (APPS[name]) {
+    if (data.status === "no adapter yet") { w.bd.innerHTML = '<div class="dim">waiting for its adapter…</div>'; w.appBuilt = false; return; }
+    if (!w.appBuilt) { APPS[name].build(w, msg => post({ t: "send", msg })); w.appBuilt = true; }
+    return APPS[name].set(data);
+  }
   if (name === "system" && "cpu" in data) {
     if (!w.meters) {
       w.bd.innerHTML = `<div class="meters"><div class="meter"><div class="v cpu"></div>CPU<div class="bar"><b class="cpub"></b></div></div>

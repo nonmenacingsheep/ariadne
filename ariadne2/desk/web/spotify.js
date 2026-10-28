@@ -16,7 +16,7 @@ const Spotify = (() => {
   let w = null, st = {}, timer = null, artUrl = "", volTimer = null, dragging = false, listKey = "", trackKey = "";
 
   function build(widget, send) {
-    w = widget;
+    w = widget; listKey = ""; trackKey = ""; artUrl = "";
     w.bd.innerHTML = `
       <div class="sp-np"><div class="sp-art"><img alt=""></div>
         <div class="sp-meta"><div class="sp-title"></div><div class="sp-artist"></div><div class="sp-album"></div></div></div>

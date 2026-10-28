@@ -73,9 +73,23 @@ workspace.windowActivated.connect(function (active) {
     if (w && w.keepAbove && active && active !== w) drop(w);
 });
 
+// KWin first places a new window on whichever monitor it likes and clamps
+// its size there (1920 wide on the other screen); the first pin doesn't
+// always stick. So whenever the layer's geometry drifts from the ultrawide's,
+// put it back. Comparing first means our own correction doesn't loop.
+function hold(w) {
+    w.frameGeometryChanged.connect(function () {
+        var o = output();
+        if (!o) return;
+        var g = o.geometry, f = w.frameGeometry;
+        if (f.x !== g.x || f.y !== g.y || f.width !== g.width || f.height < g.height - 120)
+            pin(w);
+    });
+}
+
 workspace.windowAdded.connect(function (w) {
-    if (w.caption === TITLE) pin(w);
+    if (w.caption === TITLE) { pin(w); hold(w); }
 });
 
 var existing = layer();
-if (existing) pin(existing);
+if (existing) { pin(existing); hold(existing); }

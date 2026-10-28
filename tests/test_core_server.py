@@ -52,7 +52,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         c = await self.connect()
         self.assertEqual((await c.recv())["side"], "core")
         states = [await c.recv() for _ in protocol.WIDGETS]
-        self.assertEqual([m["t"] for m in states], ["state"] * 10)
+        self.assertEqual([m["t"] for m in states], ["state"] * len(protocol.WIDGETS))
         self.assertEqual({m["widget"] for m in states}, set(protocol.WIDGETS))
         by = {m["widget"]: m["data"] for m in states}
         self.assertEqual(by["chat"], {"messages": []})

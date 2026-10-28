@@ -35,7 +35,6 @@ const Sounds = (() => {
     flow:    t => { [660, 880, 1100].forEach((f, i) => tone(t + i * 0.045, "triangle", f, f, 0.08, 0.14)); },
     spotify: t => { tone(t, "triangle", 520, 260, 0.18, 0.2); },
     steam:   t => { tone(t, "sawtooth", 70, 110, 0.25, 0.08, 0.04); },
-    discord: t => { tone(t, "square", 1800, 1600, 0.025, 0.07); },
     browser: t => { tone(t, "sine", 2400, 2200, 0.03, 0.12); },
     dolphin: t => { sweep(t, 800, 3000, 0.16, 0.2); },
     claude:  t => { tone(t, "sine", 1760, 1760, 0.22, 0.12); tone(t, "sine", 2637, 2637, 0.18, 0.05); },

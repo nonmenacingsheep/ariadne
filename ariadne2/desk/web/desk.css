@@ -263,30 +263,3 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .br-tab:hover .br-x { opacity: .8; }
 .br-x:hover { color: #fff; }
 
-/* ---------- Discord ---------- */
-.discord .bd { gap: 9px; }
-.dc-top { display: flex; justify-content: space-between; align-items: center; }
-.dc-self { display: flex; gap: 8px; }
-.dc-btn { font: 600 11px Rajdhani, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--paper); cursor: pointer;
-  background: rgba(10,6,20,.7); border: 1px solid rgba(255,255,255,.18); padding: 6px 12px;
-  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); }
-.dc-btn.lit { background: var(--red); border-color: var(--red); color: #fff; }
-.dc-btn.on { color: var(--cyan); border-color: var(--cyan); }
-.dc-unread { display: flex; gap: 6px; }
-.dc-badge { font: 600 11px "Fira Code", monospace; padding: 2px 7px; background: rgba(109,140,255,.2); border: 1px solid rgba(109,140,255,.5); }
-.dc-badge.hot { background: rgba(255,42,61,.25); border-color: var(--red); }
-.dc-chan { font: 600 11px Rajdhani, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--soft); }
-.dc-people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
-.dc-person { font-size: 12.5px; padding: 2px 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); }
-.dc-person.speaking { border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,229,255,.5); }
-.dc-person.muted { opacity: .55; }
-.dc-voice:empty { display: none; }
-.dc-head { font: 600 10px Rajdhani, sans-serif; letter-spacing: .2em; color: var(--amber); margin-top: 2px; }
-.dc-dms { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; min-height: 0; overflow: hidden; align-content: start; }
-.dc-dm { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.dc-tile { width: 22px; height: 22px; flex: none; display: grid; place-items: center; font: 700 12px Rajdhani, sans-serif; color: #fff;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
-.dc-from { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; opacity: .8; }
-.dc-dm.unread .dc-from { opacity: 1; font-weight: 600; }
-.dc-count { margin-left: auto; flex: none; font: 600 10.5px "Fira Code", monospace; color: #fff; background: var(--red); padding: 0 6px; line-height: 16px; }
-.w.dc-off .dc-self { opacity: .35; pointer-events: none; }

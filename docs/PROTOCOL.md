@@ -5,7 +5,6 @@ override with `ARIADNE2_SOCKET`). One compact JSON object per line, UTF-8,
 ending in `\n`. Every object has a `"t"` field. Schema and constructors live
 in `ariadne2/protocol.py`; `decode` rejects anything that doesn't match.
 
-Widgets: `chat core spotify steam discord browser dolphin claude system flows`.
 
 ## Core to desk
 

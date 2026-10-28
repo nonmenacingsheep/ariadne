@@ -9,7 +9,7 @@ import os
 import pathlib
 
 VERSION = 1
-WIDGETS = ("chat", "core", "spotify", "steam", "discord", "browser",
+WIDGETS = ("chat", "core", "spotify", "steam", "browser",
            "dolphin", "claude", "system", "flows")
 PHASES = ("started", "progress", "done", "failed")
 ROLES = ("aries", "you")

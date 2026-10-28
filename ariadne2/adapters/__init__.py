@@ -18,8 +18,7 @@ log = logging.getLogger("ariadne2.adapters")
 # adapter can't stop the rest from loading.
 REGISTRY = {"spotify": "ariadne2.adapters.spotify:SpotifyAdapter",
             "steam": "ariadne2.adapters.steam:SteamAdapter",
-            "browser": "ariadne2.adapters.browser:BrowserAdapter",
-            "discord": "ariadne2.adapters.discord:DiscordAdapter"}
+            "browser": "ariadne2.adapters.browser:BrowserAdapter"}
 
 
 def load_adapters(publish, only=None) -> dict[str, Adapter]:

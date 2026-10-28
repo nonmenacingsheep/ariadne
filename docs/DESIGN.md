@@ -209,7 +209,6 @@ animates whenever she acts through its adapter.
 | **Chat** | the conversation, her replies streaming, steps folding inline, the mic state | type; talk (hotkey or "hey Aries"); paste images | — (it's her voice) |
 | **Spotify** | now playing: art, title, progress; queue; volume | play/pause, skip, scrub, like | `play(query)`, `pause`, `next`, `prev`, `volume(n)`, `queue(query)`, `like`, `playlist(name)` |
 | **Steam** | recently played, downloads/updates in progress, what's running | launch, see install progress | `launch(game)`, `close(game)`, `install(game)`, `library(query)` |
-| **Discord** | who's in voice, unread DMs/mentions count, mute/deafen | mute, deafen | `mute`, `deafen`, `join(channel)`, `read(dm)` (through the browser login) |
 | **Browser** | tabs, what's playing (YouTube or a show), episode | switch tab, play/pause | `open(url)`, `next_episode`, `fullscreen`, `read(tab)`, `close(tab)` |
 | **Dolphin** | the folder you're in, recent folders and files, a drop zone | open, drop files on it | `open(path)`, `sort(folder)`, `move(a, b)`, `trash(path)` — every move animates in the widget |
 | **Claude** | running Claude Code sessions and her hands: what each is doing, steps, time | stop one, open one | `start(task, folder)`, `status`, `stop` |
@@ -219,14 +218,9 @@ animates whenever she acts through its adapter.
 Later candidates: a project widget (her task list while she builds), a
 downloads widget. ("What she's watching for" is now the Flows widget.)
 
-**Discord access:** she reads your DMs and mentions through your Opera GX
-Discord login, over the same debugging port the browser adapter uses. That's
-decided (§12). Two guards come with it: what's in a message is always *data*
-— quoted to her, never followed as an instruction — and she sends a message
-as you only when your own words that turn ask for it and name who it's for
-("can you message Kai this?"). That check is code, not just prompt: send
-verbs are marked `consent="message"` and the core checks them against what
-you typed or said that turn, which text from a DM or page can never be.
+**Discord:** built in step 4, then removed at Ronald's request (2026-10-27).
+The consent check for verbs that speak for him (`consent="message"`) stays in
+the core for any future app that sends messages.
 
 ## 4. Architecture
 
@@ -640,8 +634,8 @@ graph.
 3. **Spotify end to end** — *built 2026-10-27, awaiting Ronald's try:* adapter (verbs, events, state), widget, wire
    animation, its sounds. **Ronald tries the "watch her do it" feel here
    before the rest is built.**
-4. Steam, browser, Discord — *built 2026-10-27, awaiting Ronald's try;
-   Discord's page selectors still need a check with Discord open in Opera.*
+4. Steam, browser, Discord — *built 2026-10-27; Steam and browser kept,
+   Discord removed at Ronald's request.*
 5. **Flows:** engine, store, the Flows widget, her building flows from
    conversation, the 1.x watch import, trigger packets on the wires.
 6. Dolphin, Claude, system.
@@ -660,7 +654,8 @@ Ronald's answers, 2026-10-27:
 4. **Sounds:** small effects when she acts, each mutable, plus a master
    switch (§2).
 5. **Personality:** Aries is the default (§5).
-6. **Discord:** reading DMs through the browser login is fine (§3).
+6. **Discord:** reading DMs through the browser login was approved; the Discord
+   widget was later removed at his request (§3).
 7. **Flows** replace recipes and watch rules (§10).
 
 Still open, none blocking step 1:

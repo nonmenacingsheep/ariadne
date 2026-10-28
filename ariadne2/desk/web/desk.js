@@ -5,8 +5,8 @@
 // what you did (typing, dragging) and where its widgets are, so the layer can
 // let clicks through everywhere else.
 
-const APPS = { spotify: Spotify, steam: Steam, browser: Browser, discord: Discord };
-const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam", discord: "Discord",
+const APPS = { spotify: Spotify, steam: Steam, browser: Browser };
+const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam",
   browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows" };
 const GRID = 24, HALO = 16, DEPTH = 12, MIN = [192, 96];
 const PACKET_MS = 650, MIN_WORK_MS = 900, GLINT_MS = 1200, GLINT_EVERY = 9000;
@@ -272,7 +272,7 @@ function routeWires() {
 }
 
 const POWER = '<svg viewBox="0 0 16 16"><path d="M7 1h2v7H7z"/><path d="M4.2 3.4l1.3 1.4A4.5 4.5 0 1 0 10.5 4.8l1.3-1.4A6.5 6.5 0 1 1 4.2 3.4z"/></svg>';
-const SHORT = { chat: "Chat", spotify: "Spotify", steam: "Steam", discord: "Discord", browser: "Browser",
+const SHORT = { chat: "Chat", spotify: "Spotify", steam: "Steam", browser: "Browser",
   dolphin: "Files", claude: "Claude", system: "System", flows: "Flows" };
 function buildPorts(names) {
   const box = W.core.ports, key = names.join();

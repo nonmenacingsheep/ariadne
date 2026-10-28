@@ -25,14 +25,14 @@ class ConsentTest(unittest.TestCase):
             return "sent"
 
         class Fake(Adapter):
-            name = "discord"
+            name = "browser"
 
             def __init__(self):
                 super().__init__(publish=lambda m: asyncio.sleep(0))
                 self.verbs = [Verb("send", "send a DM", {"properties": {"person": {}, "text": {}}}, send, consent="message")]
 
-        adapters = {"discord": Fake()}
-        run = lambda words: asyncio.run(call_tool(adapters, "discord_send", {"person": "Kai", "text": "hi"}, his_words=words))
+        adapters = {"browser": Fake()}
+        run = lambda words: asyncio.run(call_tool(adapters, "browser_send", {"person": "Kai", "text": "hi"}, his_words=words))
         with self.assertRaises(AdapterError):
             run("anything from Kai?")
         with self.assertRaises(AdapterError):

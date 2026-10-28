@@ -16,7 +16,10 @@ log = logging.getLogger("ariadne2.adapters")
 
 # widget name -> "module:Class", imported lazily so a missing library in one
 # adapter can't stop the rest from loading.
-REGISTRY = {"spotify": "ariadne2.adapters.spotify:SpotifyAdapter"}
+REGISTRY = {"spotify": "ariadne2.adapters.spotify:SpotifyAdapter",
+            "steam": "ariadne2.adapters.steam:SteamAdapter",
+            "browser": "ariadne2.adapters.browser:BrowserAdapter",
+            "discord": "ariadne2.adapters.discord:DiscordAdapter"}
 
 
 def load_adapters(publish, only=None) -> dict[str, Adapter]:
@@ -46,10 +49,21 @@ def tools(adapters: dict[str, Adapter]) -> list[dict]:
     return out
 
 
-async def call_tool(adapters: dict[str, Adapter], name: str, args: dict | None) -> str:
-    """Run a tool by name through its adapter (which animates the wires)."""
+async def call_tool(adapters: dict[str, Adapter], name: str, args: dict | None,
+                    his_words: str | None = None) -> str:
+    """Run a tool by name through its adapter (which animates the wires).
+
+    his_words is what he typed or said this turn; verbs that speak for him
+    check it before running.
+    """
+    from . import consent
     for adapter in adapters.values():
         for v in adapter.verbs:
             if tool_name(adapter, v) == name:
-                return await adapter.run(v.name, args or {})
+                args = args or {}
+                if v.consent == "message":
+                    person = args.get("person") or args.get("to") or args.get("recipient")
+                    if not consent.allows_message(his_words, person):
+                        raise AdapterError(consent.refusal(person))
+                return await adapter.run(v.name, args)
     raise AdapterError(f"I have no tool called {name!r}")

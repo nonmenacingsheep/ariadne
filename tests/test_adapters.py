@@ -157,11 +157,11 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
             await adapters.call_tool(reg, "spotify_next", None)
 
     def test_load_adapters_builds_spotify_with_expected_tools(self):
-        reg = adapters.load_adapters(None)
+        reg = adapters.load_adapters(None, only=["spotify"])      # other adapters register too
         self.assertEqual(list(reg), ["spotify"])
         names = {t["name"] for t in adapters.tools(reg)}
         self.assertEqual(names, {"spotify_" + v for v in
-                                 "play pause next prev volume queue like playlist seek jump".split()})
+                                 "play pause next prev volume queue like playlist seek jump shuffle".split()})
         self.assertEqual(adapters.load_adapters(None, only=[]), {})
 
 

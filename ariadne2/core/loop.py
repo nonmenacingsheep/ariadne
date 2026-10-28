@@ -116,6 +116,7 @@ class Conversation:
         await self.publish(protocol.chat(you_id, "you", text, done=True))
         await self.publish(protocol.core_line(THINKING))
         self.history.append({"role": "user", "content": text})
+        self._his_words = text        # what verbs that speak for him are checked against
         system = prompt.build(self.personality, self.snapshots())
         tools = adapters_mod.tools(self.adapters) if self.adapters else None
         # Tool calls and results live only inside the turn; history keeps her words.
@@ -194,7 +195,8 @@ class Conversation:
         await self.publish(protocol.core_line(call.name.replace("_", " ") + "…"))
         result = {"type": "tool_result", "tool_use_id": call.id}
         try:
-            result["content"] = await adapters_mod.call_tool(self.adapters, call.name, call.input)
+            result["content"] = await adapters_mod.call_tool(self.adapters, call.name, call.input,
+                                                             his_words=getattr(self, "_his_words", None))
         except asyncio.CancelledError:
             raise
         except adapters_mod.AdapterError as e:

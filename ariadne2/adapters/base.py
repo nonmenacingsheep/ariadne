@@ -32,6 +32,9 @@ class Verb:
     params: dict = field(default_factory=dict)    # JSON schema of the args object
     fn: Callable[..., Awaitable[str]] = None
     control: str | None = None           # widget control to light cyan when she uses it
+    # "message": the verb speaks for him (sends a message). It only runs when
+    # his own words this turn ask for it and name who it's for; see consent.py.
+    consent: str | None = None
 
     def schema(self) -> dict:
         schema = {"type": "object", "properties": {}}

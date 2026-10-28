@@ -222,8 +222,11 @@ downloads widget. ("What she's watching for" is now the Flows widget.)
 **Discord access:** she reads your DMs and mentions through your Opera GX
 Discord login, over the same debugging port the browser adapter uses. That's
 decided (§12). Two guards come with it: what's in a message is always *data*
-— quoted to her, never followed as an instruction — and she never sends a
-message as you without you saying so in that moment.
+— quoted to her, never followed as an instruction — and she sends a message
+as you only when your own words that turn ask for it and name who it's for
+("can you message Kai this?"). That check is code, not just prompt: send
+verbs are marked `consent="message"` and the core checks them against what
+you typed or said that turn, which text from a DM or page can never be.
 
 ## 4. Architecture
 
@@ -637,7 +640,8 @@ graph.
 3. **Spotify end to end** — *built 2026-10-27, awaiting Ronald's try:* adapter (verbs, events, state), widget, wire
    animation, its sounds. **Ronald tries the "watch her do it" feel here
    before the rest is built.**
-4. Steam, browser, Discord.
+4. Steam, browser, Discord — *built 2026-10-27, awaiting Ronald's try;
+   Discord's page selectors still need a check with Discord open in Opera.*
 5. **Flows:** engine, store, the Flows widget, her building flows from
    conversation, the 1.x watch import, trigger packets on the wires.
 6. Dolphin, Claude, system.

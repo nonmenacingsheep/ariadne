@@ -16,7 +16,7 @@ from collections import deque
 
 from .base import Adapter, AdapterError, Verb
 from .mpris import Mpris, MprisError
-from .spotify_web import SpotifyWeb, WebError
+from .spotify_web import SCAN_CAP, SpotifyWeb, WebCalls, _row  # noqa: F401
 
 log = logging.getLogger("ariadne2.adapters.spotify")
 
@@ -26,7 +26,8 @@ DEBOUNCE = 0.1             # a track change fires several signals at once
 SETTLE_SCALE = 1.0         # tests set 0: commands needn't wait for the player to report
 SEEK_SLACK = 1.5           # position further than this from expected = a seek
 HISTORY = 10               # tracks shown before the current one
-SCAN_CAP = 1000            # most context tracks read while looking for the current one
+QUEUE = 20                 # rows of up-next shown (Spotify's /me/player/queue gives up to 20)
+SEEN_CAP = 50              # tracks remembered as played (for the shuffle history)
 JUMP_PAUSE = 0.4           # between skips, so Spotify keeps up
 KINDS = ("track", "artist", "album", "playlist", "liked")
 STATUS = {"Playing": "playing", "Paused": "paused", "Stopped": "stopped"}
@@ -81,18 +82,9 @@ def map_state(snap: dict, extras: dict | None, now: float) -> dict:
     # liked, queue and history belong to one track; stale after a skip, so don't show them.
     if extras.get("track_id") == track_id(meta) and track_id(meta):
         state["liked"] = extras.get("liked")
-        state["queue"] = list(extras.get("queue") or [])[:5]
+        state["queue"] = list(extras.get("queue") or [])[:QUEUE]
         state["history"] = list(extras.get("history") or [])[:HISTORY]
     return state
-
-
-def _row(t: dict) -> dict:
-    """A Web API track object -> the widget's row. `uri` only when Spotify gave one."""
-    row = {"title": t.get("name", ""),
-           "artist": ", ".join(a.get("name", "") for a in t.get("artists") or [])}
-    if t.get("uri"):
-        row["uri"] = t["uri"]
-    return row
 
 
 def _changed(old: dict, new: dict) -> bool:
@@ -107,7 +99,7 @@ def _clock(s: float) -> str:
     return f"{int(s) // 60}:{int(s) % 60:02d}"
 
 
-class SpotifyAdapter(Adapter):
+class SpotifyAdapter(WebCalls, Adapter):
     name = "spotify"
     events = ("track_changed", "paused", "playing")
 
@@ -119,16 +111,17 @@ class SpotifyAdapter(Adapter):
         self._snap: dict = {"running": False}
         self._extras: dict = {}
         self._extras_at = 0.0
-        self._hist_key: tuple | None = None       # (track id, context uri) the history is for
+        self._hist_key: tuple | None = None       # (track id, context uri, shuffle) the history is for
         self._history: list[dict] = []
-        self._pl_path = "/playlists/{}/items"     # Spotify renamed /tracks; fallback below
+        self._playing: dict | None = None         # the track playing now (uri/title/artist)
+        self._seen: deque = deque(maxlen=SEEN_CAP)   # tracks seen play before it, oldest first
         self._ident: tuple | None = None          # (title, artist, status) last seen
         self._wake = asyncio.Event()
         self._tasks: set[asyncio.Task] = set()
         self._main: asyncio.Task | None = None
         self._aloop: asyncio.AbstractEventLoop | None = None
         self.controls = {"next": "next", "prev": "prev", "like": "like",
-                         "volume": "volume", "scrub": "seek"}
+                         "volume": "volume", "scrub": "seek", "shuffle": "shuffle"}
         s = lambda **p: {"type": "object", "properties": p}          # noqa: E731
         self.verbs = [
             Verb("play", "Play music. With a query, search Spotify and play the best match "
@@ -153,6 +146,8 @@ class SpotifyAdapter(Adapter):
             Verb("seek", "Jump to a position in the current track, in seconds.",
                  {"type": "object", "properties": {"seconds": {"type": "number", "minimum": 0}},
                   "required": ["seconds"]}, self._seek, "scrub"),
+            Verb("shuffle", "Turn shuffle on or off; with no argument, toggle it.",
+                 s(on={"type": "boolean"}), self._shuffle, "shuffle"),
             Verb("jump", "Skip to a song in the up-next list or the recent history, by title.",
                  {"type": "object", "properties": {"title": {"type": "string"}},
                   "required": ["title"]}, self._jump_title),
@@ -218,6 +213,7 @@ class SpotifyAdapter(Adapter):
         track_moved = old_ident is not None and old_ident[:2] != ident[:2] and bool(new["title"])
         if old_ident is not None:
             self._events(old_ident, ident, track_moved)
+        self._note_track(snap)
         due = new["status"] == "playing" and time.monotonic() - self._extras_at > EXTRAS_PERIOD
         if (track_moved or due or self._extras_at == 0.0) and self.web.available() \
                 and new["status"] != "not running":
@@ -226,6 +222,21 @@ class SpotifyAdapter(Adapter):
         if force or _changed(self._state, new):
             self._state = new
             await self.publish_state()
+
+    def _note_track(self, snap: dict) -> None:
+        """Remember each track that has played, in order, for the shuffle history.
+        Ads and local files have no track id and are ignored."""
+        meta = (snap.get("metadata") or {}) if snap.get("running") else {}
+        tid = track_id(meta)
+        if not tid:
+            return
+        uri = f"spotify:track:{tid}"
+        if self._playing and self._playing["uri"] == uri:
+            return
+        if self._playing and (not self._seen or self._seen[-1]["uri"] != self._playing["uri"]):
+            self._seen.append(self._playing)
+        self._playing = {"title": str(meta.get("xesam:title") or ""), "artist": _artist(meta),
+                         "uri": uri}
 
     def _events(self, old: tuple, new: tuple, track_moved: bool) -> None:
         if track_moved and new[2] != "stopped":
@@ -251,17 +262,17 @@ class SpotifyAdapter(Adapter):
         except AdapterError as e:
             log.debug("player state: %s", e)
         if tid and ctx is not None:               # without the context the history would be a guess
-            key = (tid, ctx.get("uri") or "")
-            if key != self._hist_key:             # only a new track or context costs calls
+            key = (tid, ctx.get("uri") or "", bool(extras["shuffle"]))
+            if key != self._hist_key:             # only a new track, context or shuffle costs calls
                 try:
-                    self._history, self._hist_key = await self._history_for(tid, ctx), key
+                    self._history, self._hist_key = await self._history_for(tid, ctx, key[2]), key
                 except AdapterError as e:         # not cached: the next refresh retries
                     log.debug("history: %s", e)
                     self._history, self._hist_key = [], None
             extras["history"] = self._history
         try:
             q = await self._web("GET", "/me/player/queue")
-            extras["queue"] = [_row(t) for t in (q.get("queue") or [])[:5]]
+            extras["queue"] = [_row(t) for t in (q.get("queue") or [])[:QUEUE]]
         except AdapterError as e:
             log.debug("queue: %s", e)
         if tid:
@@ -275,33 +286,26 @@ class SpotifyAdapter(Adapter):
 
     # ---- history: what came before the current track ----
 
-    async def _context_rows(self, ctx: dict):
-        """The context's tracks in order, page by page (a playlist or an album)."""
-        cid, playlist = ctx["uri"].rsplit(":", 1)[-1], ctx.get("type") == "playlist"
-        size, seen = (100 if playlist else 50), 0
-        while seen < SCAN_CAP:
-            params = {"limit": size, "offset": seen}
-            if playlist:
-                try:
-                    page = await self._web("GET", self._pl_path.format(cid), params=params)
-                except AdapterError:              # the other name for the same endpoint
-                    other = "/playlists/{}/tracks" if "items" in self._pl_path else "/playlists/{}/items"
-                    page = await self._web("GET", other.format(cid), params=params)
-                    self._pl_path = other
-            else:
-                page = await self._web("GET", f"/albums/{cid}/tracks", params=params)
-            items = page.get("items") or []
-            for it in items:
-                # Playlist entries wrap the track ("track", or "item" on the newer API).
-                t = (it.get("track") or it.get("item")) if playlist and it else it
-                if t and t.get("uri"):
-                    yield _row(t)
-            seen += len(items)
-            if not items or not page.get("next"):
-                return
+    async def _shuffled_history(self, cur: str) -> list[dict]:
+        """Shuffle breaks playlist order, so use the real one: what we saw play, topped up
+        from Spotify's recently-played at the old end."""
+        rows = [dict(r) for r in self._seen if r["uri"] != cur][-HISTORY:]
+        need = HISTORY - len(rows)
+        if need > 0:
+            have = {r["uri"] for r in rows} | {cur}
+            try:
+                older = await self._recent_rows(min(50, HISTORY + len(self._seen) + 1))
+            except AdapterError as e:             # still show what we saw
+                log.debug("recently-played: %s", e)
+                return rows
+            older = [r for r in older if r["uri"] not in have]
+            rows = (older[-need:] if older else []) + rows
+        return rows
 
-    async def _history_for(self, tid: str, ctx: dict) -> list[dict]:
+    async def _history_for(self, tid: str, ctx: dict, shuffle: bool = False) -> list[dict]:
         cur = f"spotify:track:{tid}"
+        if shuffle:
+            return await self._shuffled_history(cur)
         if ctx.get("type") in ("playlist", "album") and ctx.get("uri"):
             window: deque = deque(maxlen=HISTORY)
             try:
@@ -311,9 +315,7 @@ class SpotifyAdapter(Adapter):
                     window.append(row)
             except AdapterError as e:             # e.g. a playlist he can't read: use recents
                 log.debug("context scan: %s", e)
-        recent = await self._web("GET", "/me/player/recently-played", params={"limit": HISTORY})
-        rows = [_row(i["track"]) for i in recent.get("items") or [] if i and i.get("track")]
-        return [r for r in reversed(rows) if r.get("uri") and r["uri"] != cur]
+        return [r for r in await self._recent_rows(HISTORY) if r["uri"] != cur]
 
     async def _settle(self, delay: float = 0.5) -> None:
         """Players take a moment to report what a command did."""
@@ -321,26 +323,6 @@ class SpotifyAdapter(Adapter):
         await self.refresh()
 
     # ---- Web API plumbing ----
-
-    async def _web(self, method: str, path: str, body=None, params=None):
-        if not self.web.available():
-            raise AdapterError("Spotify's Web API isn't authorised (no saved login), so I can't "
-                               "do that. Play, pause, skip and volume still work.")
-        try:
-            return await asyncio.to_thread(self.web.request, method, path, body, params)
-        except WebError as e:
-            raise AdapterError(str(e)) from e
-
-    async def _library(self, method: str, tid: str):
-        """Saved-track calls. Spotify's 2026 migration moved them to /me/library (by URI)
-        and 403s the old /me/tracks/contains; try the new one, keep the old as fallback."""
-        uri = f"spotify:track:{tid}"
-        new = {"GET": "/me/library/contains"}.get(method, "/me/library")
-        try:
-            return await self._web(method, new, params={"uris": uri})
-        except AdapterError:
-            old = "/me/tracks/contains" if method == "GET" else "/me/tracks"
-            return await self._web(method, old, params={"ids": tid})
 
     async def _mpris(self, fn, *args) -> None:
         try:
@@ -417,27 +399,19 @@ class SpotifyAdapter(Adapter):
         await self._settle(0.3)
         return f"Jumped to {_clock(seconds)}."
 
+    async def _shuffle(self, on=None) -> str:
+        if on is not None and not isinstance(on, bool):
+            raise AdapterError("shuffle takes on=true or on=false, or nothing to toggle")
+        if on is None:                            # toggle from Spotify's live state, not the cache
+            live = (await self._web("GET", "/me/player")).get("shuffle_state")
+            on = not (live if isinstance(live, bool) else bool(self._state["shuffle"]))
+        await self._set_shuffle(on)
+        self._hist_key = None                     # the history is a different list now
+        await asyncio.sleep(0.3 * SETTLE_SCALE)
+        await self._refresh_extras()              # reads shuffle back, rebuilds history, publishes
+        return "Shuffle on." if on else "Shuffle off."
+
     # ---- search, play, queue ----
-
-    async def _search(self, query: str, kind: str) -> dict:
-        found = await self._web("GET", "/search", params={"q": query, "type": kind, "limit": 1})
-        items = [i for i in (found.get(kind + "s") or {}).get("items") or [] if i]
-        if not items:
-            raise AdapterError(f"nothing on Spotify matches {query!r}")
-        return items[0]
-
-    async def _device(self) -> str:
-        """Somewhere to play: the active device, else the desktop app, else any."""
-        devices = [d for d in (await self._web("GET", "/me/player/devices")).get("devices") or [] if d]
-        for pick in (lambda d: d.get("is_active"),
-                     lambda d: (d.get("type") or "").lower() == "computer", lambda d: True):
-            for d in devices:
-                if pick(d) and d.get("id"):
-                    return d["id"]
-        raise AdapterError("Spotify has no device to play on. Open the Spotify app, then ask again.")
-
-    async def _start(self, body: dict) -> None:
-        await self._web("PUT", "/me/player/play", body, {"device_id": await self._device()})
 
     @staticmethod
     def _describe(item: dict) -> str:
@@ -485,12 +459,6 @@ class SpotifyAdapter(Adapter):
         await self._start({"context_uri": pick["uri"]})
         await self._settle(0.8)
         return f"Playing playlist {pick.get('name', want)}."
-
-    async def _in_context(self, ctx: dict, uri: str) -> bool:
-        async for row in self._context_rows(ctx):
-            if row["uri"] == uri:
-                return True
-        return False
 
     async def _jump(self, uri) -> str:
         """Skip to a track from the history or the queue. Checks Spotify live, not the

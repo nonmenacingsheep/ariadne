@@ -7,6 +7,7 @@ copied anywhere else. Blocking urllib; the adapter calls it from a thread.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import socket
@@ -18,10 +19,12 @@ import urllib.request
 from pathlib import Path
 
 from ..core import models
+from .base import AdapterError
 
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 API = "https://api.spotify.com/v1"
 HTTP_TIMEOUT = 15
+SCAN_CAP = 1000            # most context tracks read while looking for the current one
 
 
 class WebError(Exception):
@@ -119,3 +122,100 @@ class SpotifyWeb:
             raise WebError(f"Spotify said {e.code}: {detail}", "http") from e
         except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
             raise WebError(f"couldn't reach Spotify ({e.__class__.__name__}).", "network") from e
+
+
+def _row(t: dict) -> dict:
+    """A Web API track object -> the widget's row. `uri` only when Spotify gave one."""
+    row = {"title": t.get("name", ""),
+           "artist": ", ".join(a.get("name", "") for a in t.get("artists") or [])}
+    if t.get("uri"):
+        row["uri"] = t["uri"]
+    return row
+
+
+class WebCalls:
+    """The adapter's Web API helpers (mixed into SpotifyAdapter; needs self.web)."""
+
+    _pl_path = "/playlists/{}/items"          # Spotify renamed /tracks; fallback below
+
+    async def _context_rows(self, ctx: dict):
+        """The context's tracks in order, page by page (a playlist or an album)."""
+        cid, playlist = ctx["uri"].rsplit(":", 1)[-1], ctx.get("type") == "playlist"
+        size, seen = (100 if playlist else 50), 0
+        while seen < SCAN_CAP:
+            params = {"limit": size, "offset": seen}
+            if playlist:
+                try:
+                    page = await self._web("GET", self._pl_path.format(cid), params=params)
+                except AdapterError:              # the other name for the same endpoint
+                    other = "/playlists/{}/tracks" if "items" in self._pl_path else "/playlists/{}/items"
+                    page = await self._web("GET", other.format(cid), params=params)
+                    self._pl_path = other
+            else:
+                page = await self._web("GET", f"/albums/{cid}/tracks", params=params)
+            items = page.get("items") or []
+            for it in items:
+                # Playlist entries wrap the track ("track", or "item" on the newer API).
+                t = (it.get("track") or it.get("item")) if playlist and it else it
+                if t and t.get("uri"):
+                    yield _row(t)
+            seen += len(items)
+            if not items or not page.get("next"):
+                return
+
+
+    async def _in_context(self, ctx: dict, uri: str) -> bool:
+        async for row in self._context_rows(ctx):
+            if row["uri"] == uri:
+                return True
+        return False
+
+    async def _web(self, method: str, path: str, body=None, params=None):
+        if not self.web.available():
+            raise AdapterError("Spotify's Web API isn't authorised (no saved login), so I can't "
+                               "do that. Play, pause, skip and volume still work.")
+        try:
+            return await asyncio.to_thread(self.web.request, method, path, body, params)
+        except WebError as e:
+            raise AdapterError(str(e)) from e
+
+    async def _library(self, method: str, tid: str):
+        """Saved-track calls. Spotify's 2026 migration moved them to /me/library (by URI)
+        and 403s the old /me/tracks/contains; try the new one, keep the old as fallback."""
+        uri = f"spotify:track:{tid}"
+        new = {"GET": "/me/library/contains"}.get(method, "/me/library")
+        try:
+            return await self._web(method, new, params={"uris": uri})
+        except AdapterError:
+            old = "/me/tracks/contains" if method == "GET" else "/me/tracks"
+            return await self._web(method, old, params={"ids": tid})
+
+    async def _search(self, query: str, kind: str) -> dict:
+        found = await self._web("GET", "/search", params={"q": query, "type": kind, "limit": 1})
+        items = [i for i in (found.get(kind + "s") or {}).get("items") or [] if i]
+        if not items:
+            raise AdapterError(f"nothing on Spotify matches {query!r}")
+        return items[0]
+
+    async def _device(self) -> str:
+        """Somewhere to play: the active device, else the desktop app, else any."""
+        devices = [d for d in (await self._web("GET", "/me/player/devices")).get("devices") or [] if d]
+        for pick in (lambda d: d.get("is_active"),
+                     lambda d: (d.get("type") or "").lower() == "computer", lambda d: True):
+            for d in devices:
+                if pick(d) and d.get("id"):
+                    return d["id"]
+        raise AdapterError("Spotify has no device to play on. Open the Spotify app, then ask again.")
+
+    async def _start(self, body: dict) -> None:
+        await self._web("PUT", "/me/player/play", body, {"device_id": await self._device()})
+
+
+    async def _set_shuffle(self, on: bool) -> None:
+        await self._web("PUT", "/me/player/shuffle", params={"state": "true" if on else "false"})
+
+    async def _recent_rows(self, limit: int) -> list[dict]:
+        """Recently played, oldest first (Spotify returns newest first)."""
+        recent = await self._web("GET", "/me/player/recently-played", params={"limit": limit})
+        rows = [_row(i["track"]) for i in recent.get("items") or [] if i and i.get("track")]
+        return [r for r in reversed(rows) if r.get("uri")]

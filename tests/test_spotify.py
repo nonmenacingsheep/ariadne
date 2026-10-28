@@ -90,10 +90,10 @@ class MapStateTests(unittest.TestCase):
 
     def test_extras_only_apply_to_their_track(self):
         extras = {"track_id": "TRACK1", "liked": True, "shuffle": True, "repeat": "context",
-                  "queue": [{"title": f"t{i}", "artist": "a"} for i in range(8)]}
+                  "queue": [{"title": f"t{i}", "artist": "a"} for i in range(25)]}
         s = spotify.map_state(snap(), extras, 1.0)
         self.assertEqual((s["liked"], s["shuffle"], s["repeat"], len(s["queue"])),
-                         (True, True, "context", 5))
+                         (True, True, "context", 20))
         other = dict(META, **{"mpris:trackid": "/com/spotify/track/OTHER"})
         s = spotify.map_state(snap(meta=other), extras, 1.0)
         self.assertEqual((s["liked"], s["queue"], s["shuffle"]), (None, [], True))
@@ -506,6 +506,174 @@ class HistoryJumpTests(AdapterCase):
         with self.assertRaises(AdapterError) as cm:
             await a.press("jump", "spotify:track:S5")
         self.assertIn("Web API isn't authorised", str(cm.exception))
+
+
+def _plr(shuffle, ctx=None):
+    return {"shuffle_state": shuffle, "repeat_state": "off", "context": ctx or {}}
+
+
+class ShuffleTests(AdapterCase):
+    """Shuffle verb/press, the 20-row queue, and the history that follows shuffle."""
+    PL = {"type": "playlist", "uri": "spotify:playlist:P1"}
+
+    def web(self, shuffle=False, ctx=PL, recents=9, queue=25):
+        self.player = {"shuffle": shuffle}
+
+        def put(body, params):
+            self.player["shuffle"] = params["state"] == "true"
+            return {}
+        routes = {("GET", "/me/player"): lambda b, p: _plr(self.player["shuffle"], ctx),
+                  ("PUT", "/me/player/shuffle"): put,
+                  ("GET", "/me/player/queue"): {"queue": _tracks([f"Q{i}" for i in range(queue)])},
+                  ("GET", "/playlists/P1/items"): {"items": _tracks(["P0", "P1x", "TRACK1"], wrap=True)},
+                  ("GET", "/me/player/recently-played"): lambda b, p: {"items": [
+                      {"track": t} for t in reversed(_tracks(
+                          [f"R{i}" for i in range(recents)] + ["TRACK1"]))][:p["limit"]]}}
+        return FakeWeb(routes=routes)
+
+    def hits(self, web, path, method=None):
+        return [c for c in web.calls if c[1] == path and (method is None or c[0] == method)]
+
+    async def play_seen(self, a, *names):
+        """Make the adapter see these tracks play, then land on TRACK1."""
+        for n in names:
+            self.mpris.snap = snap(meta=dict(META, **{"mpris:trackid": f"/com/spotify/track/{n}",
+                                                      "xesam:title": n}))
+            await a.refresh()
+            await asyncio.sleep(0.05)                          # let that track's extras land
+        self.web.calls.clear()                                 # only the last step is judged
+        self.mpris.snap = snap()
+        await a.refresh()
+        await asyncio.sleep(0.2)
+
+    async def test_queue_is_capped_at_twenty(self):
+        a = self.adapter = self.make(web=self.web(queue=25))
+        await a.start()
+        await asyncio.sleep(0.2)
+        q = a.state()["queue"]
+        self.assertEqual((len(q), q[0]["title"], q[-1]["title"]), (20, "Q0", "Q19"))
+
+    async def test_verb_sets_and_toggles_shuffle_through_the_web_api(self):
+        web = self.web(shuffle=False)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        self.assertIs(a.state()["shuffle"], False)
+        self.assertEqual(await a.run("shuffle", {"on": True}), "Shuffle on.")
+        self.assertEqual(self.hits(web, "/me/player/shuffle"),
+                         [("PUT", "/me/player/shuffle", None, {"state": "true"})])
+        self.assertIs(a.state()["shuffle"], True)              # read back, not assumed
+        self.assertEqual([m["control"] for m in self.sent if m["t"] == "action"][-1], "shuffle")
+        self.assertEqual(await a.run("shuffle"), "Shuffle off.")   # no arg: toggle
+        self.assertEqual(self.hits(web, "/me/player/shuffle")[-1][3], {"state": "false"})
+        self.assertIs(a.state()["shuffle"], False)
+        await a.run("shuffle")
+        self.assertEqual(self.hits(web, "/me/player/shuffle")[-1][3], {"state": "true"})
+        self.assertIs(a.state()["shuffle"], True)
+        with self.assertRaises(AdapterError):
+            await a.run("shuffle", {"on": "maybe"})
+
+    async def test_toggle_uses_live_state_not_the_cache(self):
+        web = self.web(shuffle=False)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        self.player["shuffle"] = True                          # changed in the Spotify app
+        await a.run("shuffle")
+        self.assertEqual(self.hits(web, "/me/player/shuffle")[-1][3], {"state": "false"})
+
+    async def test_press_shuffle_toggles_and_lights_nothing(self):
+        web = self.web(shuffle=False)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        before = len(self.sent)
+        await a.press("shuffle")
+        self.assertEqual(self.hits(web, "/me/player/shuffle")[-1][3], {"state": "true"})
+        self.assertIs(a.state()["shuffle"], True)
+        self.assertEqual([m for m in self.sent[before:] if m["t"] == "action"], [])
+        self.assertEqual(a.press_args("shuffle", None), {})
+
+    async def test_shuffle_needs_the_web_api(self):
+        a = self.adapter = self.make()
+        await a.start()
+        with self.assertRaises(AdapterError):
+            await a.run("shuffle", {"on": True})
+
+    async def test_shuffle_on_history_is_what_was_seen_playing(self):
+        web = self.web(shuffle=True, recents=0)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        await self.play_seen(a, *[f"H{i}" for i in range(12)])
+        h = a.state()["history"]
+        self.assertEqual([r["title"] for r in h], [f"H{i}" for i in range(2, 12)])   # oldest first
+        self.assertEqual(h[-1], {"title": "H11", "artist": "NovaX, Kat", "uri": "spotify:track:H11"})
+        self.assertEqual(self.hits(web, "/playlists/P1/items"), [])   # not the playlist order
+        self.assertEqual(self.hits(web, "/me/player/recently-played"), [])  # 10 seen: no top-up
+
+    async def test_seen_skips_current_and_is_capped(self):
+        a = self.adapter = self.make(web=self.web(shuffle=True))
+        await a.start()
+        for i in range(60):
+            self.mpris.snap = snap(meta=dict(META, **{"mpris:trackid": f"/com/spotify/track/N{i}"}))
+            await a.refresh()
+            await a.refresh()                                  # same track again: not a new entry
+        self.assertEqual(len(a._seen), 50)
+        self.assertNotIn("spotify:track:N59", [r["uri"] for r in a._seen])   # current is skipped
+        self.assertEqual(a._seen[-1]["uri"], "spotify:track:N58")
+
+    async def test_short_seen_list_is_topped_up_from_recently_played(self):
+        web = self.web(shuffle=True, recents=9)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        await self.play_seen(a, "R7", "R8", "NEWX")            # R7/R8 are also in recents: dedupe
+        h = a.state()["history"]
+        titles = [r["title"] for r in h]
+        self.assertEqual(len(titles), 10)
+        self.assertEqual(titles[-3:], ["R7", "R8", "NEWX"])             # seen stay at the new end
+        self.assertEqual(titles[:7], [f"R{i}" for i in range(7)])       # fill sits before them
+        self.assertEqual(len(set(r["uri"] for r in h)), 10)             # deduped by uri
+        self.assertNotIn("spotify:track:TRACK1", [r["uri"] for r in h])
+
+    async def test_recently_played_failure_still_shows_seen(self):
+        web = self.web(shuffle=True)
+        web.routes[("GET", "/me/player/recently-played")] = WebError("nope", "denied")
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        await self.play_seen(a, "A1", "A2")
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["A1", "A2"])
+
+    async def test_shuffle_off_keeps_playlist_context_history(self):
+        web = self.web(shuffle=False)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        await self.play_seen(a, "H1")
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["P0", "P1x"])
+        self.assertEqual(self.hits(web, "/me/player/recently-played"), [])
+
+    async def test_switching_shuffle_invalidates_the_history_cache(self):
+        web = self.web(shuffle=False, recents=0)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        await asyncio.sleep(0.2)
+        await self.play_seen(a, "H1", "H2")
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["P0", "P1x"])
+        n = len(self.hits(web, "/playlists/P1/items"))
+        await a._refresh_extras()                              # cached: no new playlist scan
+        self.assertEqual(len(self.hits(web, "/playlists/P1/items")), n)
+        await a.run("shuffle", {"on": True})                   # -> seen order
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["H1", "H2"])
+        await a.run("shuffle", {"on": False})                  # -> playlist order again, rescanned
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["P0", "P1x"])
+        self.assertEqual(len(self.hits(web, "/playlists/P1/items")), n + 1)
+        # a change made in the Spotify app (not through the verb) invalidates it as well
+        self.player["shuffle"] = True
+        await a._refresh_extras()
+        self.assertEqual([r["title"] for r in a.state()["history"]], ["H1", "H2"])
 
 
 class WebClientTests(unittest.TestCase):

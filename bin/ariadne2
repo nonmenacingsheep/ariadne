@@ -4,6 +4,17 @@
 #   bin/ariadne2 --demo   fake actions every few seconds, to test the wires
 cd "$(dirname "$0")/.." || exit 1
 
+# The desk allows one copy, and a second launch would just hand over to the
+# old one and quit, so launching again means replacing what's running.
+if pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "ariadne2.core" >/dev/null; then
+  echo "stopping the Ariadne 2 that's already running"
+  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "m ariadne2.core" >/dev/null || break
+    sleep 0.3
+  done
+fi
+
 # The container has no GPU driver of its own, so GTK would draw the desk with
 # llvmpipe (OpenGL on the CPU). Borrow the host's NVIDIA EGL driver instead,
 # the same way ~/.local/bin/godot-gate.sh does for Vulkan: link its versioned

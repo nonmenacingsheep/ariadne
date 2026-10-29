@@ -13,6 +13,7 @@ from .. import protocol
 from . import models, prompt
 from .flows.engine import Engine
 from .loop import Conversation
+from .memory import MemoryToolset
 from .tools import GeneralTools
 from .server import CoreServer
 
@@ -92,10 +93,13 @@ async def run(args: argparse.Namespace) -> None:
     voice = ears = None
     if not args.quiet:
         voice = _make_voice(server)
+    memory = MemoryToolset()
+    memory.warm()           # the model and the old transcript, loaded off the main thread
     conversation = Conversation(server.publish, lambda: server.snapshots,
                                 model_name=args.model, personality=args.personality,
                                 on_sentence=voice.say if voice else None,
-                                adapters=adapters, toolsets=[GeneralTools()])
+                                adapters=adapters, toolsets=[GeneralTools(), memory],
+                                on_turn=memory.on_turn)
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)
     conversation.flows = engine

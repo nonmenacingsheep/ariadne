@@ -59,13 +59,15 @@ class Conversation:
     `toolsets` are more tool sources (core/tools: `tools()` definitions and
     `await call(name, args, his_words)` returning text, or content blocks for
     a picture). They're merged with the adapter and flow tools every turn;
-    a toolset may also have `context()` (extra system prompt) and `rounds()`.
+    a toolset may also have `context()` (extra system prompt), `rounds()`, and
+    `turn(text)` (told what the turn is about before `context()` is asked; None
+    for a flow's one-off turn).
     """
 
     def __init__(self, publish, snapshots=None, model=None, model_name: str = models.DEFAULT_MODEL,
                  personality: str = prompt.DEFAULT_PERSONALITY, on_sentence=None,
                  max_turns: int = MAX_TURNS, adapters=None, flows=None, on_text=None,
-                 toolsets=None) -> None:
+                 toolsets=None, on_turn=None) -> None:
         self.publish = publish
         self.snapshots = snapshots or (lambda: {})
         self.model = model or models.stream
@@ -77,6 +79,7 @@ class Conversation:
         self.toolsets = list(toolsets or [])
         self.flows = flows                # the flow engine: her flow tools, and what flows start from
         self.on_text = on_text            # called with each text he submits (You say starts)
+        self.on_turn = on_turn            # on_turn(his_text, her_reply, when): after each turn of his words
         self.history: list[dict] = []
         # Boot stamp in ids: a restarted core must not reuse ids a desk still holds.
         self._boot = format(int(time.time()), "x")
@@ -134,12 +137,14 @@ class Conversation:
 
     async def _turn(self, text: str, his_words: bool = True) -> None:
         n = next(self._n)
+        started = time.time()
         you_id, her_id = f"{self._boot}-{n}-you", f"{self._boot}-{n}-aries"
         await self.publish(protocol.chat(you_id, "you", text, done=True))
         await self.publish(protocol.core_line(THINKING))
         self.history.append({"role": "user", "content": text})
         self._his_words = text if his_words else None   # what consent verbs are checked against
         screen = MarkStream()
+        self._note_turn(text)
         system = self._system()
         tools = self._tools()
         rounds = self._rounds()
@@ -198,6 +203,7 @@ class Conversation:
             self.history.append({"role": "assistant",
                                  "content": f"(no words; used {', '.join(used)})"})
             self._trim()
+            self._finished(text, "", started, his_words)
             return
         if not reply:
             # An empty stream still has to close the bubble the user is waiting on.
@@ -208,6 +214,25 @@ class Conversation:
             await self._sentence(sentence)
         self.history.append({"role": "assistant", "content": reply})
         self._trim()
+        self._finished(text, reply, started, his_words)
+
+    def _note_turn(self, text: str | None) -> None:
+        """Tell the toolsets what this turn is about, before their context is asked for."""
+        for ts in self.toolsets:
+            hook = getattr(ts, "turn", None)
+            if hook:
+                try:
+                    hook(text)
+                except Exception:
+                    log.exception("toolset turn hook failed")
+
+    def _finished(self, text: str, reply: str, started: float, his_words: bool) -> None:
+        """His words and her reply, dated, to whoever keeps the record. Not for turns he didn't speak."""
+        if self.on_turn and his_words:
+            try:
+                self.on_turn(text, reply, started)
+            except Exception:
+                log.exception("on_turn hook failed")
 
     @staticmethod
     def _blocks(text: str, calls: list) -> list[dict]:
@@ -284,6 +309,7 @@ class Conversation:
         The flow's values arrive quoted, as data. With `post`, her words go to
         chat as one line, "<flow name>: ...". Returns her reply text.
         """
+        self._note_turn(None)
         system = self._system()
         user = f'[A flow of yours, "{flow_name}", just fired. Do this, briefly: {sentence}]'
         if values:

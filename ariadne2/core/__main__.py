@@ -119,6 +119,8 @@ async def run(args: argparse.Namespace) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
     await server.start()
+    from . import pet_inbox
+    inbox_task = asyncio.create_task(pet_inbox.watch(conversation.submit))
     for adapter in adapters.values():
         try:
             await adapter.start()
@@ -135,6 +137,7 @@ async def run(args: argparse.Namespace) -> None:
             if part:
                 await part.stop()
         await engine.stop()
+        inbox_task.cancel()
         await conversation.stop()
         for adapter in adapters.values():
             try:

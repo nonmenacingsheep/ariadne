@@ -83,7 +83,7 @@ class Conversation:
         if msg.get("t") == "text" and msg.get("widget") == "chat":
             self.submit(msg["text"])
 
-    def submit(self, text: str) -> None:
+    def submit(self, text: str, his_words: bool = True) -> None:
         """Queue a user text (typed, or spoken later); turns run one at a time."""
         text = text.strip()
         if not text:
@@ -93,7 +93,9 @@ class Conversation:
                 self.on_text(text)
             except Exception:
                 log.exception("on_text hook failed")
-        self._queue.put_nowait(text)
+        # Not his words: something he did (a file dropped on her body), told
+        # to her as text. Such a turn can never satisfy a consent check.
+        self._queue.put_nowait(text if his_words else ("", text))
         if self._worker is None or self._worker.done():
             self._worker = asyncio.create_task(self._run())
 
@@ -110,7 +112,10 @@ class Conversation:
         while True:
             text = await self._queue.get()
             try:
-                await self._turn(text)
+                if isinstance(text, tuple):
+                    await self._turn(text[1], his_words=False)
+                else:
+                    await self._turn(text)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -120,13 +125,13 @@ class Conversation:
 
     # ---- one turn ----
 
-    async def _turn(self, text: str) -> None:
+    async def _turn(self, text: str, his_words: bool = True) -> None:
         n = next(self._n)
         you_id, her_id = f"{self._boot}-{n}-you", f"{self._boot}-{n}-aries"
         await self.publish(protocol.chat(you_id, "you", text, done=True))
         await self.publish(protocol.core_line(THINKING))
         self.history.append({"role": "user", "content": text})
-        self._his_words = text        # what verbs that speak for him are checked against
+        self._his_words = text if his_words else None   # what consent verbs are checked against
         system = prompt.build(self.personality, self.snapshots())
         tools = self._tools()
         # Tool calls and results live only inside the turn; history keeps her words.

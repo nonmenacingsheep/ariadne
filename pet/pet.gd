@@ -93,6 +93,7 @@ var slab_mat: StandardMaterial3D
 var slab_label: Label3D
 var carry_pose := {}                       # arm bones -> rotation, sampled from Walk_Carry
 var crumbs: CPUParticles3D
+var life                                   # life.gd: needs, items, dropped files
 var drag_from := Vector2.ZERO
 var drag_moved := false
 var last_rect := Rect2()
@@ -118,6 +119,9 @@ func _ready() -> void:
 	_sample_carry_pose()
 	_make_slab()
 	_camera()
+	life = load("res://life.gd").new()
+	add_child(life)
+	life.setup(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
 	_land()
@@ -268,6 +272,8 @@ func _on_message(msg: Dictionary) -> void:
 				_watch(str(msg.get("widget", "")), 2.0)
 		"chat":
 			_stir()
+			if msg.get("role", "") == "you" and msg.get("done", false):
+				life.bump("affection", 0.03)
 		"state":
 			if msg.get("widget", "") == "spotify" and msg.get("data") is Dictionary:
 				spotify_playing = msg["data"].get("status", "") == "playing"
@@ -350,6 +356,29 @@ func _set_state(s: String, seconds: float) -> void:
 # sitting on a widget's edge, folding her arms, or dancing if music is on.
 func _choose() -> void:
 	var on_widget := floor_y > 0.01
+	match life.wish():
+		"sleep":
+			_set_state("sleep", 1e9)
+			_play("Sitting_Idle" if on_widget else "Crouch_Idle", 1.0, 0.6)
+			return
+		"find_him":
+			var cursor := DisplayServer.mouse_get_position() - get_window().position
+			target_x = clampf(cursor.x / PPM, floor_span.x, floor_span.y)
+			if absf(target_x - pos.x) > 0.3:
+				_set_state("wander", 20.0)
+				_play("Walk", 0.3, 0.75)
+				return
+			_set_state("react", 2.0)
+			_play("Interact", 0.3)
+			_face_front(2.5)
+			return
+		"ball":
+			life.play_ball()
+			return
+		"dance":
+			_set_state("dance", randf_range(8, 14))
+			_play("Dance", 0.4, 0.9)
+			return
 	var r := randf()
 	if spotify_playing and r < 0.3:
 		_set_state("dance", randf_range(6, 12))
@@ -385,6 +414,12 @@ func _sync_screen() -> void:
 		_land()
 
 
+func fetch(x: float) -> void:
+	target_x = clampf(x, floor_span.x, floor_span.y)
+	_set_state("fetch", 30.0)
+	_play("Jog_Fwd", 0.25, 0.8)
+
+
 func _process(delta: float) -> void:
 	t += delta
 	_sync_screen()
@@ -405,16 +440,20 @@ func _process(delta: float) -> void:
 	_face_frame(delta)
 	_place_body()
 	_update_click_area()
-	var busy := state in ["wander", "fall", "held", "react", "dance", "knocked"] or speaking or t < mood_until or (slab and slab.visible)
+	var busy: bool = state in ["wander", "fall", "held", "react", "dance", "knocked", "fetch", "throw", "eat", "pickup"] or (life != null and life.ball_live) or speaking or t < mood_until or (slab and slab.visible)
 	Engine.max_fps = FPS_BUSY if busy else FPS_IDLE
 
 
 func _think(_delta: float) -> void:
 	if state in ["fall", "held"] or (state == "knocked" and t < state_until):
 		return
+	if state == "hug":
+		_play("Idle_FoldArms", 0.4)          # arms round the plush
 	if state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit"]:
 		_set_state("sleep", 1e9)
 		_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)
+		return
+	if state == "fetch":
 		return
 	if speaking and state in ["idle", "wander"]:
 		if state == "wander":
@@ -427,6 +466,8 @@ func _think(_delta: float) -> void:
 			_play("Sitting_Exit", 0.2)
 			_set_state("idle", 1.2)
 			return
+		if state == "hug":
+			life._hold("")
 		_choose()
 
 
@@ -482,6 +523,16 @@ func _move(delta: float) -> void:
 					roll = 0.0
 					_set_state("react", 0.6)
 					_play("Jump_Land", 0.1)
+		"fetch":
+			var fdir := signf(target_x - pos.x)
+			pos.x += fdir * WALK_SPEED * 2.4 * delta
+			yaw_target = fdir * 1.3
+			pos.y = floor_y
+			if absf(target_x - pos.x) < 0.1:
+				yaw_target = 0.0
+				_set_state("pickup", 1.3)
+				_play("PickUp_Table", 0.2)
+				get_tree().create_timer(0.8).timeout.connect(func(): life.picked_up_ball())
 		"held":
 			# Dangling from your cursor: she sways behind the way you move her.
 			roll = lerpf(roll, clampf(-held_vel.x * 0.09, -0.7, 0.7), clampf(delta * 6.0, 0.0, 1.0))
@@ -595,6 +646,8 @@ func _update_click_area() -> void:
 	var feet := cam.unproject_position(Vector3(pos.x, pos.y - (SIT_DROP if sitting else 0.0), 0))
 	var head := cam.unproject_position(Vector3(pos.x, pos.y + 1.62, 0))
 	var r := Rect2(Vector2(feet.x - 70, head.y - 10), Vector2(140, feet.y - head.y + 20))
+	if life != null and life.ring_open:
+		r = r.merge(life.ring_rect())
 	if r.position.distance_to(last_rect.position) < 3 and r.size.distance_to(last_rect.size) < 3:
 		return
 	last_rect = r
@@ -603,6 +656,16 @@ func _update_click_area() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		if life.ring_open:
+			life.close_ring()
+		else:
+			life.open_ring(cam.unproject_position(Vector3(pos.x, pos.y + 1.7, 0)))
+		return
+	if life.ring_open and event is InputEventMouseButton and event.pressed:
+		if not life.ring.get_global_rect().has_point(event.position):
+			life.close_ring()
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			drag_from = event.position
@@ -621,6 +684,7 @@ func _input(event: InputEvent) -> void:
 				if vel.length() > 4.0:
 					_feel("surprised", 0.8, 1.2)
 			else:                              # a click, not a drag: she nods at you
+				life.bump("affection", 0.06)
 				_set_state("react", 1.6)
 				_play("Yes", 0.2)
 				_feel("joy", 0.7, 1.5)

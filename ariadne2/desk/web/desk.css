@@ -392,3 +392,5 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .drawer-empty { font: 11px "Fira Code", monospace; opacity: .5; padding: 4px; }
 .port.ghost { position: fixed; z-index: 60; pointer-events: none; transition: left .34s cubic-bezier(.2,.8,.2,1), top .34s cubic-bezier(.2,.8,.2,1), width .34s, height .34s;
   box-shadow: 0 0 14px rgba(0,229,255,.6); border-color: var(--cyan); color: var(--cyan); }
+
+.cl-wait { flex: 1; display: grid; place-items: center; font: 11px "Fira Code", monospace; opacity: .45; background: rgba(6,4,14,.5); }

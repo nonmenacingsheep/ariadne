@@ -51,36 +51,21 @@ const Dolphin = (() => {
   return { build, set, progress, touch: (c, on) => touchIn(w, c, on) };
 })();
 
-/* ---------------- Claude (her hands) ---------------- */
+/* ---------------- Claude ---------------- */
+// The body is claude.ai itself (the layer lays a browser view over it, see
+// desk/claude_pane.py); the header tag still shows what her hands and his
+// Claude Code sessions are doing, from the adapter.
 const Claude = (() => {
-  let w, send, st = {};
-  function build(widget, s) {
-    w = widget; send = s;
-    w.bd.innerHTML = `<div class="cl-list"></div>`;
-    stepScroll(w.bd.querySelector(".cl-list"));
+  let w;
+  function build(widget) {
+    w = widget;
+    w.bd.innerHTML = `<div class="cl-wait">loading claude.ai…</div>`;
   }
-  function set(data) {
-    st = data || {}; if (!w) return;
-    const ss = st.sessions || [], list = w.bd.querySelector(".cl-list");
-    const busy = ss.filter(x => x.state === "working").length;
-    if (w.tag && !w.tagWas) w.tag.textContent = st.status === "no claude" ? "NO CLAUDE" : busy ? `${busy} WORKING` : ss.length ? `${ss.length} RECENT` : "";
-    list.innerHTML = "";
-    if (!ss.length) { list.append(el("div", "dim", st.status === "no claude" ? "Claude Code isn't installed here." : "No Claude Code sessions in the last few hours.")); return; }
-    for (const x of ss) {
-      const row = el("div", `cl-row ${x.state}`);
-      const top = el("div", "cl-top");
-      top.append(el("span", `cl-dot ${x.state}`), el("span", "cl-proj", x.project), el("span", "cl-title", x.title));
-      if (x.mine) top.append(el("span", "cl-mine", "HER HAND"));
-      const sub = el("div", "cl-sub");
-      sub.append(el("span", "cl-last", x.last || ""), el("span", "cl-meta", `${x.steps || 0} steps · ${sinceText(x.updated)}`));
-      const btns = el("div", "cl-btns");
-      const op = el("button", "cl-btn", "Folder"); op.onclick = () => send({ t: "press", widget: "claude", control: "open", value: x.id }); btns.append(op);
-      if (x.mine && x.state === "working") {
-        const stop = el("button", "cl-btn", "Stop"); stop.dataset.c = "stop";
-        twoClick(stop, "Stop?", () => send({ t: "press", widget: "claude", control: "stop", value: x.id })); btns.append(stop);
-      }
-      row.append(top, sub, btns); list.append(row);
-    }
+  function set(st) {
+    if (!w) return;
+    const ss = (st && st.sessions) || [];
+    const busy = ss.filter(x => x.state === "working").length, hers = ss.filter(x => x.mine && x.state === "working").length;
+    if (w.tag && !w.tagWas) w.tag.textContent = hers ? `${hers} OF HER HANDS WORKING` : busy ? `${busy} WORKING` : "";
   }
   return { build, set, touch: (c, on) => touchIn(w, c, on) };
 })();

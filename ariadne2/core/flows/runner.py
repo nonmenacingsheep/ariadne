@@ -51,6 +51,8 @@ class Run:
     note: str | None = None
     results: list = field(default_factory=list)       # what its actions reported, for the one folded chat line
     manual: bool = False
+    status: str = ""                                    # how it ended: ok | failed | skipped | cancelled
+    task: object = field(default=None, repr=False)    # the task driving it (not saved)
 
     def to_dict(self) -> dict:
         return {k: getattr(self, k) for k in ("id", "flow_id", "depth", "dry", "started", "trigger", "stack",
@@ -226,6 +228,8 @@ class RunnerMixin:
             return Step(pins=list(nt.exec_out))
         if kind == "stop":
             return Step(stop=True)
+        if run.dry and kind in ("settle", "wait", "wait_for"):
+            return Step()                 # a test doesn't sit through waits
         if kind == "cooldown":
             gap, key = V.parse_duration(inputs.get("every")) or 0, f"cool:{nid}"
             last = st["timers"].get(key)

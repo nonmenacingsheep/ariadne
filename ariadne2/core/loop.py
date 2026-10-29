@@ -6,11 +6,14 @@ import inspect
 import itertools
 import json
 import logging
+import os
 import re
 import time
 
 from .. import adapters as adapters_mod
 from .. import protocol
+from ..adapters import dolphin_files as df
+from . import attachments as attach_mod
 from . import models, prompt
 from .voice.text import MarkStream
 from .flows import tools as flow_tools
@@ -67,7 +70,7 @@ class Conversation:
     def __init__(self, publish, snapshots=None, model=None, model_name: str = models.DEFAULT_MODEL,
                  personality: str = prompt.DEFAULT_PERSONALITY, on_sentence=None,
                  max_turns: int = MAX_TURNS, adapters=None, flows=None, on_text=None,
-                 toolsets=None, on_turn=None) -> None:
+                 toolsets=None, on_turn=None, attach_guard=None) -> None:
         self.publish = publish
         self.snapshots = snapshots or (lambda: {})
         self.model = model or models.stream
@@ -80,32 +83,47 @@ class Conversation:
         self.flows = flows                # the flow engine: her flow tools, and what flows start from
         self.on_text = on_text            # called with each text he submits (You say starts)
         self.on_turn = on_turn            # on_turn(his_text, her_reply, when): after each turn of his words
+        self.attach_guard = attach_guard or df.Guard()   # which files he may attach: the files widget's rules
         self.history: list[dict] = []
         # Boot stamp in ids: a restarted core must not reuse ids a desk still holds.
         self._boot = format(int(time.time()), "x")
         self._n = itertools.count(1)
-        self._queue: asyncio.Queue[str] = asyncio.Queue()
+        self._queue: asyncio.Queue = asyncio.Queue()    # (text, his_words, attachments)
         self._worker: asyncio.Task | None = None
 
     # ---- input ----
 
     async def on_desk_message(self, msg: dict) -> None:
         if msg.get("t") == "text" and msg.get("widget") == "chat":
-            self.submit(msg["text"])
+            self.submit(msg["text"], attachments=msg.get("attachments"))
+        elif msg.get("t") == "attach":
+            await self.attach(msg["path"])
 
-    def submit(self, text: str, his_words: bool = True) -> None:
-        """Queue a user text (typed, or spoken later); turns run one at a time."""
-        text = text.strip()
-        if not text:
+    async def attach(self, raw: str) -> None:
+        """He picked "Paste into chat" on a file: answer with the chip, or why it can't be sent."""
+        name = os.path.basename(str(raw).rstrip("/")) or str(raw)
+        try:
+            path = attach_mod.check(raw, self.attach_guard)
+        except df.PathRefused as e:
+            await self.publish(protocol.attached(str(raw), name, "", error=str(e)))
             return
-        if self.on_text:
+        await self.publish(protocol.attached(str(path), path.name, attach_mod.kind_of(path)))
+
+    def submit(self, text: str, his_words: bool = True, attachments=None) -> None:
+        """Queue a user text (typed, or spoken later); turns run one at a time. `attachments` are
+        paths he attached; they ride with the turn but are not his words."""
+        text = text.strip()
+        files = [str(a) for a in (attachments or []) if str(a).strip()][:protocol.MAX_ATTACHMENTS]
+        if not text and not files:
+            return
+        if text and self.on_text:
             try:
                 self.on_text(text)
             except Exception:
                 log.exception("on_text hook failed")
         # Not his words: something he did (a file dropped on her body), told
         # to her as text. Such a turn can never satisfy a consent check.
-        self._queue.put_nowait(text if his_words else ("", text))
+        self._queue.put_nowait((text, his_words, files))
         if self._worker is None or self._worker.done():
             self._worker = asyncio.create_task(self._run())
 
@@ -120,12 +138,9 @@ class Conversation:
 
     async def _run(self) -> None:
         while True:
-            text = await self._queue.get()
+            text, his_words, files = await self._queue.get()
             try:
-                if isinstance(text, tuple):
-                    await self._turn(text[1], his_words=False)
-                else:
-                    await self._turn(text)
+                await self._turn(text, his_words, files)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -135,13 +150,16 @@ class Conversation:
 
     # ---- one turn ----
 
-    async def _turn(self, text: str, his_words: bool = True) -> None:
+    async def _turn(self, text: str, his_words: bool = True, files=()) -> None:
         n = next(self._n)
         started = time.time()
         you_id, her_id = f"{self._boot}-{n}-you", f"{self._boot}-{n}-aries"
+        if not text:                       # attachments with no words: nothing he said backs this turn
+            text, his_words = f"(sent {attach_mod.names(files, self.attach_guard)})", False
         await self.publish(protocol.chat(you_id, "you", text, done=True))
         await self.publish(protocol.core_line(THINKING))
-        self.history.append({"role": "user", "content": text})
+        marker = f" [attached: {attach_mod.names(files, self.attach_guard)}]" if files else ""
+        self.history.append({"role": "user", "content": text + marker})
         self._his_words = text if his_words else None   # what consent verbs are checked against
         screen = MarkStream()
         self._note_turn(text)
@@ -150,6 +168,9 @@ class Conversation:
         rounds = self._rounds()
         # Tool calls and results live only inside the turn; history keeps her words.
         messages = list(self.history)
+        if files:                          # the files themselves are shown this turn only
+            content = await asyncio.to_thread(attach_mod.user_content, text, files, self.attach_guard)
+            messages[-1] = {"role": "user", "content": content}
         splitter = SentenceSplitter()
         reply = ""
         used: list[str] = []

@@ -78,6 +78,7 @@ class Names:
 
     def __init__(self, name: str = "Aries", aliases=()) -> None:
         self.name = (name or "Aries").strip() or "Aries"
+        self.aliases = tuple(aliases)
         forms: list[str] = []
         for n in (self.name, *aliases):
             base = re.sub(r"[^a-z0-9' ]+", "", n.lower()).strip()

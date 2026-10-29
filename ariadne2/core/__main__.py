@@ -10,7 +10,9 @@ import time
 from .. import adapters as adapters_mod
 from .. import protocol
 
-from . import models, prompt
+from . import models, prompt, settings as settings_mod
+from .tools import operate as operate_mod
+from .flows import editor as flow_editor
 from .flows.engine import Engine
 from .loop import Conversation
 from .memory import MemoryToolset
@@ -73,6 +75,26 @@ def _route_press(adapters, msg: dict) -> None:
 _press_tasks: set = set()
 
 
+def _cli_overrides(args) -> set:
+    """Settings the command line chose for this run; the file must not undo them at startup."""
+    skip = set()
+    if args.model:
+        skip.add(("models", "conversation_model"))
+    if args.personality:
+        skip.add(("general", "personality"))
+    return skip
+
+
+async def _apply_set(settings, server, msg: dict) -> None:
+    """A setting changed on the desk: check it, apply it, and tell every desk what is now true
+    (a refused value reverts the control that sent it)."""
+    try:
+        settings.set(msg["section"], msg["key"], msg["value"])
+    except settings_mod.SettingsError as e:
+        log.info("set %s.%s refused: %s", msg["section"], msg["key"], e)
+    await server.publish(settings.message())
+
+
 def _spawn_flow(coro) -> None:
     task = asyncio.ensure_future(coro)
     _press_tasks.add(task)
@@ -80,7 +102,8 @@ def _spawn_flow(coro) -> None:
 
 
 async def run(args: argparse.Namespace) -> None:
-    server = CoreServer(demo=args.demo, path=args.socket)
+    settings = settings_mod.Settings()
+    server = CoreServer(demo=args.demo, path=args.socket, settings_provider=settings.message)
     engine: Engine | None = None
 
     async def publish(msg: dict) -> None:
@@ -96,7 +119,8 @@ async def run(args: argparse.Namespace) -> None:
     memory = MemoryToolset()
     memory.warm()           # the model and the old transcript, loaded off the main thread
     conversation = Conversation(server.publish, lambda: server.snapshots,
-                                model_name=args.model, personality=args.personality,
+                                model_name=args.model or settings.get("models", "conversation_model"),
+                                personality=args.personality or settings.get("general", "personality"),
                                 on_sentence=voice.say if voice else None,
                                 adapters=adapters, toolsets=[GeneralTools(), memory],
                                 on_turn=memory.on_turn)
@@ -107,6 +131,9 @@ async def run(args: argparse.Namespace) -> None:
     if voice and not args.no_ears:
         ears = _make_ears(server, voice, conversation)
 
+    settings_mod.bind_core(settings, conversation=conversation, voice=voice, ears=ears, operate=operate_mod)
+    settings.apply_all(skip=_cli_overrides(args))
+
     talking = {"on": False}
 
     def on_desk(msg):
@@ -116,11 +143,13 @@ async def run(args: argparse.Namespace) -> None:
                 talking["on"] = not talking["on"]
                 ears.push_to_talk(talking["on"])
             return None
+        if msg.get("t") == "set":
+            return _apply_set(settings, server, msg)
         if voice and msg.get("t") == "text":
             voice.cancel()      # typing to her cuts her off, like talking over her does
         if msg.get("t") == "press":
             _route_press(adapters, msg)
-        if msg.get("t") in ("hello", "answer", "press"):
+        if msg.get("t") in ("hello", "answer", "press", *flow_editor.IN):
             _spawn_flow(engine.on_desk(msg))
         return conversation.on_desk_message(msg)
     server.on_desk_message = on_desk
@@ -165,9 +194,9 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="ariadne2.core")
     p.add_argument("--demo", action="store_true", help="fake activity for testing the desk")
     p.add_argument("--socket", help="socket path (default: protocol.socket_path())")
-    p.add_argument("--model", default=models.DEFAULT_MODEL, help="conversation model")
-    p.add_argument("--personality", default=prompt.DEFAULT_PERSONALITY,
-                   help="file name in personalities/, without .md")
+    p.add_argument("--model", default=None, help="conversation model (default: the Models setting)")
+    p.add_argument("--personality", default=None,
+                   help="file name in personalities/, without .md (default: the General setting)")
     p.add_argument("--quiet", action="store_true", help="no voice and no mic")
     p.add_argument("--no-ears", action="store_true", help="voice, but no mic")
     args = p.parse_args()

@@ -21,9 +21,10 @@ SYSTEM_PERIOD = 2.0
 
 class CoreServer:
     def __init__(self, demo: bool = False, path: str | os.PathLike | None = None,
-                 on_desk_message=None) -> None:
+                 on_desk_message=None, settings_provider=None) -> None:
         self.path = pathlib.Path(path) if path else protocol.socket_path()
         self.on_desk_message = on_desk_message
+        self.settings_provider = settings_provider     # () -> a `settings` message, sent to each desk on connect
         self.snapshots: dict[str, dict] = {
             w: ({"messages": []} if w == "chat" else {"status": "no adapter yet"})
             for w in protocol.WIDGETS
@@ -134,6 +135,11 @@ class CoreServer:
         for widget, data in self.snapshots.items():
             writer.write(protocol.encode(protocol.state(widget, data)))
         writer.write(protocol.encode(self.line))
+        if self.settings_provider:
+            try:
+                writer.write(protocol.encode(self.settings_provider()))
+            except Exception:
+                log.exception("couldn't send the settings")
         self._clients.add(writer)
         log.info("desk connected (%d total)", len(self._clients))
         try:

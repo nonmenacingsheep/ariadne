@@ -72,13 +72,13 @@ async def call(engine, name: str, args: dict, his_words: str | None = None) -> s
             return "No node matches. " + OVERVIEW
         return json.dumps([compact(nt) for nt in found], ensure_ascii=False, separators=(",", ":"))
     if name == "flow_save":
-        return _save(engine, args.get("graph"), his_words)
+        return await _save(engine, args.get("graph"), his_words)
     if name == "flow_manage":
         return await _manage(engine, args, his_words)
     raise AdapterError(f"I have no tool called {name!r}")
 
 
-def _save(engine, graph, his_words) -> str:
+async def _save(engine, graph, his_words) -> str:
     if not his_words:
         raise AdapterError("Not saved: building flows needs him to ask in his own words, not a flow's turn.")
     if not isinstance(graph, dict):
@@ -89,6 +89,7 @@ def _save(engine, graph, his_words) -> str:
     res = engine.save_graph(graph, made_by="aries", keep_id=bool(existing))
     if not res.ok:
         raise AdapterError("Not saved. Fix these and save again:\n" + "\n".join(f"- {e}" for e in res.errors))
+    await engine.broadcast_graph(res.id, "aries")            # an open editor sees it appear
     out = f"Saved {res.id}: {res.summary}"
     if res.needs_approval:
         out += ("\nIt uses a message verb or outside content, so it's saved OFF until he approves it "
@@ -121,7 +122,7 @@ async def _manage(engine, args: dict, his_words) -> str:
         result = engine.run_now(fid)
         return "Started." if result == "started" else f"Didn't start: {result}"
     if op in ("enable", "disable"):
-        result = await engine.set_enabled(fid, op == "enable")
+        result = await engine.set_enabled(fid, op == "enable", by="aries")
         if result not in ("on", "off"):
             raise AdapterError(f"Not changed: {result}")
         return f"{engine.flows[fid]['name']} is {result}."

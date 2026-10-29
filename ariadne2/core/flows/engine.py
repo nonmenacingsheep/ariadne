@@ -21,6 +21,7 @@ from . import graph as G
 from . import nodes
 from . import values as V
 from .catalog import Catalog, read_path
+from .editor import EditorMixin
 from .manage import ManageMixin
 from .runner import CAUSE_GRACE, MAX_DEPTH, Run, RunnerMixin
 from .sched import LATE_GRACE, Clock, Scheduler, next_at
@@ -50,7 +51,7 @@ async def _notify_send(title: str, text: str) -> None:
         raise AdapterError("the toast didn't show")
 
 
-class Engine(RunnerMixin, ManageMixin):
+class Engine(RunnerMixin, ManageMixin, EditorMixin):
     def __init__(self, publish, adapters: dict, *, store: FlowStore | None = None, clock=None,
                  conversation=None, say=None, notify=None) -> None:
         self._publish = publish
@@ -76,6 +77,7 @@ class Engine(RunnerMixin, ManageMixin):
         self._rate: dict[str, collections.deque] = {}
         self._queues: dict[str, collections.deque] = {}
         self._summaries: dict[str, str] = {}
+        self._alias: dict[str, str] = {}      # a test copy's id -> the flow id its events carry (editor.py)
         self.last_refusal = ""
         self._started = False
 
@@ -395,7 +397,7 @@ class Engine(RunnerMixin, ManageMixin):
 
     def _launch(self, fid, nid, fields, widget, depth, dry, manual) -> Run:
         run = self._new_run(fid, nid, fields, depth, dry, manual, widget)
-        self._spawn(self._drive(run, first=True))
+        run.task = self._spawn(self._drive(run, first=True))
         return run
 
     async def _drive(self, run: Run, first: bool = False) -> str:
@@ -475,6 +477,7 @@ class Engine(RunnerMixin, ManageMixin):
 
     def _cancel(self, run: Run, note: str) -> None:
         run.note = note
+        run.status = "cancelled"
         self.sched.cancel(("run", run.id))
         self._record(run, "cancelled")
         self.runs.pop(run.id, None)
@@ -493,6 +496,7 @@ class Engine(RunnerMixin, ManageMixin):
 
     async def _finish(self, run: Run, status: str) -> None:
         fid, flow = run.flow_id, self.flows.get(run.flow_id)
+        run.status = status
         self.runs.pop(run.id, None)
         self.sched.cancel(("run", run.id))
         self._record(run, status)
@@ -539,7 +543,7 @@ class Engine(RunnerMixin, ManageMixin):
                             note: str | None = None) -> None:
         if widget is not None and widget not in protocol.WIDGETS:
             widget = None
-        await self._pub(protocol.flow(run.flow_id, run.id, phase, node, widget, note))
+        await self._pub(protocol.flow(self._alias.get(run.flow_id, run.flow_id), run.id, phase, node, widget, note))
 
     async def tell(self, text: str) -> None:
         await self._pub(protocol.chat(f"flow-{self._boot}-{next(self._n)}", "aries", text, done=True))
@@ -550,6 +554,8 @@ class Engine(RunnerMixin, ManageMixin):
     def rows(self) -> list[dict]:
         out = []
         for fid, f in sorted(self.flows.items(), key=lambda kv: kv[1]["name"].lower()):
+            if fid in self._alias:
+                continue                    # a test copy, not a flow
             c, st = self.compiled[fid], self.store.state(fid)
             note = f"problem: {self.invalid[fid]}" if fid in self.invalid else st["note"]
             out.append({"id": fid, "name": f["name"], "summary": self._summaries.get(fid, ""),

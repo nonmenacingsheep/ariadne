@@ -16,9 +16,11 @@ If Cartesia or audio output is unavailable it logs once and becomes a no-op.
 """
 from __future__ import annotations
 
+import array
 import asyncio
 import logging
 import queue
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -44,11 +46,27 @@ class Piece:
     emotion: str
 
 
+def scale_pcm(pcm: bytes, gain: float) -> bytes:
+    """16-bit little-endian mono samples times `gain` (0-1); the same bytes back at 1."""
+    gain = max(0.0, min(float(gain), 1.0))
+    if gain >= 0.999 or not pcm:
+        return pcm
+    samples = array.array("h")
+    samples.frombytes(pcm[:len(pcm) // 2 * 2])
+    if sys.byteorder == "big":
+        samples.byteswap()
+    out = array.array("h", (int(v * gain) for v in samples))
+    if sys.byteorder == "big":
+        out.byteswap()
+    return out.tobytes()
+
+
 class Voice:
     def __init__(self, voice: str | None = None, speed: float = 1.0, emotion: str = "",
                  *, on_start=None, on_stop=None, on_level=None, on_piece=None, synth=None, open_player=None,
                  clock=time.monotonic) -> None:
         self.voice, self.speed, self.emotion = voice, speed, emotion   # emotion: default when unmarked
+        self.volume = 1.0              # 0-1 gain on what she says; set live from the settings
         self.on_start, self.on_stop, self.on_level = on_start, on_stop, on_level
         # on_piece(text, emotion, seconds): each sentence as it goes to the
         # player, so a face can shape its mouth to the words (pet/).
@@ -309,6 +327,7 @@ class Voice:
             waited += 0.02
 
     def _hand_over(self, gen: int, pcm: bytes, rate: int) -> None:
+        pcm = scale_pcm(pcm, self.volume)
         with self._lock:
             if gen != self._gen:
                 return

@@ -71,6 +71,11 @@ class Listener:
     def poke(self) -> None:
         self._poke.set()
 
+    def reopen(self) -> None:
+        """Close the recorder so the loop opens a fresh one (a different device was chosen)."""
+        self._kill_process()
+        self._poke.set()
+
     def _kill_process(self) -> None:
         process, self._process = self._process, None
         if process is not None and process.poll() is None:

@@ -41,6 +41,35 @@ RECORDERS = (
 
 _proven: list = []
 _proven_lock = threading.Lock()
+_source = ""             # the capture device she was told to use; "" = the system default
+
+
+def set_source(name: str) -> None:
+    """Choose the capture device (a name from `pactl list short sources`); "" is the default.
+    A recorder already running keeps its device until it is reopened."""
+    global _source
+    _source = (name or "").strip()
+
+
+def get_source() -> str:
+    return _source
+
+
+def with_source(argv: list, source: str | None = None) -> list:
+    """`argv` aimed at the chosen device. arecord is left alone: its names are ALSA's, not the audio server's."""
+    source = _source if source is None else source
+    if not source:
+        return list(argv)
+    program = argv[0]
+    if program == "parecord":
+        return [*argv, f"--device={source}"]
+    if program == "pw-record":
+        return [*argv[:-1], "--target", source, argv[-1]]      # "-" (stdout) stays last
+    if program == "ffmpeg":
+        out = list(argv)
+        out[out.index("-i") + 1] = source
+        return out
+    return list(argv)
 
 
 def recorder_installed(which=shutil.which) -> bool:
@@ -62,6 +91,7 @@ def find_recorder(fresh: bool = False, *, popen=subprocess.Popen, which=shutil.w
         for name, argv in RECORDERS:
             if not which(argv[0]):
                 continue
+            argv = with_source(argv)
             try:
                 process = popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             except OSError:
@@ -94,7 +124,9 @@ def is_bluetooth_source(name: str) -> bool:
 
 def default_source(run=subprocess.run) -> str | None:
     """The audio server's default capture source; the host's pactl as a fallback
-    because the dev environment is a container."""
+    because the dev environment is a container. A device she was told to use stands in for it."""
+    if _source:
+        return _source
     for argv in (["pactl", "get-default-source"], ["/run/host/usr/bin/pactl", "get-default-source"]):
         try:
             out = run(argv, capture_output=True, text=True, timeout=3)

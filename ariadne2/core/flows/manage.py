@@ -10,6 +10,7 @@ import secrets
 import time
 
 from . import graph as G
+from .editor import IN as EDITOR_MESSAGES
 
 
 @dataclasses.dataclass
@@ -66,7 +67,7 @@ class ManageMixin:
         self._load(fid, flow)
         self._reindex()
 
-    async def set_enabled(self, fid: str, on: bool) -> str:
+    async def set_enabled(self, fid: str, on: bool, by: str | None = "ronald") -> str:
         flow = self.flows.get(fid)
         if flow is None:
             return "no such flow"
@@ -84,6 +85,7 @@ class ManageMixin:
         self._baseline_becomes()
         self._arm(fid, fresh=on)
         await self.publish_flows()
+        await self._pub(self.graph_message(fid, by))      # an open editor sees the flag change
         return "on" if on else "off"
 
     async def approve(self, fid: str) -> str:
@@ -145,6 +147,8 @@ class ManageMixin:
             await self.on_answer(msg)
         elif t == "press" and msg.get("widget") == "flows":
             await self.on_press(msg)
+        elif t in EDITOR_MESSAGES:
+            await self.on_editor(msg)
 
     def explain(self, fid: str) -> str:
         f = self.flows.get(fid)

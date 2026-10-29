@@ -192,9 +192,12 @@ files, spending money, sending something to someone or a password, stop with don
 Finish with done as soon as the job is done, and put the answer they asked for in the report."""
 
 
+EYES = {"model": None}      # set from the Models settings; ARIADNE2_EYES still outranks it
+
+
 def _ask(system: str, content, max_tokens: int) -> dict:
     """One call to the model that drives the window; its answer is a JSON action."""
-    model = os.environ.get("ARIADNE2_EYES") or models.DEFAULT_MODEL
+    model = os.environ.get("ARIADNE2_EYES") or EYES["model"] or models.DEFAULT_MODEL
     try:
         import anthropic
         client = anthropic.Anthropic(max_retries=1, timeout=60.0, **models.client_kwargs(models.provider_for(model)))

@@ -139,6 +139,22 @@ class Ears:
         self.listener.poke()
         self._note("listening for " + self.names.phrase if on else "wake word off")
 
+    def set_name(self, name: str) -> None:
+        """Answer to a different name ("hey <name>"). Takes effect for the next thing heard."""
+        self.names = Names(name, self.names.aliases)
+        self.dialogue.names = self.names
+        if self.available:
+            self._warm()
+        self.listener.poke()
+        self._note("listening for " + self.names.phrase if self._wake_word else "wake word off")
+
+    def set_mic(self, source: str) -> None:
+        """Listen through a different capture device ("" = the system default), reopening now."""
+        mic.set_source(source)
+        mic.forget_proof()
+        if self.available:
+            self.listener.reopen()
+
     def wake_now(self) -> bool:
         """Open as if her name had been said (a shortcut that is not push-to-talk, or
         she asked a question and wants the answer without it). No-op if already open."""

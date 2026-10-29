@@ -79,6 +79,16 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(lines[-1], "")
         self.assertEqual(c.history[-1], {"role": "assistant", "content": "Hi there. Bye."})
 
+    async def test_marks_reach_her_voice_but_never_the_chat(self):
+        said = []
+        c = self.make(FakeModel([["((sarcastic)) no. ", "I'm a voice ", "in a box."]]), on_sentence=said.append)
+        c.submit("are you a furry?")
+        await c.idle()
+        shown = "".join(m["delta"] for m in self.chats("aries"))
+        self.assertNotIn("((", shown)
+        self.assertIn("no. I'm a voice in a box.", shown)
+        self.assertTrue(any("((sarcastic))" in s for s in said))
+
     async def test_system_prompt_and_model_passed(self):
         fake = FakeModel([["ok."]])
         c = self.make(fake, model_name="m1")

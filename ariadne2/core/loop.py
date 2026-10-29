@@ -12,6 +12,7 @@ import time
 from .. import adapters as adapters_mod
 from .. import protocol
 from . import models, prompt
+from .voice.text import MarkStream
 from .flows import tools as flow_tools
 
 log = logging.getLogger("ariadne2.core.loop")
@@ -138,6 +139,7 @@ class Conversation:
         await self.publish(protocol.core_line(THINKING))
         self.history.append({"role": "user", "content": text})
         self._his_words = text if his_words else None   # what consent verbs are checked against
+        screen = MarkStream()
         system = self._system()
         tools = self._tools()
         rounds = self._rounds()
@@ -169,7 +171,9 @@ class Conversation:
                         await self.publish(protocol.core_line(""))   # first word is here
                     round_text += item
                     reply += item
-                    await self.publish(protocol.chat(her_id, "aries", item))
+                    shown = screen.feed(item)      # ((happy)) etc. are for her voice and face only
+                    if shown:
+                        await self.publish(protocol.chat(her_id, "aries", shown))
                     for sentence in splitter.feed(item):
                         await self._sentence(sentence)
                 if not calls or offered is None:
@@ -199,7 +203,7 @@ class Conversation:
             # An empty stream still has to close the bubble the user is waiting on.
             reply = "(no answer came back)"
             await self.publish(protocol.chat(her_id, "aries", reply))
-        await self.publish(protocol.chat(her_id, "aries", "", done=True))
+        await self.publish(protocol.chat(her_id, "aries", screen.flush(), done=True))
         for sentence in splitter.flush():
             await self._sentence(sentence)
         self.history.append({"role": "assistant", "content": reply})

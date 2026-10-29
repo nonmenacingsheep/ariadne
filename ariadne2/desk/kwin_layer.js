@@ -122,6 +122,9 @@ function pin(w) {
              Math.round(a.y - g.y), Math.round(a.width), Math.round(a.height));
 }
 
+registerShortcut("Ariadne2 Talk", "Ariadne 2: talk (press, speak, press)", "Meta+S",
+    function () { callDBus(SERVICE, PATH, IFACE, "Talk"); });
+
 registerShortcut("Ariadne2 Raise", "Ariadne 2: bring to front", "Meta+A",
     function () {
         var w = layer();

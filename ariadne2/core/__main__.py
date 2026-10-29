@@ -103,7 +103,15 @@ async def run(args: argparse.Namespace) -> None:
     if voice and not args.no_ears:
         ears = _make_ears(server, voice, conversation)
 
+    talking = {"on": False}
+
     def on_desk(msg):
+        # Push-to-talk (Meta+S via KWin and the desk): press, speak, press.
+        if msg.get("t") == "press" and msg.get("widget") == "core" and msg.get("control") == "talk":
+            if ears:
+                talking["on"] = not talking["on"]
+                ears.push_to_talk(talking["on"])
+            return None
         if voice and msg.get("t") == "text":
             voice.cancel()      # typing to her cuts her off, like talking over her does
         if msg.get("t") == "press":

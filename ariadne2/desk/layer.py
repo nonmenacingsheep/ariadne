@@ -197,6 +197,8 @@ class DeskApp(Gtk.Application):
     def _dbus_call(self, _conn, _sender, _path, _iface, method, params, invocation):
         if method == "Raised" and self.layer:
             self.layer.set_raised(bool(params.unpack()[0]))
+        elif method == "Talk" and self.layer:
+            self.layer.link.send(protocol.press("core", "talk"))
         elif method == "Area" and self.layer:
             self.layer.set_area(tuple(params.unpack()))
         invocation.return_value(None)

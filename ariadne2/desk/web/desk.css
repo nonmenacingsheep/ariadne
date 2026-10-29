@@ -357,3 +357,21 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .sy-l { opacity: .7; } .sy-v { font-weight: 500; }
 .sy-m .bar { margin-top: 3px; }
 .sy-x { font: 9.5px "Fira Code", monospace; opacity: .45; margin-top: 2px; }
+
+/* ---------- the widget drawer under her core ---------- */
+.brace { display: block; margin: -2px auto 0; width: 120px; height: 14px; padding: 0; cursor: pointer; background: none; border: none; flex: none; }
+.brace svg { width: 100%; height: 100%; fill: none; stroke: var(--soft); stroke-width: 1.6; opacity: .65; transition: opacity .15s, stroke .15s; }
+.brace:hover svg { opacity: 1; stroke: #fff; }
+.core.drawer-open .brace svg { stroke: var(--cyan); opacity: 1; transform: scaleY(-1); }
+.drawer { position: absolute; z-index: 40; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 0 12px;
+  max-height: 0; overflow: hidden; opacity: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,0) 30%), rgba(16, 12, 32, .9);
+  border: 1px solid rgba(255,120,130,.35); border-top: none;
+  box-shadow: 0 1px 0 rgb(255,110,120), 0 2px 0 rgb(200,40,60), 0 3px 0 rgb(140,20,36), 0 4px 0 rgb(90,10,22);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  transition: max-height .32s ease, opacity .2s ease, padding .32s ease; }
+.drawer.open { max-height: 240px; opacity: 1; padding: 12px; }
+.drawer .port { flex: 0 0 auto; min-width: 74px; }
+.drawer-empty { font: 11px "Fira Code", monospace; opacity: .5; padding: 4px; }
+.port.ghost { position: fixed; z-index: 60; pointer-events: none; transition: left .34s cubic-bezier(.2,.8,.2,1), top .34s cubic-bezier(.2,.8,.2,1), width .34s, height .34s;
+  box-shadow: 0 0 14px rgba(0,229,255,.6); border-color: var(--cyan); color: var(--cyan); }

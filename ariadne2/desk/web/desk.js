@@ -41,7 +41,9 @@ function build(name) {
   if (name === "core") {
     inner = `<div class="face"><div class="core-top"><div class="wave">${"<i></i>".repeat(7)}</div>
       <div class="mark"><span class="r">ARIES</span><span class="cy">ARIES</span><span class="wt">ARIES</span></div>
-      <div class="wave">${"<i></i>".repeat(7)}</div></div><div class="line"></div><div class="ports"></div>
+      <div class="wave">${"<i></i>".repeat(7)}</div></div>
+      <button class="brace" title="Widgets"><svg viewBox="0 0 120 12"><path d="M2 2 Q2 8 14 8 H52 Q58 8 60 11 Q62 8 68 8 H106 Q118 8 118 2"/></svg></button>
+      <div class="line"></div><div class="ports"></div>
       <button class="power" title="Close Aries">${POWER}</button>`;
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
@@ -62,6 +64,13 @@ function build(name) {
   if (APPS[name]) { APPS[name].build(w, msg => post({ t: "send", msg })); w.appBuilt = true; }
   if (name === "core") {
     w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports");
+    root.querySelector(".brace").addEventListener("click", () => setDrawer(!drawerOpen));
+    // While the drawer is open, right-click a port to send its widget back into it.
+    w.ports.addEventListener("contextmenu", e => {
+      const b = e.target.closest(".port"); if (!b) return;
+      e.preventDefault();
+      if (drawerOpen) moveToDrawer(b.dataset.p);
+    });
     // Two clicks to close, so a stray click can't shut her down.
     const btn = root.querySelector(".power"); let armed = 0;
     btn.addEventListener("click", () => {
@@ -218,7 +227,7 @@ function at(p, L, d) {
 
 function routeWires() {
   const [cx, cy, cw, ch] = rects.core, ccx = cx + cw / 2, ccy = cy + ch / 2;
-  const names = Object.keys(rects).filter(n => n !== "core" && W[n]);
+  const names = Object.keys(rects).filter(n => n !== "core" && W[n] && !hidden.has(n));
   // Where each cable enters its widget: the edge facing the core.
   const entry = n => {
     const [x, y, w, h] = rects[n];
@@ -271,7 +280,7 @@ function buildPorts(names) {
       const b = document.createElement("button");
       b.className = "port"; b.dataset.p = n; b.title = `Show or hide ${TITLES[n]}`;
       b.innerHTML = `<span>${SHORT[n] || n}</span><i></i>`;
-      b.addEventListener("click", () => toggle(n));
+      b.addEventListener("click", () => { if (!drawerOpen) setDrawer(true); });
       box.appendChild(b);
     }
   }
@@ -283,6 +292,84 @@ function buildPorts(names) {
   }
   return out;
 }
+/* ---------------- the widget drawer ---------------- */
+// Under her core: widgets not on the desk. Click one to fly it up into the
+// lineup (and onto the desk); with the drawer open, right-click a port in the
+// lineup to send it back down.
+let drawerOpen = false;
+const drawer = document.createElement("div");
+drawer.className = "drawer";
+document.body.appendChild(drawer);
+
+function setDrawer(open) {
+  drawerOpen = open;
+  W.core.root.classList.toggle("drawer-open", open);
+  if (open) fillDrawer();
+  placeDrawer();
+  drawer.classList.toggle("open", open);
+  reportRects();
+}
+
+function placeDrawer() {
+  const [x, y, w, h] = rects.core;
+  Object.assign(drawer.style, { left: (x + w * 0.15) + "px", top: (y + h + DEPTH + 6) + "px", width: (w * 0.7) + "px" });
+}
+
+function fillDrawer() {
+  drawer.innerHTML = "";
+  const off = Object.keys(TITLES).filter(n => n !== "core" && (hidden.has(n) || !rects[n]));
+  if (!off.length) { const d = document.createElement("div"); d.className = "drawer-empty"; d.textContent = "every widget is on the desk"; drawer.appendChild(d); }
+  for (const n of off) {
+    const b = document.createElement("button");
+    b.className = "port"; b.dataset.p = n; b.title = `Put ${TITLES[n]} on the desk`;
+    b.innerHTML = `<span>${SHORT[n] || TITLES[n]}</span><i></i>`;
+    b.addEventListener("click", () => moveToLineup(n, b));
+    drawer.appendChild(b);
+  }
+}
+
+// A ghost of the button glides from where it was to where it lands.
+function fly(fromRect, toEl) {
+  if (!toEl) return;
+  const to = toEl.getBoundingClientRect(), g = toEl.cloneNode(true);
+  g.classList.add("ghost");
+  Object.assign(g.style, { left: fromRect.left + "px", top: fromRect.top + "px", width: fromRect.width + "px", height: fromRect.height + "px" });
+  document.body.appendChild(g);
+  toEl.style.visibility = "hidden";
+  requestAnimationFrame(() => Object.assign(g.style, { left: to.left + "px", top: to.top + "px", width: to.width + "px", height: to.height + "px" }));
+  setTimeout(() => { g.remove(); toEl.style.visibility = ""; }, 380);
+}
+
+function moveToLineup(n, btn) {
+  const from = btn.getBoundingClientRect();
+  if (!rects[n]) rects[n] = clampRect(defaultRect(n));
+  hidden.delete(n);
+  if (!W[n]) build(n);
+  W[n].root.style.display = "";
+  relayout(true);
+  post({ t: "hidden", names: [...hidden] });
+  post({ t: "layout", widgets: rects });
+  fillDrawer();
+  fly(from, W.core.ports.querySelector(`[data-p="${n}"]`));
+}
+
+function moveToDrawer(n) {
+  const port = W.core.ports.querySelector(`[data-p="${n}"]`);
+  const from = port ? port.getBoundingClientRect() : null;
+  hidden.add(n);
+  W[n].root.style.display = "none";
+  relayout(true);
+  post({ t: "hidden", names: [...hidden] });
+  fillDrawer();
+  if (from) fly(from, drawer.querySelector(`[data-p="${n}"]`));
+}
+
+// A widget that has never been on the desk lands just under her core.
+function defaultRect(n) {
+  const [x, y, w, h] = rects.core;
+  return [x + w / 2 - 300, y + h + 120, 600, 320];
+}
+
 function toggle(n) {
   hidden.has(n) ? hidden.delete(n) : hidden.add(n);
   W[n].root.style.display = hidden.has(n) ? "none" : "";
@@ -462,14 +549,17 @@ addEventListener("pointerup", () => {
 addEventListener("keydown", e => { if (e.key === "Escape" && raised) post({ t: "drop" }); });
 
 function relayout(report) {
-  for (const n of Object.keys(rects)) place(n);
+  for (const n of Object.keys(rects)) if (W[n]) place(n);
+  if (drawerOpen) placeDrawer();
   routeWires(); needsDraw = true; kick();
   if (report) reportRects();
 }
 // Where clicks should land on the layer: each slab plus its thickness and glow.
 function reportRects() {
   const m = HALO + DEPTH;
-  post({ t: "rects", rects: Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]) });
+  const out = Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]);
+  if (drawerOpen) { const r = drawer.getBoundingClientRect(); out.push([r.left - 8, r.top - 8, r.width + 16, r.height + 16]); }
+  post({ t: "rects", rects: out });
 }
 
 // Her waveform: bar heights follow her voice level, with a little spread so
@@ -517,6 +607,7 @@ window.desk = {
   init(layout, ar, hid, sounds) {
     area = ar; rects = layout; hidden = new Set(hid || []); Sounds.configure(sounds);
     for (const n of Object.keys(TITLES)) if (rects[n] && !W[n]) build(n);
+    for (const n of Object.keys(TITLES)) if (!rects[n] && n !== "core") hidden.add(n);   // known but never placed: in the drawer
     for (const n of hidden) if (W[n]) W[n].root.style.display = "none";
     sizeCanvases(); relayout(true);
   },

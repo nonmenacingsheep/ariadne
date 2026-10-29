@@ -152,6 +152,20 @@ function hold(w) {
     });
 }
 
+// Her body always sits above the desk's widgets, or she can end up behind a
+// slab where she can't be grabbed. Whenever the stacking changes, put her
+// back on top of the desk (both stay below his windows unless raised).
+function petOverDesk() {
+    var p = pet(), w = layer();
+    if (!p || !w) return;
+    var order = workspace.stackingOrder;
+    if (order.indexOf(p) < order.indexOf(w)) {
+        try { workspace.raiseWindow(p); } catch (e) {}
+    }
+}
+try { workspace.stackingOrderChanged.connect(petOverDesk); } catch (e) {}
+workspace.windowActivated.connect(function () { petOverDesk(); });
+
 workspace.windowAdded.connect(function (w) {
     if (w.caption === TITLE) { pin(w); hold(w); settleSoon(w); }
     if (isPet(w)) { settlePet(w); settleSoon(w); }

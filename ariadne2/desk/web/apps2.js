@@ -92,7 +92,10 @@ const System = (() => {
     const m = el("div", "sy-m");
     const top = el("div", "sy-top"); top.append(el("span", "sy-l", label), el("span", "sy-v", pct == null ? "—" : `${Math.round(pct)}%`));
     const b = el("div", "bar"); const f = el("b"); f.style.width = `${pct || 0}%`;
-    f.style.background = pct > 85 ? "var(--red-hot)" : pct > 65 ? "var(--amber)" : "var(--blue)"; b.append(f);
+    // Red like the rest of her; hotter and glowing as it climbs.
+    f.style.background = pct > 85 ? "var(--red-hot)" : pct > 65 ? "#e0263a" : "linear-gradient(90deg, rgb(58,4,12), var(--red))";
+    if (pct > 85) f.style.boxShadow = "0 0 8px var(--red-hot)";
+    b.append(f);
     m.append(top, b); if (extra) m.append(el("div", "sy-x", extra)); return m;
   };
   function build(widget) { w = widget; w.bd.innerHTML = `<div class="sy-grid"></div>`; }

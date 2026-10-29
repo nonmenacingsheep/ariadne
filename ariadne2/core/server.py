@@ -34,6 +34,7 @@ class CoreServer:
         self._pet_server: asyncio.AbstractServer | None = None
         self._sampler = sysinfo.Sampler()
         self.snapshots["system"] = self._sampler.snapshot()
+        self._system_owned = False        # true once an adapter publishes "system"; this loop then stops
         self._system_task: asyncio.Task | None = None
         self._demo = Demo(self) if demo else None
 
@@ -77,11 +78,13 @@ class CoreServer:
         except FileNotFoundError:
             pass
 
-    async def publish(self, msg: dict) -> None:
-        """Remember it (so late desks catch up), then send to every desk."""
+    async def publish(self, msg: dict, own: bool = False) -> None:
+        """Remember it (so late desks catch up), then send to every desk. `own`: the server's own fallback."""
         t = msg.get("t")
         if t == "state":
             self.snapshots[msg["widget"]] = msg["data"]
+            if msg["widget"] == "system" and not own:
+                self._system_owned = True
         elif t == "line":
             self.line = msg
         data = protocol.encode(msg)
@@ -103,8 +106,10 @@ class CoreServer:
     async def _system_loop(self) -> None:
         while True:
             await asyncio.sleep(SYSTEM_PERIOD)
+            if self._system_owned:        # the system adapter publishes these now (adapters/system.py)
+                continue
             try:
-                await self.publish(protocol.state("system", self._sampler.snapshot()))
+                await self.publish(protocol.state("system", self._sampler.snapshot()), own=True)
             except Exception:
                 log.exception("system refresh failed")
 

@@ -34,3 +34,36 @@ def allows_message(his_words: str | None, person: str | None) -> bool:
 def refusal(person: str | None) -> str:
     return (f"Not sent: he didn't ask you to message {person or 'anyone'} in his own words "
             "this turn. Tell him what you'd send and let him say so.")
+
+
+# ---- spending his Claude usage (consent="spend") ----
+#
+# Starting a Claude Code run spends the usage he watches closely, so it needs
+# his say-so in the same way a message does: his own words this turn have to
+# ask for it. Only his words count; page text and tool results never reach
+# here. There is no recipient to name, so what must appear is Claude (or "a
+# hand") together with a word that sets it to work, or "claude code" outright.
+
+_CLAUDE = re.compile(r"\bclaude\b", re.I)
+_CLAUDE_CODE = re.compile(r"\bclaude[\s\-]*code\b", re.I)
+_HAND = re.compile(r"\b(?:second|other|another|extra|spare)\s+hands?\b|\bhand(?:s)?\s+(?:it|this|that|them)\s+(?:off|over)\b"
+                   r"|\bhand\s*off\b|\bhand\s+(?:it|this|that)\s+to\b|\bdelegate\b", re.I)
+_DO = re.compile(r"\b(have|get|let|ask|tell|make|start|run|launch|spin\s+up|spawn|kick\s+off|use|send|"
+                 r"hand|delegate|put|set|give|call)\b", re.I)
+# "don't use claude", "no claude for this", "without claude": a refusal, not a request.
+_NOT = re.compile(r"\b(?:don'?t|do\s+not|dont|never|without|no|not|stop)\b[^.?!\n]{0,30}\b(?:claude|hands?)\b", re.I)
+
+
+def allows_spend(his_words: str | None) -> bool:
+    """True when his own words ask for Claude (or a hand) to be put to work."""
+    words = his_words or ""
+    if not words.strip() or _NOT.search(words):
+        return False
+    if _CLAUDE_CODE.search(words):
+        return True
+    return bool((_CLAUDE.search(words) or _HAND.search(words)) and _DO.search(words))
+
+
+def spend_refusal() -> str:
+    return ("Not started: that spends his Claude usage, and he didn't ask for Claude or a hand "
+            "to do it in his own words this turn. Tell him what you'd have it do and let him say so.")

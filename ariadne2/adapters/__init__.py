@@ -18,7 +18,10 @@ log = logging.getLogger("ariadne2.adapters")
 # adapter can't stop the rest from loading.
 REGISTRY = {"spotify": "ariadne2.adapters.spotify:SpotifyAdapter",
             "steam": "ariadne2.adapters.steam:SteamAdapter",
-            "browser": "ariadne2.adapters.browser:BrowserAdapter"}
+            "browser": "ariadne2.adapters.browser:BrowserAdapter",
+            "dolphin": "ariadne2.adapters.dolphin:DolphinAdapter",
+            "system": "ariadne2.adapters.system:SystemAdapter",
+            "claude": "ariadne2.adapters.claude:ClaudeAdapter"}
 
 
 def load_adapters(publish, only=None) -> dict[str, Adapter]:
@@ -64,5 +67,7 @@ async def call_tool(adapters: dict[str, Adapter], name: str, args: dict | None,
                     person = args.get("person") or args.get("to") or args.get("recipient")
                     if not consent.allows_message(his_words, person):
                         raise AdapterError(consent.refusal(person))
+                elif v.consent == "spend" and not consent.allows_spend(his_words):
+                    raise AdapterError(consent.spend_refusal())
                 return await adapter.run(v.name, args)
     raise AdapterError(f"I have no tool called {name!r}")

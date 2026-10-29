@@ -219,6 +219,9 @@ downloads widget. ("What she's watching for" is now the Flows widget.)
 **Discord:** built in step 4, then removed at Ronald's request (2026-10-27).
 The consent check for verbs that speak for him (`consent="message"`) stays in
 the core for any future app that sends messages.
+The same gate exists for spending his Claude usage (`consent="spend"`, used by `claude.start`):
+his own words this turn must ask for Claude or a hand to do it, and in flows only an Ask Ronald
+yes to a literal question that asks for it counts.
 
 ## 4. Architecture
 

@@ -343,9 +343,10 @@ class RunnerMixin:
             if nt.consent:
                 person = args.get("person") or args.get("to") or args.get("recipient")
                 for g in list(run.grants):
-                    if consent.allows_message(g, person):
+                    if (consent.allows_spend(g) if nt.consent == "spend"
+                            else consent.allows_message(g, person)):
                         his = g
-                        run.grants.remove(g)       # one run's consent covers one message
+                        run.grants.remove(g)       # one run's consent covers one message or run
                         break
             return await adapters_mod.call_tool(self.adapters, nt.meta["tool"], args, his_words=his)
         finally:

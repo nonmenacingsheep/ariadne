@@ -57,6 +57,26 @@ class BaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({m["control"] for m in self.sent}, {"launch"})
         self.assertEqual({m["widget"] for m in self.sent}, {"steam"})
 
+    async def test_progress_inside_a_verb_shares_the_id_and_is_silent_when_pressed(self):
+        a = self.make()
+
+        async def walk():
+            await a.progress("one.txt")
+            await a.progress()
+            return "walked"
+        a.verbs.append(Verb("walk", "Walks.", {}, walk, "go"))
+        a.controls["go"] = "walk"
+        a.press_args = lambda control, value: {}
+        await a.run("walk")
+        self.assertEqual([(m["phase"], m.get("note")) for m in self.sent],
+                         [("started", None), ("progress", "one.txt"), ("progress", None), ("done", None)])
+        self.assertEqual(len({m["id"] for m in self.sent}), 1)
+        self.sent.clear()
+        await a.press("go", None)
+        self.assertEqual(self.sent, [])
+        await a.progress("outside any verb")
+        self.assertEqual(self.sent, [])
+
     async def test_ids_differ_between_runs(self):
         a = self.make()
         await a.run("launch", {"game": "a"})

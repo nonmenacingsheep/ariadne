@@ -7,6 +7,7 @@ author never touches the protocol.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import inspect
 import itertools
 import logging
@@ -19,6 +20,9 @@ from .. import protocol
 log = logging.getLogger("ariadne2.adapters")
 
 NOTE_MAX = 80                    # the failure note is one line in the widget
+
+# (id, verb, control, announced) of the verb running in this task; Adapter.progress reads it.
+_ACTION: contextvars.ContextVar = contextvars.ContextVar("adapter_action", default=None)
 
 
 class AdapterError(Exception):
@@ -34,6 +38,8 @@ class Verb:
     control: str | None = None           # widget control to light cyan when she uses it
     # "message": the verb speaks for him (sends a message). It only runs when
     # his own words this turn ask for it and name who it's for; see consent.py.
+    # "spend": the verb spends his Claude usage (starts a run). It only runs when
+    # his own words this turn ask for Claude, or a hand, to do it.
     consent: str | None = None
     # The verb returns text that came from outside (a web page): in a flow it
     # taints the path, like an outside-content start does (core/flows/graph.py).
@@ -104,6 +110,7 @@ class Adapter:
                                                    control=v.control, note=note))
 
         await say("started")
+        token = _ACTION.set((aid, verb, v.control, announce))
         try:
             result = await v.fn(**args)
         except AdapterError as e:
@@ -116,8 +123,17 @@ class Adapter:
             log.exception("%s.%s crashed", self.name, verb)
             await say("failed", "something broke")
             raise AdapterError(f"{self.name} {verb} broke on my side ({e.__class__.__name__})") from e
+        finally:
+            _ACTION.reset(token)
         await say("done")
         return result or "done"
+
+    async def progress(self, note: str | None = None) -> None:
+        """Called inside a verb: one more step done (phase "progress", the wire keeps travelling)."""
+        cur = _ACTION.get()
+        if cur and cur[3]:
+            await self.publish(protocol.action(cur[0], self.name, cur[1], "progress", control=cur[2],
+                                               note=note[:NOTE_MAX] if note else None))
 
     async def press(self, control: str, value=None) -> str | None:
         """A button pressed in the widget by him: no animation, it's his own click."""

@@ -5,7 +5,7 @@
 // what you did (typing, dragging) and where its widgets are, so the layer can
 // let clicks through everywhere else.
 
-const APPS = { spotify: Spotify, steam: Steam, browser: Browser, flows: Flows };
+const APPS = { spotify: Spotify, steam: Steam, browser: Browser, flows: Flows, dolphin: Dolphin, claude: Claude, system: System };
 const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam",
   browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows" };
 const GRID = 24, HALO = 16, DEPTH = 12, MIN = [192, 96];
@@ -107,19 +107,6 @@ function setState(name, data) {
     if (!w.appBuilt) { APPS[name].build(w, msg => post({ t: "send", msg })); w.appBuilt = true; }
     return APPS[name].set(data);
   }
-  if (name === "system" && "cpu" in data) {
-    if (!w.meters) {
-      w.bd.innerHTML = `<div class="meters"><div class="meter"><div class="v cpu"></div>CPU<div class="bar"><b class="cpub"></b></div></div>
-        <div class="meter"><div class="v mem"></div>MEM <span class="memgb"></span><div class="bar"><b class="memb"></b></div></div></div>`;
-      w.meters = true;
-    }
-    w.bd.querySelector(".cpu").textContent = `${Math.round(data.cpu)}%`;
-    w.bd.querySelector(".cpub").style.width = `${data.cpu}%`;
-    w.bd.querySelector(".mem").textContent = `${Math.round(data.mem)}%`;
-    w.bd.querySelector(".memb").style.width = `${data.mem}%`;
-    w.bd.querySelector(".memgb").textContent = `${(data.mem_used_gb || 0).toFixed(1)}/${(data.mem_total_gb || 0).toFixed(0)} GB`;
-    return;
-  }
   w.bd.innerHTML = "";
   for (const [k, v] of Object.entries(data)) {
     const row = document.createElement("div");
@@ -150,6 +137,8 @@ function action(msg) {
     if (w.tag) { w.tagWas = w.tagWas ?? w.tag.textContent; w.tag.textContent = `▸ ${msg.control || msg.verb}`; w.tag.className = "tag on"; }
     APPS[name]?.touch(msg.control, true);
     w.control = msg.control;
+  } else if (msg.phase === "progress") {
+    if (name === "dolphin") Dolphin.progress(msg);
   } else if (msg.phase === "done" || msg.phase === "failed") {
     const s = work[name] || (work[name] = { phase: "work", t0: now - MIN_WORK_MS });
     s.end = { failed: msg.phase === "failed", note: msg.note }; kick();

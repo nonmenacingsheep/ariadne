@@ -322,7 +322,8 @@ def safety(graph: dict, catalog: Catalog) -> Safety:
         if nt is None:
             return
         if (nt.consent or nt.kind == "run_flow") and tainted and not asked:
-            what = "send a message" if nt.consent else "call another flow"
+            what = ("spend his Claude usage" if nt.consent == "spend" else "send a message") \
+                if nt.consent else "call another flow"
             out.violations.append(f"{_label(c.nodes[nid], nt)} could {what} from outside content "
                                   f"({c.nodes[start]['type']}); put an Ask Ronald before it and wire it "
                                   f"from his yes option")

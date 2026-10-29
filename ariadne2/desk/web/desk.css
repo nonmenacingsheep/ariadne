@@ -494,3 +494,31 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px 2px 6px; background: rgba(252,238,10,.08); border: 1px solid rgba(252,238,10,.35); }
 .chip.bad { border-color: var(--red-hot); }
 .chip button { background: none; border: none; color: var(--soft); cursor: pointer; font-size: 11px; }
+
+/* ---------- settings panel (left of her core) ---------- */
+.gear { position: absolute; top: 8px; left: 12px; width: 24px; height: 22px; z-index: 7; cursor: pointer; display: grid; place-items: center;
+  color: var(--soft); background: rgba(10, 6, 20, .7); border: 1px solid rgba(255,120,130,.35);
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); }
+.gear svg { width: 13px; height: 13px; fill: currentColor; }
+.gear:hover, .core.settings-open .gear { color: var(--cyan); border-color: var(--cyan); }
+.setpanel { position: absolute; z-index: 40; width: 460px; max-height: 0; overflow: hidden; opacity: 0; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,0) 20%), rgba(16, 12, 32, .95);
+  border: 1px solid rgba(255,120,130,.35); clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px);
+  transform: translateX(30px); transition: max-height .35s ease, opacity .2s, transform .3s ease; }
+.setpanel.open { max-height: 640px; opacity: 1; transform: none; }
+.sp-tabs { display: flex; gap: 6px; padding: 12px 14px 8px; flex: none; }
+.sp-tab { flex: 1; height: 30px; }
+.sp-tab.live { color: var(--cyan); border-color: var(--cyan); }
+.sp-body, .av-set { overflow-y: auto; padding: 4px 14px 14px; display: grid; gap: 2px; scrollbar-width: thin; }
+.av-set { padding: 0; flex: 1; min-height: 0; }
+.sp-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.sp-text { flex: 1; min-width: 0; }
+.sp-label { font-size: 13px; }
+.sp-help { font-size: 11px; opacity: .5; }
+.sp-select, .sp-input { font: 12.5px "Noto Sans", sans-serif; color: var(--paper); background: rgba(0,0,0,.45); border: 1px solid rgba(255,120,130,.35); padding: 4px 6px; max-width: 190px; outline: none; }
+.sp-select:focus, .sp-input:focus { border-color: var(--cyan); }
+.sp-num { display: flex; align-items: center; gap: 8px; }
+.sp-num input { width: 130px; accent-color: var(--red); }
+.sp-num span { font: 11px "Fira Code", monospace; min-width: 44px; text-align: right; }
+.sp-key { font: 11px "Fira Code", monospace; padding: 2px 8px; border: 1px solid rgba(255,255,255,.2); }
+.av-needs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; flex: none; margin-bottom: 6px; }

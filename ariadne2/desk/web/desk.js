@@ -5,9 +5,9 @@
 // what you did (typing, dragging) and where its widgets are, so the layer can
 // let clicks through everywhere else.
 
-const APPS = { spotify: Spotify, steam: Steam, browser: Browser, flows: Flows, dolphin: Dolphin, claude: Claude, system: System, tasks: Tasks };
+const APPS = { spotify: Spotify, steam: Steam, browser: Browser, flows: Flows, dolphin: Dolphin, claude: Claude, system: System, tasks: Tasks, avatar: Avatar };
 const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam",
-  browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows", tasks: "Tasks" };
+  browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows", tasks: "Tasks", avatar: "Avatar" };
 const GRID = 24, HALO = 16, DEPTH = 12, MIN = [192, 96];
 const PACKET_MS = 650, MIN_WORK_MS = 900, GLINT_MS = 1200, GLINT_EVERY = 9000;
 const STRANDS = [[255, 42, 61], [109, 140, 255], [255, 214, 218]];
@@ -44,7 +44,8 @@ function build(name) {
       <div class="wave">${"<i></i>".repeat(7)}</div></div>
       <button class="brace" title="Widgets"><svg viewBox="0 0 120 12"><path d="M2 2 Q2 8 14 8 H52 Q58 8 60 11 Q62 8 68 8 H106 Q118 8 118 2"/></svg></button>
       <div class="line"></div><div class="ports"></div>
-      <button class="power" title="Close Aries">${POWER}</button>`;
+      <button class="power" title="Close Aries">${POWER}</button>
+      <button class="gear" title="Settings"><svg viewBox="0 0 16 16"><path d="M8 5.2A2.8 2.8 0 1 0 8 10.8 2.8 2.8 0 0 0 8 5.2zm6.4 3.8V7l-1.7-.4a5 5 0 0 0-.5-1.2l.9-1.5-1.4-1.4-1.5.9a5 5 0 0 0-1.2-.5L8.6 1.6H7.4L7 3.3a5 5 0 0 0-1.2.5l-1.5-.9-1.4 1.4.9 1.5a5 5 0 0 0-.5 1.2L1.6 7.4v1.2l1.7.4c.1.4.3.8.5 1.2l-.9 1.5 1.4 1.4 1.5-.9c.4.2.8.4 1.2.5l.4 1.7h1.2l.4-1.7c.4-.1.8-.3 1.2-.5l1.5.9 1.4-1.4-.9-1.5c.2-.4.4-.8.5-1.2z"/></svg></button>`;
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
@@ -70,6 +71,7 @@ function build(name) {
   if (name === "core") {
     w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports");
     root.querySelector(".brace").addEventListener("click", () => setDrawer(!drawerOpen));
+    root.querySelector(".gear").addEventListener("click", () => Settings.toggle());
     // While the drawer is open, right-click a port to send its widget back into it.
     w.ports.addEventListener("contextmenu", e => {
       const b = e.target.closest(".port"); if (!b) return;
@@ -329,7 +331,7 @@ function routeWires() {
 
 const POWER = '<svg viewBox="0 0 16 16"><path d="M7 1h2v7H7z"/><path d="M4.2 3.4l1.3 1.4A4.5 4.5 0 1 0 10.5 4.8l1.3-1.4A6.5 6.5 0 1 1 4.2 3.4z"/></svg>';
 const SHORT = { chat: "Chat", spotify: "Spotify", steam: "Steam", browser: "Browser",
-  dolphin: "Files", claude: "Claude", system: "System", flows: "Flows", tasks: "Tasks" };
+  dolphin: "Files", claude: "Claude", system: "System", flows: "Flows", tasks: "Tasks", avatar: "Avatar" };
 function buildPorts(names) {
   const box = W.core.ports, key = names.join();
   if (box.dataset.key !== key) {
@@ -620,6 +622,7 @@ function reportPane() {
 
 function relayout(report) {
   for (const n of Object.keys(rects)) if (W[n]) place(n);
+  if (typeof Settings !== "undefined" && Settings.isOpen()) Settings.place();
   reportPane();
   if (drawerOpen) placeDrawer();
   routeWires(); needsDraw = true; kick();
@@ -631,6 +634,7 @@ function reportRects() {
   const out = Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]);
   if (drawerOpen) { const r = drawer.getBoundingClientRect(); out.push([r.left - 8, r.top - 8, r.width + 16, r.height + 16]); }
   if (FlowEditor.isOpen()) out.push([0, 0, innerWidth, innerHeight]);
+  if (Settings.isOpen()) { const r = Settings.rect(); out.push([r.left - 8, r.top - 8, r.width + 16, r.height + 16]); }
   if (FileMenu.isOpen()) { const r = FileMenu.rect(); out.push([r.left - 6, r.top - 6, r.width + 12, r.height + 12]); }
   post({ t: "rects", rects: out });
 }
@@ -697,6 +701,7 @@ function openEditor(id) {
 
 window.desk = {
   init(layout, ar, hid, sounds) {
+    Settings.init(m => post({ t: "send", msg: m }));
     area = ar; rects = layout; hidden = new Set(hid || []); Sounds.configure(sounds);
     for (const n of Object.keys(TITLES)) if (rects[n] && !W[n]) build(n);
     for (const n of Object.keys(TITLES)) if (!rects[n] && n !== "core") hidden.add(n);   // known but never placed: in the drawer
@@ -719,6 +724,7 @@ window.desk = {
       case "flow": flowEvent(msg); FlowEditor.message(msg); break;
       case "catalog": case "flow_graph": case "flow_saved": case "flow_tested": FlowEditor.message(msg); break;
       case "menu": FileMenu.reply(msg); break;
+      case "settings": Settings.message(msg); break;
       case "attached": if (W.chat) addChip(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;
       case "ears":

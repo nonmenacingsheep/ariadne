@@ -13,15 +13,21 @@ extends Node3D
 const PORT := 47120                       # the core's read-only localhost port
 const MODEL := "res://models/aries.vrm"
 const CLIPS := ["res://assets/anims/ual1.glb", "res://assets/anims/ual2.glb"]
-const PPM := 300.0                        # screen pixels per metre: she's ~470 px tall
+var PPM := 300.0                          # screen pixels per metre (Avatar: size); she's ~470 px tall at 300
 const WALK_SPEED := 0.55                  # metres per second
 const GRAVITY := 9.0
 const SIT_DROP := 0.47                    # seat height in the sitting clips
-const SLEEP_AFTER := 480.0                # seconds of nothing before she dozes
+var SLEEP_AFTER := 480.0                  # seconds of nothing before she dozes (Avatar: sleep after)
 const MAX_THROW := 14.0                   # m/s, so a flick can't send her into orbit
 const HARD_LANDING := 5.5                 # m/s down: lands flat and dizzy instead of on her feet
-const FPS_BUSY := 30
-const FPS_IDLE := 15
+var FPS_BUSY := 30                        # Avatar: frame rate cap; idle runs at half
+var FPS_IDLE := 15
+# What she may do (Avatar settings). Everything on unless he turns it off.
+var allow := {"wander": true, "sit_on_widgets": true, "walk_off_edges": true, "dance_to_music": true,
+	"play_ball": true, "nap": true, "seek_cursor": true, "react_to_work": true, "lip_sync": true}
+var shown := true                          # Desktop: her body
+var settings_mtime := 0
+var settings_check := 0.0
 
 const FACE := {   # VRoid face shapes
 	"blink": "Fcl_EYE_Close", "joy": "Fcl_ALL_Joy", "sorrow": "Fcl_ALL_Sorrow",
@@ -256,7 +262,7 @@ func _on_message(msg: Dictionary) -> void:
 			_stir()
 			var phase := str(msg.get("phase", ""))
 			var w := str(msg.get("widget", ""))
-			if phase == "started":
+			if phase == "started" and allow["react_to_work"]:
 				_watch(w, 3.0)
 				_slab_show(w)
 			elif phase == "done":
@@ -380,17 +386,17 @@ func _choose() -> void:
 			_play("Dance", 0.4, 0.9)
 			return
 	var r := randf()
-	if spotify_playing and r < 0.3:
+	if spotify_playing and r < 0.3 and allow["dance_to_music"]:
 		_set_state("dance", randf_range(6, 12))
 		_play("Dance", 0.4, 0.9)
-	elif r < 0.55:
+	elif r < 0.55 and allow["wander"]:
 		target_x = clampf(pos.x + randf_range(-2.5, 2.5), floor_span.x, floor_span.y)
 		if absf(target_x - pos.x) > 0.3:
 			_set_state("wander", 20.0)
 			_play("Walk", 0.3, 0.75)
 			return
 		_set_state("idle", 3.0)
-	elif r < 0.7 and on_widget:
+	elif r < 0.7 and on_widget and allow["sit_on_widgets"]:
 		_set_state("sit", randf_range(10, 25))
 		_play("Sitting_Idle", 0.5)
 	elif r < 0.78:
@@ -402,6 +408,45 @@ func _choose() -> void:
 
 
 # --- every frame ------------------------------------------------------------
+# His settings (~/.config/ariadne2/settings.json): the avatar section and
+# whether her body is shown. Re-read when the file changes.
+func _read_settings() -> void:
+	var path := OS.get_environment("HOME") + "/.config/ariadne2/settings.json"
+	var m := FileAccess.get_modified_time(path)
+	if m == settings_mtime:
+		return
+	settings_mtime = m
+	var f := FileAccess.open(path, FileAccess.READ)
+	if not f:
+		return
+	var d = JSON.parse_string(f.get_as_text())
+	if not d is Dictionary:
+		return
+	var av: Dictionary = d.get("avatar", {}) if d.get("avatar") is Dictionary else {}
+	var desk: Dictionary = d.get("desktop", {}) if d.get("desktop") is Dictionary else {}
+	for k in allow:
+		if av.has(k):
+			allow[k] = bool(av[k])
+	for need in ["energy", "fun", "affection", "hunger"]:
+		if av.has(need + "_drain"):
+			life.rates[need] = clampf(float(av[need + "_drain"]), 0.25, 4.0)
+	if av.has("fps_cap"):
+		FPS_BUSY = clampi(int(av["fps_cap"]), 10, 60)
+		FPS_IDLE = maxi(10, FPS_BUSY / 2)
+	if av.has("sleep_after"):
+		SLEEP_AFTER = clampf(float(av["sleep_after"]), 1, 120) * 60.0
+	if av.has("size") and absf(float(av["size"]) - PPM) > 0.5:
+		PPM = clampf(float(av["size"]), 200, 420)
+		screen = Vector2.ZERO                 # forces the camera to re-fit
+	var want_shown: bool = bool(desk.get("body", true))
+	if want_shown != shown:
+		shown = want_shown
+		body.visible = shown
+		if not shown:
+			DisplayServer.window_set_mouse_passthrough(PackedVector2Array([Vector2.ZERO, Vector2(1, 0), Vector2(1, 1)]))
+			last_rect = Rect2()
+
+
 # The window's real size arrives a frame or two after asking for it; the
 # camera keeps one metre = PPM pixels whatever size it ends up.
 func _sync_screen() -> void:
@@ -432,6 +477,12 @@ func _process(delta: float) -> void:
 			_read_layout()
 			_land()
 
+	settings_check -= delta
+	if settings_check <= 0.0 and snapshot_path == "":
+		settings_check = 3.0
+		_read_settings()
+	if not shown:
+		return
 	_think(delta)
 	_move(delta)
 	ap.advance(delta)                       # clips first, then her arms, head and face on top
@@ -449,7 +500,7 @@ func _think(_delta: float) -> void:
 		return
 	if state == "hug":
 		_play("Idle_FoldArms", 0.4)          # arms round the plush
-	if state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit"]:
+	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit"]:
 		_set_state("sleep", 1e9)
 		_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)
 		return
@@ -481,6 +532,10 @@ func _move(delta: float) -> void:
 				_set_state("idle", randf_range(2, 5))
 				_play("Idle", 0.3)
 				yaw_target = 0.0
+			elif (pos.x < floor_span.x or pos.x > floor_span.y) and not allow["walk_off_edges"]:
+				pos.x = clampf(pos.x, floor_span.x, floor_span.y)   # stays on her widget
+				_set_state("idle", 2.0)
+				_play("Idle", 0.3)
 			elif pos.x < floor_span.x or pos.x > floor_span.y:
 				# Walked off the edge of a widget: down she goes.
 				_set_state("fall", 99.0)
@@ -599,7 +654,7 @@ func _face_frame(delta: float) -> void:
 	for k in moods:
 		_shape(k, moods[k])
 	for v in mouth:
-		_shape(v, mouth[v])
+		_shape(v, mouth[v] if allow["lip_sync"] else 0.0)
 
 
 # a i u e o: step through the vowels of the sentence she's saying, at the

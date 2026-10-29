@@ -163,6 +163,21 @@ async def run(args: argparse.Namespace) -> None:
     await server.start()
     from . import pet_inbox
     inbox_task = asyncio.create_task(pet_inbox.watch(conversation.submit))
+
+    async def body_state():
+        # Her body's needs and mood, for the Avatar widget.
+        import json
+        last = None
+        while True:
+            try:
+                d = json.loads(pet_inbox.STATE.read_text())
+                if d != last:
+                    last = d
+                    await server.publish(protocol.state("avatar", {k: d.get(k) for k in ("needs", "mood", "holding", "state")}))
+            except (OSError, ValueError):
+                pass
+            await asyncio.sleep(4)
+    avatar_task = asyncio.create_task(body_state())
     for adapter in adapters.values():
         try:
             await adapter.start()
@@ -180,6 +195,7 @@ async def run(args: argparse.Namespace) -> None:
                 await part.stop()
         await engine.stop()
         inbox_task.cancel()
+        avatar_task.cancel()
         await conversation.stop()
         for adapter in adapters.values():
             try:

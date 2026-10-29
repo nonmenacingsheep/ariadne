@@ -10,7 +10,7 @@ import pathlib
 
 VERSION = 1
 WIDGETS = ("chat", "core", "spotify", "steam", "browser",
-           "dolphin", "claude", "system", "flows", "tasks")
+           "dolphin", "claude", "system", "flows", "tasks", "avatar")
 PHASES = ("started", "progress", "done", "failed")
 ROLES = ("aries", "you")
 FLOW_PHASES = ("fired", "node", "done", "failed")

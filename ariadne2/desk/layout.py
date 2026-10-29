@@ -7,6 +7,8 @@ import os
 import pathlib
 import tempfile
 
+from .. import protocol
+
 log = logging.getLogger("ariadne2.desk.layout")
 
 SCREEN = (3440, 1440)
@@ -66,7 +68,9 @@ def load() -> dict[str, tuple]:
         log.warning("layout file unusable, using defaults: %s", e)
         return layout
     for name, entry in saved.items():
-        if name in DEFAULT and _valid(entry):
+        # Any known widget keeps its saved spot, including ones with no
+        # default place (they start in the drawer under her core).
+        if (name in DEFAULT or name in protocol.WIDGETS) and _valid(entry):
             layout[name] = clamp(entry)
     return layout
 

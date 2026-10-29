@@ -86,10 +86,10 @@ class ToolLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(c.history), 2)             # tool traffic isn't kept
 
     async def test_tools_offered_every_round_and_words_join_with_space(self):
-        c = self.make([["Hold on.", use("spotify_next")], ["Done."]])
+        c = self.make([["Hold on.", use("spotify", action="next")], ["Done."]])
         c.submit("x")
         await c.idle()
-        self.assertTrue(all(call["tools"] and call["tools"][0]["name"] == "spotify_next"
+        self.assertTrue(all(call["tools"] and call["tools"][0]["name"] == "spotify"
                             for call in self.model.calls))
         self.assertEqual("".join(m["delta"] for m in self.her()), "Hold on. Done.")
 

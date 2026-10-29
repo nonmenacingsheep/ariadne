@@ -475,8 +475,8 @@ class Wiring(unittest.TestCase):
         self.assertEqual(layout.clamp(layout.DEFAULT["tasks"]), layout.DEFAULT["tasks"])
         reg = adapters.load_adapters(None, only=["tasks"])
         self.assertIn("tasks", reg)
-        names = {t["name"] for t in adapters.tools(reg)}
-        self.assertEqual(names, {"tasks_report", "tasks_focus", "tasks_close"})
+        (t,) = adapters.tools(reg)
+        self.assertEqual(set(t["input_schema"]["properties"]["action"]["enum"]), {"report", "focus", "close"})
 
     def test_default_rect_overlaps_nothing(self):
         def hit(a, b):

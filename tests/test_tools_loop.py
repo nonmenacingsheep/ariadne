@@ -113,7 +113,7 @@ class Tests(unittest.IsolatedAsyncioTestCase, ToolsetLoop):
         c = self.make([[use("spotify_ping"), use("ping", "t2")], ["ok"]], [ts], adapters={"spotify": Spot(quiet)})
         await self.go(c)
         offered = [t["name"] for t in self.model.calls[0]["tools"]]
-        self.assertEqual(offered, ["spotify_ping", "ping"])      # the clashing toolset tool is dropped
+        self.assertEqual(offered, ["spotify", "ping"])      # the clashing toolset tool is dropped
         a, b = self.results(1)
         self.assertEqual(a["content"], "adapter ping")           # went to the adapter
         self.assertEqual(b["content"], "pong ")                  # the other to the toolset

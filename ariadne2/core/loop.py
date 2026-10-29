@@ -269,7 +269,7 @@ class Conversation:
         taken = {t["name"] for t in tools}
         for ts in self.toolsets:
             for t in ts.tools():
-                if t["name"] in taken:
+                if t["name"] in taken or adapters_mod.owns(self.adapters or {}, t["name"]):
                     log.warning("toolset tool %s clashes with another tool; skipped", t["name"])
                     continue
                 taken.add(t["name"])
@@ -288,8 +288,7 @@ class Conversation:
 
     def _toolset_for(self, name: str):
         """The toolset that owns a tool name, unless an adapter or flow tool has it."""
-        if name in flow_tools.NAMES or any(adapters_mod.tool_name(a, v) == name
-                                           for a in self.adapters.values() for v in a.verbs):
+        if name in flow_tools.NAMES or adapters_mod.owns(self.adapters or {}, name):
             return None
         return next((ts for ts in self.toolsets if any(t["name"] == name for t in ts.tools())), None)
 

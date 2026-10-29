@@ -511,10 +511,10 @@ class PressArgsTests(MenuBase):
 
     async def test_his_verbs_are_not_her_tools(self):
         from ariadne2 import adapters
-        names = {t["name"] for t in adapters.tools({"dolphin": self.a})}
-        self.assertEqual(names, {f"dolphin_{v}" for v in
-                                 ("open", "find", "list", "move", "sort", "trash", "rename", "duplicate",
-                                  "compress", "extract", "info")})
+        (t,) = adapters.tools({"dolphin": self.a})
+        self.assertEqual(set(t["input_schema"]["properties"]["action"]["enum"]),
+                         {"open", "find", "list", "move", "sort", "trash", "rename", "duplicate",
+                          "compress", "extract", "info"})
         with self.assertRaises(AdapterError):
             await adapters.call_tool({"dolphin": self.a}, "dolphin_paste", {"folder": str(self.home)})
 

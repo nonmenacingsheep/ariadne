@@ -153,14 +153,25 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
     async def test_tool_naming_and_schema(self):
         reg = {"steam": Fake(None)}
         tools = adapters.tools(reg)
-        self.assertEqual([t["name"] for t in tools], ["steam_launch", "steam_boom",
-                                                       "steam_crash", "steam_silent"])
+        self.assertEqual([t["name"] for t in tools], ["steam"])           # one tool per adapter
         t = tools[0]
-        self.assertNotIn(".", t["name"])
-        self.assertEqual(t["input_schema"], {"type": "object",
-                                             "properties": {"game": {"type": "string"}},
-                                             "required": ["game"]})
-        self.assertEqual(tools[1]["input_schema"], {"type": "object", "properties": {}})
+        self.assertEqual(t["input_schema"], {"type": "object", "required": ["action"], "properties": {
+            "action": {"type": "string", "enum": ["launch", "boom", "crash", "silent"]},
+            "game": {"type": "string"}}})
+        self.assertIn("- launch:", t["description"])
+        self.assertIn("(needs game)", t["description"])
+
+    async def test_merged_call_checks_action_and_required(self):
+        sent = []
+        reg = {"steam": Fake(sent)}
+        with self.assertRaises(adapters.AdapterError) as e:
+            await adapters.call_tool(reg, "steam", {"action": "fly"})
+        self.assertIn("launch", str(e.exception))                          # it lists the real actions
+        with self.assertRaises(adapters.AdapterError) as e:
+            await adapters.call_tool(reg, "steam", {"action": "launch"})
+        self.assertIn("needs game", str(e.exception))
+        self.assertTrue(adapters.owns(reg, "steam") and adapters.owns(reg, "steam_launch"))
+        self.assertFalse(adapters.owns(reg, "shell"))
 
     async def test_call_tool_dispatches_through_run(self):
         sent = []
@@ -179,9 +190,10 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
     def test_load_adapters_builds_spotify_with_expected_tools(self):
         reg = adapters.load_adapters(None, only=["spotify"])      # other adapters register too
         self.assertEqual(list(reg), ["spotify"])
-        names = {t["name"] for t in adapters.tools(reg)}
-        self.assertEqual(names, {"spotify_" + v for v in
-                                 "play pause next prev volume queue like playlist seek jump shuffle".split()})
+        (t,) = adapters.tools(reg)
+        self.assertEqual(t["name"], "spotify")
+        self.assertEqual(set(t["input_schema"]["properties"]["action"]["enum"]),
+                         set("play pause next prev volume queue like playlist seek jump shuffle".split()))
         self.assertEqual(adapters.load_adapters(None, only=[]), {})
 
 

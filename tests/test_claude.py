@@ -607,8 +607,9 @@ class RegistryTests(unittest.TestCase):
         got = adapters.load_adapters(_pub, only={"claude"})
         self.assertIn("claude", got)
         self.assertEqual(got["claude"].name, "claude")
-        names = [t["name"] for t in adapters.tools(got)]
-        self.assertEqual(sorted(names), ["claude_open", "claude_start", "claude_status", "claude_stop"])
+        (t,) = adapters.tools(got)
+        self.assertEqual(t["name"], "claude")
+        self.assertEqual(sorted(t["input_schema"]["properties"]["action"]["enum"]), ["open", "start", "status", "stop"])
 
 
 if __name__ == "__main__":

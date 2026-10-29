@@ -474,7 +474,8 @@ class VerbTests(Base):
         names = {adapters.tool_name(a, v) for v in a.verbs}
         self.assertEqual(names, {"steam_launch", "steam_close", "steam_install", "steam_library"})
         schemas = {t["name"]: t["input_schema"] for t in adapters.tools({"steam": a})}
-        self.assertEqual(schemas["steam_launch"]["required"], ["game"])
+        self.assertEqual(list(schemas), ["steam"])
+        self.assertEqual(set(schemas["steam"]["properties"]["action"]["enum"]), {"launch", "close", "install", "library"})
 
 
 class ProcessTests(unittest.TestCase):

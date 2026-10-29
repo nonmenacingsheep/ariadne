@@ -46,10 +46,13 @@ class Piece:
 
 class Voice:
     def __init__(self, voice: str | None = None, speed: float = 1.0, emotion: str = "",
-                 *, on_start=None, on_stop=None, on_level=None, synth=None, open_player=None,
+                 *, on_start=None, on_stop=None, on_level=None, on_piece=None, synth=None, open_player=None,
                  clock=time.monotonic) -> None:
         self.voice, self.speed, self.emotion = voice, speed, emotion   # emotion: default when unmarked
         self.on_start, self.on_stop, self.on_level = on_start, on_stop, on_level
+        # on_piece(text, emotion, seconds): each sentence as it goes to the
+        # player, so a face can shape its mouth to the words (pet/).
+        self.on_piece = on_piece
         self._synth = synth or cartesia.synthesize_pcm      # (text, voice, speed, emotion) -> (pcm, rate)
         self._open_player = open_player or player_mod.open_player
         self._injected = synth is not None
@@ -286,6 +289,8 @@ class Voice:
             try:
                 if not self._audible:          # this one opens a reply
                     self._wait_for_runway(gen, piece, pcm, rate, cost)
+                if self.on_piece and gen == self._gen:
+                    self._dispatch.call(self.on_piece, piece.text, piece.emotion, len(pcm) / 2 / rate)
                 self._hand_over(gen, pcm, rate)
             except Exception as exc:
                 log.warning("voice: playback failed: %s", exc)

@@ -27,7 +27,10 @@ def _make_voice(server):
             last[0] = now
             asyncio.ensure_future(server.publish(protocol.voice(True, rms)))
 
-    return Voice(on_level=level,
+    def piece(text: str, emotion: str, seconds: float) -> None:
+        asyncio.ensure_future(server.publish(protocol.speak(text, seconds, emotion)))
+
+    return Voice(on_level=level, on_piece=piece,
                  on_start=lambda: asyncio.ensure_future(server.publish(protocol.voice(True))),
                  on_stop=lambda: asyncio.ensure_future(server.publish(protocol.voice(False))))
 

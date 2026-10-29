@@ -63,3 +63,5 @@ Presses on the flows widget: `press(widget="flows", control="toggle"|"run"|"appr
 {"t":"answer","id":"ask-1a2b-4","choice":"yes"}
 {"t":"press","widget":"flows","control":"run","value":"f_ab12"}
 ```
+
+| `speak` | `{"t":"speak","text":"Paused.","seconds":0.6,"emotion":""}` | a sentence starting to play (her body shapes the vowels) |

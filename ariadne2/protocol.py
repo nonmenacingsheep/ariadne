@@ -29,6 +29,7 @@ _REQUIRED = {
     "text": ("widget", "text"),
     "voice": ("speaking", "level"),
     "ears": ("listening",),
+    "speak": ("text", "seconds"),
     "flow": ("flow", "run", "phase"),
     "ask": ("id", "question", "options"),
     "answer": ("id", "choice"),
@@ -203,3 +204,9 @@ def voice(speaking: bool, level: float = 0.0) -> dict:
 def ears(listening: bool) -> dict:
     """The mic opened (she's listening for a command) or closed."""
     return {"t": "ears", "listening": bool(listening)}
+
+
+def speak(text: str, seconds: float, emotion: str = "") -> dict:
+    """A sentence she's starting to say, how long it lasts, and its emotion
+    mark if any: her body shapes its mouth to the vowels (pet/)."""
+    return {"t": "speak", "text": text, "seconds": round(float(seconds), 2), "emotion": emotion or ""}

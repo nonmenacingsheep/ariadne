@@ -38,6 +38,9 @@ function settlePet(p) {
     p.skipSwitcher = true;
     p.keepAbove = false;
     p.keepBelow = true;
+    // Same area as the desk (above the panel), so her floor is the panel's top.
+    var w = layer();
+    if (w) p.frameGeometry = w.frameGeometry;
 }
 
 function output() {

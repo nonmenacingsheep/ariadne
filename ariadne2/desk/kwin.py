@@ -101,3 +101,20 @@ def run_once(js: str, plugin: str = "ariadne2-once") -> bool:
 def drop() -> bool:
     """Send the layer back behind the windows (Esc, click on empty space)."""
     return run_once(_DROP_JS, "ariadne2-drop")
+
+
+_RAISE_JS = """
+var list = workspace.windowList();
+for (var i = 0; i < list.length; i++) {
+    var w = list[i];
+    if (w.caption === "ariadne2-desk") {
+        w.keepBelow = false; w.keepAbove = true; workspace.activeWindow = w;
+        callDBus("io.ariadne2.desk", "/io/ariadne2/desk", "io.ariadne2.Layer", "Raised", true);
+    }
+}
+"""
+
+
+def raise_layer() -> bool:
+    """Bring the desk in front (the flow editor needs the keyboard)."""
+    return run_once(_RAISE_JS, "ariadne2-raise")

@@ -12,7 +12,8 @@ const Flows = (() => {
   const press = (control, id) => send({ t: "press", widget: "flows", control, value: id });
   function build(widget, s) {
     w = widget; send = s;
-    w.bd.innerHTML = `<div class="fl-list"></div>`;
+    w.bd.innerHTML = `<div class="fl-tools"><button class="fl-btn" data-a="new">+ New flow</button></div><div class="fl-list"></div>`;
+    w.bd.querySelector('[data-a="new"]').addEventListener("click", () => openEditor(null));
     stepScroll(w.bd.querySelector(".fl-list"));
   }
   function set(data) {
@@ -30,6 +31,8 @@ const Flows = (() => {
       if (f.uses_ai) name.append(el("span", "fl-ai", " ✦"));
       if (f.made_by === "aries") name.append(el("span", "fl-by", " by her"));
       txt.append(name, el("div", "fl-sum", f.summary || ""));
+      txt.style.cursor = "pointer"; txt.title = "Open in the editor";
+      txt.addEventListener("click", () => openEditor(f.id));
       if (f.note) txt.append(el("div", "fl-note", f.note));
       const side = el("div", "fl-side");
       side.append(el("span", `fl-last ${f.last_result || ""}`, ago(f.last_fired)));

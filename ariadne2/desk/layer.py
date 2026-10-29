@@ -21,6 +21,7 @@ gi.require_version("WebKit", "6.0")
 from gi.repository import Gdk, Gio, Gtk, WebKit  # noqa: E402
 
 from .. import protocol  # noqa: E402
+from ..core import settings as core_settings  # noqa: E402
 from . import kwin, layout, theme  # noqa: E402
 from .link import CoreLink  # noqa: E402
 
@@ -90,10 +91,13 @@ class Layer(Gtk.Window):
         t = msg.get("t")
         if t == "ready":
             self.ready = True
-            self._js("init", *self._layout_args(), sorted(self.hidden), _load_sounds())
+            self._js("init", *self._layout_args(), sorted(self.hidden), dict(SOUND_DEFAULTS))
             self.link.start()
         elif t == "send":
-            self.link.send(msg["msg"])
+            out = msg["msg"]
+            if out.get("t") == "set" and out.get("key") == "reset_layout":
+                self._reset_layout()     # the core only acknowledges it; the layout lives here
+            self.link.send(out)
         elif t == "layout":
             self.rects = {n: tuple(int(v) for v in r) for n, r in msg["widgets"].items()}
             layout.save(self.rects)
@@ -105,6 +109,8 @@ class Layer(Gtk.Window):
             _save_hidden(self.hidden)
         elif t == "drop":
             kwin.drop()
+        elif t == "raise":
+            kwin.raise_layer()
         elif t == "pane" and msg.get("name") == "claude":
             self.claude.place(msg.get("rect"))
         elif t == "log":
@@ -114,7 +120,14 @@ class Layer(Gtk.Window):
             self.get_application().quit()
 
     def _on_message(self, msg: dict) -> None:
+        if msg.get("t") == "settings":
+            # The sound switches live in the settings now (core/settings.py); the page keeps the last ones.
+            self._js("configureSounds", core_settings.sounds_config(msg["values"]))
         self._js("message", msg)
+
+    def _reset_layout(self) -> None:
+        self.rects = layout.fit(layout.reset(), self.area)
+        self._js("layout", *self._layout_args())
 
     def _on_status(self, status: str) -> None:
         self._js("setStatus", status)
@@ -163,21 +176,8 @@ def _load_hidden() -> set:
         return set()
 
 
+# Until the core's first `settings` message arrives; the real values live in core/settings.py.
 SOUND_DEFAULTS = {"master": True, "volume": 0.5, "muted": []}
-
-
-def _load_sounds() -> dict:
-    """Sound settings: master switch, volume, and the kinds muted one by one
-    (send, done, fail, flow, mic, raise, drop, and one per app widget)."""
-    path = layout.path().with_name("sounds.json")
-    try:
-        found = json.loads(path.read_text())
-        return {**SOUND_DEFAULTS, **{k: found[k] for k in SOUND_DEFAULTS if k in found}}
-    except (OSError, ValueError, TypeError):
-        if not path.exists():   # write the defaults once so there's a file to edit
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(SOUND_DEFAULTS, indent=2))
-        return dict(SOUND_DEFAULTS)
 
 
 def _save_hidden(names: set) -> None:

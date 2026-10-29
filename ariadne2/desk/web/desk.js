@@ -625,6 +625,7 @@ function reportRects() {
   const m = HALO + DEPTH;
   const out = Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]);
   if (drawerOpen) { const r = drawer.getBoundingClientRect(); out.push([r.left - 8, r.top - 8, r.width + 16, r.height + 16]); }
+  if (FlowEditor.isOpen()) out.push([0, 0, innerWidth, innerHeight]);
   post({ t: "rects", rects: out });
 }
 
@@ -669,6 +670,12 @@ function askInChat(msg) {
 }
 
 /* ---------------- what layer.py calls ---------------- */
+function openEditor(id) {
+  FlowEditor.openFlow(id);
+  post({ t: "raise" });          // the editor needs the keyboard and the whole screen
+  reportRects();
+}
+
 window.desk = {
   init(layout, ar, hid, sounds) {
     area = ar; rects = layout; hidden = new Set(hid || []); Sounds.configure(sounds);
@@ -676,6 +683,7 @@ window.desk = {
     for (const n of Object.keys(TITLES)) if (!rects[n] && n !== "core") hidden.add(n);   // known but never placed: in the drawer
     for (const n of hidden) if (W[n]) W[n].root.style.display = "none";
     sizeCanvases(); relayout(true);
+    FlowEditor.init(m => m.t === "__closed" ? (post({ t: "drop" }), reportRects()) : post({ t: "send", msg: m }));
   },
   layout(layout, ar) { area = ar; rects = layout; relayout(true); },
   message(msg) {
@@ -688,7 +696,8 @@ window.desk = {
       case "chat": if (W.chat) chat(msg); break;
       case "action": action(msg); break;
       case "voice": voiceLevel(msg); break;
-      case "flow": flowEvent(msg); break;
+      case "flow": flowEvent(msg); FlowEditor.message(msg); break;
+      case "catalog": case "flow_graph": case "flow_saved": case "flow_tested": FlowEditor.message(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;
       case "ears":
         if (msg.listening) Sounds.play("mic");

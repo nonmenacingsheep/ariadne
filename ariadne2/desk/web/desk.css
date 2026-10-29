@@ -39,11 +39,28 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
   background: linear-gradient(135deg, transparent 55%, rgba(255,120,130,.5) 55% 60%, transparent 60% 70%, rgba(255,120,130,.5) 70% 75%, transparent 75%); }
 
 /* chat */
-.msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; padding: 6px 8px;
+.msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 6px 8px;
   background: rgba(6, 4, 14, .35); scrollbar-width: none; }
 .msgs::-webkit-scrollbar { display: none; }
-.msg { font-size: 14px; line-height: 1.42; max-width: 92%; white-space: pre-wrap; }
-.msg.you { align-self: flex-end; text-align: right; color: var(--cyan); }
+.turn { display: flex; flex-direction: column; gap: 4px; }
+.speaker { font: 700 12px Rajdhani, sans-serif; letter-spacing: .22em; color: #fcee0a; display: flex; align-items: baseline; gap: 10px; }
+.turn.you .speaker { color: var(--cyan); }
+.speaker .when { font: 10px "Fira Code", monospace; letter-spacing: 0; color: var(--paper); opacity: .35; font-weight: 400; }
+.said { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.turn.you .said { color: #d8f7fb; }
+.work { border: 1px solid rgba(252,238,10,.18); background: rgba(232,240,242,.045); padding: 4px 10px; transition: background .26s, border-color .26s; }
+.work.live { border-color: rgba(252,238,10,.38); background: rgba(252,238,10,.055); }
+.work.done { border-color: rgba(255,255,255,.08); background: rgba(10,10,14,.5); }
+.work-label { font: 700 10.5px Rajdhani, sans-serif; letter-spacing: .2em; color: #fcee0a; background: none; border: none; padding: 2px 0; cursor: pointer; }
+.work.done .work-label { color: #6f7780; }
+.work-label::before { content: "▾ "; }
+.work.folded .work-label::before { content: "▸ "; }
+.work.folded .work-steps { display: none; }
+.work-steps { display: grid; gap: 2px; padding: 2px 0 4px; }
+.step { font: 11.5px "Fira Code", monospace; color: #9aa4ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step.now { color: #c9d3c0; }
+.step.now::after { content: " …"; color: #fcee0a; }
+.ask-opts + * { margin-top: 0; }
 .say { flex: none; font: 14px "Noto Sans", sans-serif; color: var(--paper); background: rgba(6, 4, 14, .7);
   border: 1px solid rgba(255, 120, 130, .4); padding: 8px 10px; outline: none; caret-color: var(--cyan); }
 .say:focus { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,229,255,.25); }
@@ -295,7 +312,7 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .fl-x.armed { color: var(--red-hot); }
 
 /* a flow asking him something, in the chat */
-.msg.ask { border-left: 2px solid var(--amber); padding-left: 8px; }
+.msg.ask { border-left: 2px solid var(--amber); padding-left: 8px; font-size: 14px; line-height: 1.45; }
 .ask-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .ask-opts button { font: 600 11px Rajdhani, sans-serif; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; color: var(--paper);
   background: rgba(10,6,20,.7); border: 1px solid rgba(255,179,71,.6); padding: 4px 10px; }

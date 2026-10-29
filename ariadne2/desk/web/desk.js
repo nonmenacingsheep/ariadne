@@ -125,10 +125,63 @@ function setState(name, data) {
   }
 }
 
+// The chat reads like 1.x's: a script, not bubbles. Each speaker gets a
+// bold name over what they said; her steps go in a work card under her name,
+// live while she works, then dimmed and folded once she's answered.
+let chatTurn = null;            // { role, box, body, work, steps } for the latest speaker
+function speaker(role) {
+  const w = W.chat;
+  if (chatTurn && chatTurn.role === role) return chatTurn;
+  const box = document.createElement("div"); box.className = `turn ${role}`;
+  const head = document.createElement("div"); head.className = "speaker";
+  head.textContent = role === "you" ? "YOU" : "ARIES";
+  const when = document.createElement("span"); when.className = "when";
+  when.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  head.appendChild(when);
+  box.appendChild(head);
+  w.msgs.appendChild(box);
+  chatTurn = { role, box, body: null, work: null, steps: [] };
+  return chatTurn;
+}
+function workStep(text, state = "live") {
+  if (!W.chat || !text) return;
+  const turn = speaker("aries");
+  if (!turn.work) {
+    const card = document.createElement("div"); card.className = "work live";
+    const label = document.createElement("button"); label.className = "work-label"; label.textContent = "WORKING";
+    label.addEventListener("click", () => card.classList.toggle("folded"));
+    const list = document.createElement("div"); list.className = "work-steps";
+    card.append(label, list);
+    turn.box.insertBefore(card, turn.body || null);
+    turn.work = card;
+  }
+  const list = turn.work.querySelector(".work-steps");
+  const last = list.lastElementChild;
+  if (last && last.dataset.text === text) return;
+  if (last) last.classList.remove("now");
+  const row = document.createElement("div"); row.className = "step now"; row.dataset.text = text;
+  row.textContent = text;
+  list.appendChild(row);
+  W.chat.msgs.scrollTop = W.chat.msgs.scrollHeight;
+}
+function workDone() {
+  if (!chatTurn || !chatTurn.work) return;
+  const card = chatTurn.work, n = card.querySelectorAll(".step").length;
+  card.classList.remove("live"); card.classList.add("done", "folded");
+  card.querySelector(".work-label").textContent = `${n} STEP${n === 1 ? "" : "S"}`;
+  card.querySelectorAll(".step.now").forEach(e => e.classList.remove("now"));
+}
 function chat(msg) {
-  const w = W.chat; let el = w.lines[msg.id];
-  if (!el) { el = document.createElement("div"); el.className = `msg ${msg.role === "you" ? "you" : ""}`; w.lines[msg.id] = el; w.msgs.appendChild(el); }
+  const w = W.chat;
+  const turn = speaker(msg.role === "you" ? "you" : "aries");
+  let el = w.lines[msg.id];
+  if (!el) {
+    el = document.createElement("div"); el.className = "said";
+    w.lines[msg.id] = el; turn.box.appendChild(el); turn.body = el;
+  }
   el.textContent += msg.delta;
+  if (msg.done && msg.role !== "you") workDone();
+  if (msg.role === "you" && msg.done) chatTurn = null;     // her answer starts a new block
   w.msgs.scrollTop = w.msgs.scrollHeight;
 }
 
@@ -615,7 +668,10 @@ window.desk = {
   message(msg) {
     switch (msg.t) {
       case "state": setState(msg.widget, msg.data); break;
-      case "line": if (W.core) W.core.line.textContent = msg.text; break;
+      case "line":
+        if (W.core) W.core.line.textContent = msg.text;
+        if (msg.text && msg.text !== "thinking…" && msg.text !== "reconnecting…") workStep(msg.text.replace(/…$/, ""));
+        break;
       case "chat": if (W.chat) chat(msg); break;
       case "action": action(msg); break;
       case "voice": voiceLevel(msg); break;

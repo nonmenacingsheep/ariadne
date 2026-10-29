@@ -21,7 +21,8 @@ REGISTRY = {"spotify": "ariadne2.adapters.spotify:SpotifyAdapter",
             "browser": "ariadne2.adapters.browser:BrowserAdapter",
             "dolphin": "ariadne2.adapters.dolphin:DolphinAdapter",
             "system": "ariadne2.adapters.system:SystemAdapter",
-            "claude": "ariadne2.adapters.claude:ClaudeAdapter"}
+            "claude": "ariadne2.adapters.claude:ClaudeAdapter",
+            "tasks": "ariadne2.adapters.tasks:TasksAdapter"}
 
 
 def load_adapters(publish, only=None) -> dict[str, Adapter]:

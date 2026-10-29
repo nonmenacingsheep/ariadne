@@ -31,14 +31,18 @@ const Dolphin = (() => {
       c.title = x.path; c.onclick = () => open(x.path); fol.append(c);
     }
     for (const x of (st.recent_folders || []).slice(0, 6)) {
-      const c = el("div", "dp-chip", x.name); c.title = x.path; c.onclick = () => open(x.path); fol.append(c);
+      const c = el("div", "dp-chip", x.name); c.title = x.path; c.onclick = () => open(x.path);
+      c.prepend(FILE_ICON("folder"));
+      c.oncontextmenu = e => { e.preventDefault(); FileMenu.open(e.clientX, e.clientY, { path: x.path, name: x.name, kind: "folder", folder: true }); };
+      fol.append(c);
     }
     const fil = w.bd.querySelector(".dp-files"); fil.innerHTML = "";
     for (const x of (st.recent_files || []).slice(0, 6)) {
       const row = el("div", "dp-file"); row.title = x.path;
-      const dot = el("span", "dp-kind"); dot.style.background = KIND_COLOR[x.kind] || KIND_COLOR.other;
-      row.append(dot, el("span", "dp-name", x.name), el("span", "dp-when", sinceText(x.when)));
-      row.onclick = () => open(x.path); fil.append(row);
+      row.append(FILE_ICON(x.kind), el("span", "dp-name", x.name), el("span", "dp-when", sinceText(x.when)));
+      row.onclick = () => open(x.path);
+      row.oncontextmenu = e => { e.preventDefault(); FileMenu.open(e.clientX, e.clientY, { path: x.path, name: x.name, kind: x.kind, folder: false }); };
+      fil.append(row);
     }
   }
   // Each file she moves, sorts or bins slides through the ticker.
@@ -94,4 +98,42 @@ const System = (() => {
     if (w.tag && !w.tagWas) w.tag.textContent = low ? `${low.name.toUpperCase()} LOW` : "";
   }
   return { build, set, touch: () => {} };
+})();
+
+/* ---------------- Tasks ---------------- */
+// Open apps and what they use; hover a row to focus it or close it (two clicks).
+const Tasks = (() => {
+  let w, send;
+  const hue = name => [...(name || "")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 11);
+  const mb = n => n >= 1024 ? `${(n / 1024).toFixed(1)} GB` : `${Math.round(n || 0)} MB`;
+  function build(widget, s) {
+    w = widget; send = s;
+    w.bd.innerHTML = `<div class="tk-head"><span>APP</span><span>CPU</span><span>MEM</span><span>GPU</span></div><div class="tk-list"></div>`;
+    stepScroll(w.bd.querySelector(".tk-list"));
+  }
+  function set(st) {
+    if (!w) return;
+    const tot = st.total || {};
+    if (w.tag && !w.tagWas) w.tag.textContent = `CPU ${Math.round(tot.cpu || 0)}% · MEM ${Math.round(tot.mem_pct || 0)}%`;
+    const list = w.bd.querySelector(".tk-list"), keep = list.scrollTop;
+    list.innerHTML = "";
+    for (const a of st.apps || []) {
+      const row = el("div", "tk-row");
+      const tile = el("span", "tk-tile", (a.name || "?").charAt(0).toUpperCase());
+      tile.style.background = `hsl(${hue(a.name)} 40% 30%)`;
+      const nm = el("span", "tk-name", a.name); if (a.windows) nm.title = `${a.windows} window${a.windows > 1 ? "s" : ""}`;
+      const cpu = el("span", "tk-cpu"); const bar = el("i"); bar.style.width = `${Math.min(100, (a.cpu || 0) / 4)}%`;
+      cpu.append(bar, el("b", null, `${Math.round(a.cpu || 0)}%`));
+      row.append(tile, nm, cpu, el("span", "tk-num", mb(a.mem_mb)), el("span", "tk-num", a.gpu_mb == null ? "—" : mb(a.gpu_mb)));
+      const btns = el("span", "tk-btns");
+      if (a.windows) { const f = el("button", "cl-btn", "Focus"); f.onclick = () => send({ t: "press", widget: "tasks", control: "focus", value: a.name }); btns.append(f); }
+      if (a.name !== "System") {
+        const x = el("button", "cl-btn", "Close"); x.dataset.c = "close";
+        twoClick(x, "Close?", () => send({ t: "press", widget: "tasks", control: "close", value: a.name })); btns.append(x);
+      }
+      row.append(btns); list.append(row);
+    }
+    list.scrollTop = keep;
+  }
+  return { build, set, touch: (c, on) => touchIn(w, c, on) };
 })();

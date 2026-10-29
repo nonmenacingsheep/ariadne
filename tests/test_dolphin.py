@@ -420,7 +420,8 @@ class VerbTests(AdapterBase):
 
     async def test_schema_and_tools(self):
         names = {v.name for v in self.a.verbs}
-        self.assertEqual(names, {"open", "find", "list", "move", "sort", "trash"})
+        self.assertEqual(names, {"open", "find", "list", "move", "sort", "trash",
+                                 "rename", "duplicate", "compress", "extract", "info"})
         self.assertEqual({v.name: v.control for v in self.a.verbs if v.control},
                          {"open": "open", "move": "move", "sort": "sort", "trash": "trash"})
         for v in self.a.verbs:

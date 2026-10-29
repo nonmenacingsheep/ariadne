@@ -500,3 +500,22 @@ async def open_folder_among(candidates: list[str], windows: list[tuple[str, str,
             if code == 0 and out.split()[:2] == ["b", "true"]:
                 return cand
     return None
+
+
+# ---------------------------------------------------------------- is it text?
+
+def looks_text(path: str | os.PathLike, sample: int = 8192) -> bool:
+    """True when the start of the file is UTF-8 text (no NUL bytes, decodes)."""
+    import codecs
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(sample)
+    except OSError:
+        return False
+    if b"\0" in head:
+        return False
+    try:
+        codecs.getincrementaldecoder("utf-8")().decode(head, final=False)
+    except UnicodeDecodeError:
+        return False
+    return True

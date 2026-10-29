@@ -5,9 +5,9 @@
 // what you did (typing, dragging) and where its widgets are, so the layer can
 // let clicks through everywhere else.
 
-const APPS = { spotify: Spotify, steam: Steam, browser: Browser, flows: Flows, dolphin: Dolphin, claude: Claude, system: System };
+const APPS = { spotify: Spotify, steam: Steam, browser: Browser, flows: Flows, dolphin: Dolphin, claude: Claude, system: System, tasks: Tasks };
 const TITLES = { chat: "Chat", core: "Aries", spotify: "Spotify", steam: "Steam",
-  browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows" };
+  browser: "Browser", dolphin: "Dolphin", claude: "Claude", system: "System", flows: "Flows", tasks: "Tasks" };
 const GRID = 24, HALO = 16, DEPTH = 12, MIN = [192, 96];
 const PACKET_MS = 650, MIN_WORK_MS = 900, GLINT_MS = 1200, GLINT_EVERY = 9000;
 const STRANDS = [[255, 42, 61], [109, 140, 255], [255, 214, 218]];
@@ -52,12 +52,17 @@ function build(name) {
   document.getElementById("widgets").appendChild(root);
   const w = { root, face: root.querySelector(".face"), bd: root.querySelector(".bd"), tag: root.querySelector(".tag") };
   if (name === "chat") {
-    w.bd.innerHTML = `<div class="msgs"></div><input class="say" placeholder="talk to Aries" spellcheck="false">`;
-    w.msgs = w.bd.querySelector(".msgs"); w.say = w.bd.querySelector(".say");
+    w.bd.innerHTML = `<div class="msgs"></div><div class="chips"></div><input class="say" placeholder="talk to Aries" spellcheck="false">`;
+    w.msgs = w.bd.querySelector(".msgs"); w.say = w.bd.querySelector(".say"); w.chips = w.bd.querySelector(".chips");
+    w.attached = [];
     w.say.addEventListener("keydown", e => {
       if (e.key !== "Enter") return;
       const text = w.say.value.trim();
-      if (text) { post({ t: "send", msg: { t: "text", widget: "chat", text } }); w.say.value = ""; }
+      if (text || w.attached.length) {
+        const msg = { t: "text", widget: "chat", text };
+        if (w.attached.length) msg.attachments = w.attached.slice();
+        post({ t: "send", msg }); w.say.value = ""; w.attached = []; w.chips.innerHTML = "";
+      }
     });
     w.lines = {};
   }
@@ -324,7 +329,7 @@ function routeWires() {
 
 const POWER = '<svg viewBox="0 0 16 16"><path d="M7 1h2v7H7z"/><path d="M4.2 3.4l1.3 1.4A4.5 4.5 0 1 0 10.5 4.8l1.3-1.4A6.5 6.5 0 1 1 4.2 3.4z"/></svg>';
 const SHORT = { chat: "Chat", spotify: "Spotify", steam: "Steam", browser: "Browser",
-  dolphin: "Files", claude: "Claude", system: "System", flows: "Flows" };
+  dolphin: "Files", claude: "Claude", system: "System", flows: "Flows", tasks: "Tasks" };
 function buildPorts(names) {
   const box = W.core.ports, key = names.join();
   if (box.dataset.key !== key) {
@@ -626,6 +631,7 @@ function reportRects() {
   const out = Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]);
   if (drawerOpen) { const r = drawer.getBoundingClientRect(); out.push([r.left - 8, r.top - 8, r.width + 16, r.height + 16]); }
   if (FlowEditor.isOpen()) out.push([0, 0, innerWidth, innerHeight]);
+  if (FileMenu.isOpen()) { const r = FileMenu.rect(); out.push([r.left - 6, r.top - 6, r.width + 12, r.height + 12]); }
   post({ t: "rects", rects: out });
 }
 
@@ -670,6 +676,19 @@ function askInChat(msg) {
 }
 
 /* ---------------- what layer.py calls ---------------- */
+// A file pasted into the chat: a chip above the input until he sends.
+function addChip(msg) {
+  const w = W.chat, c = document.createElement("span");
+  c.className = `chip${msg.error ? " bad" : ""}`; c.title = msg.error || msg.path;
+  c.append(FILE_ICON(msg.kind || "other"));
+  const n = document.createElement("span"); n.textContent = msg.name; c.append(n);
+  const x = document.createElement("button"); x.textContent = "✕";
+  x.onclick = () => { w.attached = w.attached.filter(p => p !== msg.path); c.remove(); };
+  c.append(x); w.chips.append(c);
+  if (!msg.error) w.attached.push(msg.path);
+  w.say.focus();
+}
+
 function openEditor(id) {
   FlowEditor.openFlow(id);
   post({ t: "raise" });          // the editor needs the keyboard and the whole screen
@@ -684,6 +703,7 @@ window.desk = {
     for (const n of hidden) if (W[n]) W[n].root.style.display = "none";
     sizeCanvases(); relayout(true);
     FlowEditor.init(m => m.t === "__closed" ? (post({ t: "drop" }), reportRects()) : post({ t: "send", msg: m }));
+    FileMenu.init(m => post({ t: "send", msg: m }));
   },
   layout(layout, ar) { area = ar; rects = layout; relayout(true); },
   message(msg) {
@@ -698,6 +718,8 @@ window.desk = {
       case "voice": voiceLevel(msg); break;
       case "flow": flowEvent(msg); FlowEditor.message(msg); break;
       case "catalog": case "flow_graph": case "flow_saved": case "flow_tested": FlowEditor.message(msg); break;
+      case "menu": FileMenu.reply(msg); break;
+      case "attached": if (W.chat) addChip(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;
       case "ears":
         if (msg.listening) Sounds.play("mic");

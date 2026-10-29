@@ -3,7 +3,9 @@
 State comes from KDE's own lists (recently-used.xbel, the activity history) and a D-Bus question to
 Dolphin; folders that are being watched are polled for new files. Verbs open, find, list, move, sort and
 trash, always inside $HOME or /var/mnt, and trash goes to the desktop trash (recoverable), never gone.
-Disk helpers live in dolphin_files.py.
+Disk helpers live in dolphin_files.py; the right-click menu's jobs (open with, copy/paste, rename,
+duplicate, compress/extract, properties, copy path) in dolphin_menu.py. Those menu actions are his clicks:
+most are verbs only the widget can press; rename, duplicate, compress, extract and info are hers too.
 """
 from __future__ import annotations
 
@@ -14,8 +16,10 @@ import shutil
 import time
 from pathlib import Path
 
+from .. import protocol
 from .base import Adapter, AdapterError, Verb
 from . import dolphin_files as df
+from . import dolphin_menu as dm
 from .dolphin_files import Guard, PathRefused, Recents
 
 log = logging.getLogger("ariadne2.adapters.dolphin")
@@ -82,6 +86,65 @@ async def gio_trash(path: Path) -> None:
         raise AdapterError(f"couldn't trash it ({why[0][:60]}); nothing was deleted")
 
 
+def host_prefix() -> list[str]:
+    """Inside a toolbox the desktop's own tools (clipboard, xdg-open) are on the host."""
+    if os.path.exists("/run/.containerenv") and shutil.which("host-spawn"):
+        return ["host-spawn"]
+    return []
+
+
+async def xdg_launch(path: Path) -> None:
+    """Open with the default app. A folder is Dolphin's own job."""
+    if path.is_dir():
+        return await show_in_dolphin(path)
+    prefix = host_prefix()
+    tool = next((t for t in (["xdg-open"], ["gio", "open"]) if prefix or shutil.which(t[0])), None)
+    if tool is None:
+        raise AdapterError("there's no xdg-open or gio here to open files with")
+    try:
+        code = await _quiet_exec(*prefix, *tool, str(path), timeout=5)
+    except OSError as e:
+        raise AdapterError(f"couldn't open it: {e.strerror}")
+    if code not in (0, None):
+        raise AdapterError("nothing on this desktop knew how to open that")
+
+
+async def gio_launch(desktop: Path, path: Path) -> None:
+    """Open a file with one particular app (its .desktop file)."""
+    prefix = host_prefix()
+    if not (prefix or shutil.which("gio")):
+        raise AdapterError("gio isn't installed, so I can't pick the app")
+    try:
+        code = await _quiet_exec(*prefix, "gio", "launch", str(desktop), str(path), timeout=5)
+    except OSError as e:
+        raise AdapterError(f"couldn't start that app: {e.strerror}")
+    if code not in (0, None):
+        raise AdapterError("that app wouldn't open the file")
+
+
+async def system_clipboard(text: str) -> None:
+    """Put text on the desktop's clipboard with wl-copy, xclip or xsel (on the host from a toolbox)."""
+    prefix = host_prefix()
+    tools = (["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"])
+    for tool in tools:
+        if not (prefix or shutil.which(tool[0])):
+            continue
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *prefix, *tool, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            continue
+        try:
+            await asyncio.wait_for(proc.communicate(text.encode("utf-8")), 3)
+        except asyncio.TimeoutError:
+            return                                   # still serving the selection: it took it
+        if proc.returncode == 0:
+            return
+    raise AdapterError(f"I couldn't reach a clipboard tool (wl-copy or xclip), so nothing was copied. "
+                       f"The path is {text}")
+
+
 class DolphinAdapter(Adapter):
     name = "dolphin"
     events = ("file_appeared",)
@@ -94,13 +157,20 @@ class DolphinAdapter(Adapter):
                     "watched": ("list", "watched")}
 
     def __init__(self, publish, guard=None, recents=None, trasher=None, opener=None, dbus=None,
-                 watch=None) -> None:
+                 watch=None, launcher=None, app_launcher=None, clipboard=None, app_dirs=None,
+                 mimeapps=None) -> None:
         super().__init__(publish)
         self.guard = guard or Guard()
         self.recents = recents or Recents(self.guard)
         self._trash = trasher or gio_trash
         self._open = opener or show_in_dolphin
         self._dbus = dbus or df.busctl
+        self._launch = launcher or xdg_launch                 # open with the default app
+        self._launch_with = app_launcher or gio_launch        # open with a chosen .desktop
+        self._to_clipboard = clipboard or system_clipboard
+        self._app_dirs = app_dirs                             # None: the host's usual places, looked up per ask
+        self._mimeapps = mimeapps
+        self._clip: dict | None = None                        # his copy/cut: {"mode", "paths": [Path]}
         self.now = time.time
         self.mono = time.monotonic
         self._state = blank_state()
@@ -109,7 +179,11 @@ class DolphinAdapter(Adapter):
         self.watch(watch if watch is not None else [self.guard.home / "Downloads"])
         self._wake = asyncio.Event()
         self._main: asyncio.Task | None = None
-        self.controls = {"open": "open"}
+        self.controls = {"open": "open", "reveal": "open", "launch": "launch", "open_with": "open_with",
+                         "apps_for": "apps_for", "copy_path": "copy_path", "copy": "copy", "cut": "cut",
+                         "paste": "paste", "rename": "rename", "duplicate": "duplicate",
+                         "new_folder": "new_folder", "compress": "compress", "extract": "extract",
+                         "trash": "trash", "properties": "properties"}
         path = {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
         self.verbs = [
             Verb("open", "Show a file or folder in Dolphin (a file is shown selected in its folder). Takes a "
@@ -137,7 +211,40 @@ class DolphinAdapter(Adapter):
             Verb("trash", "Put a file or folder in the desktop trash, where he can restore it in Dolphin. "
                  "This is the only way to remove anything; there is no permanent delete. Confirm with him "
                  "first unless he named the file and asked.", path, self._trash_verb, "trash"),
+            Verb("rename", "Rename a file or folder in place (name only, no slashes). Never overwrites.",
+                 {"type": "object", "properties": {"path": {"type": "string"}, "name": {"type": "string"}},
+                  "required": ["path", "name"]}, self._rename),
+            Verb("duplicate", "Make a copy next to a file or folder, named 'name (copy)'. Nothing is "
+                 "overwritten.", path, self._duplicate),
+            Verb("compress", "Archive a file or folder next to itself as zip (default) or tar.gz. Links and "
+                 "anything that looks like a credential are left out, and the result says how many.",
+                 {"type": "object", "properties": {"path": {"type": "string"},
+                                                   "format": {"type": "string", "enum": ["zip", "tar.gz"]}},
+                  "required": ["path"]}, self._compress),
+            Verb("extract", "Unpack an archive (zip, tar, 7z, rar...) into a new folder beside it. Refuses "
+                 "archives whose paths climb out of the folder; nothing is overwritten.", path, self._extract),
+            Verb("info", "Size, kind, type, modified time, item count (folders) and permissions of a file "
+                 "or folder, as text.", path, self._info),
         ]
+        # His right-click only: not offered to her as tools, but run through the same wrapper.
+        any_path = {"type": "object", "properties": {"path": {"type": "string"}}}
+        self._his_verbs = [
+            Verb("launch", "Open with the default app.", any_path, self._launch_verb),
+            Verb("open_with", "Open with a chosen app.", any_path, self._open_with),
+            Verb("apps_for", "Publish the apps that can open a path.", any_path, self._apps_for),
+            Verb("copy_path", "Put the path on the clipboard.", any_path, self._copy_path),
+            Verb("copy", "Remember paths to paste (copy).", any_path, self._copy),
+            Verb("cut", "Remember paths to paste (move).", any_path, self._cut),
+            Verb("paste", "Paste what was copied or cut into a folder.", any_path, self._paste),
+            Verb("new_folder", "Make a folder.", any_path, self._new_folder),
+            Verb("properties", "Publish a path's properties.", any_path, self._properties),
+        ]
+
+    def verb(self, name: str) -> Verb:
+        for v in self._his_verbs:
+            if v.name == name:
+                return v
+        return super().verb(name)
 
     # ---- watching ----
 
@@ -210,6 +317,9 @@ class DolphinAdapter(Adapter):
                "recent_files": scan["files"],
                "watched": [{"path": str(p), "name": p.name or str(p), "new": w["new"]}
                            for p, w in self._watch.items()]}
+        if self._clip:
+            new["clipboard"] = {"mode": self._clip["mode"], "count": len(self._clip["paths"]),
+                                "names": [p.name for p in self._clip["paths"][:5]]}
         if new != self._state:
             self._state = new
             await self.publish_state()
@@ -381,7 +491,250 @@ class DolphinAdapter(Adapter):
 
     # ---- his clicks in the widget ----
 
+    async def press(self, control: str, value=None) -> str | None:
+        # "open" with just a path shows it in Dolphin (the recents list); with {"path": ..} from the
+        # context menu it opens in the default app.
+        if control == "open" and isinstance(value, dict):
+            control = "launch"
+        return await super().press(control, value)
+
     def press_args(self, control: str, value) -> dict:
-        if value is None or not str(value).strip():
+        if isinstance(value, dict):
+            d = value
+        elif value is None or not str(value).strip():
             raise AdapterError(f"{control} needs a path")
-        return {"path": str(value)}
+        else:
+            d = {"path": str(value)}
+
+        def need(key: str) -> str:
+            raw = d.get(key)
+            if raw is None or not str(raw).strip():
+                raise AdapterError(f"{control} needs a {key}")
+            return str(raw)
+
+        def opt(key: str):
+            raw = d.get(key)
+            return None if raw is None or not str(raw).strip() else str(raw)
+
+        if control in ("copy", "cut") and isinstance(d.get("paths"), list):
+            paths = [str(x) for x in d["paths"] if str(x).strip()]
+            if not paths:
+                raise AdapterError(f"{control} needs a path")
+            return {"paths": paths}
+        if control == "paste":
+            return {"folder": opt("folder") or need("path")}
+        if control == "new_folder":
+            args = {"folder": need("folder")}
+            if opt("name"):
+                args["name"] = opt("name")
+            return args
+        args = {"path": need("path")}
+        if control == "open_with":
+            args["app"] = need("app")
+        elif control == "rename":
+            args["name"] = need("name")
+        elif control == "compress" and opt("format"):
+            args["format"] = opt("format")
+        return args
+
+    # ---- the right-click menu ----
+
+    def _short(self, p) -> str:
+        return self.guard.shorten(p)
+
+    async def _launch_verb(self, path: str) -> str:
+        p = self._resolve(path)
+        await self._launch(p)
+        if p.is_dir():
+            self._look(p)
+        self._poke()
+        return f"Opened {self._short(p)}."
+
+    def _catalog(self) -> dict:
+        return dm.scan_apps(self._app_dirs if self._app_dirs is not None else dm.desktop_dirs())
+
+    def _assoc(self):
+        paths = self._mimeapps
+        if paths is None:
+            home = Path(os.path.expanduser("~"))
+            paths = [Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "mimeapps.list"]
+        return dm.user_associations(paths)
+
+    def _apps_list(self, p: Path) -> list[dm.App]:
+        mime = dm.mime_of(p)
+        text_like = (p.is_file() and not mime.startswith(("image/", "audio/", "video/", "font/"))
+                     and df.looks_text(p))
+        return dm.apps_for(self._catalog(), mime, text_like, self._assoc())
+
+    async def _apps_for(self, path: str) -> str:
+        p = self._resolve(path)
+        apps = await asyncio.to_thread(self._apps_list, p)
+        await self.publish(protocol.menu(self.name, str(p), apps=[a.row() for a in apps]))
+        return ""
+
+    async def _open_with(self, path: str, app: str) -> str:
+        p = self._resolve(path)
+        want = str(app).strip()
+        want = want if want.endswith(".desktop") else want + ".desktop"
+        known = await asyncio.to_thread(self._catalog)
+        found = known.get(want)
+        if found is None:
+            raise AdapterError(f"I don't know an app called {app!r}")
+        await self._launch_with(found.path, p)
+        return f"Opened {self._short(p)} with {found.name}."
+
+    async def _copy_path(self, path: str) -> str:
+        p = self._resolve(path)
+        await self._to_clipboard(str(p))
+        return f"Copied the path of {p.name} to the clipboard."
+
+    def _remember(self, mode: str, path: str | None, paths: list | None) -> str:
+        found = [self._resolve(x, write=(mode == "cut")) for x in (paths or [path])]
+        self._clip = {"mode": mode, "paths": found}
+        self._poke()
+        what = found[0].name if len(found) == 1 else f"{len(found)} items"
+        return f"{'Copied' if mode == 'copy' else 'Cut'} {what}; paste it into a folder."
+
+    async def _copy(self, path: str | None = None, paths: list | None = None) -> str:
+        return self._remember("copy", path, paths)
+
+    async def _cut(self, path: str | None = None, paths: list | None = None) -> str:
+        return self._remember("cut", path, paths)
+
+    async def _paste(self, folder: str) -> str:
+        if not self._clip:
+            raise AdapterError("nothing is copied or cut yet")
+        into = self._resolve(folder)
+        if not into.is_dir():
+            into = into.parent                           # pasted "onto" a file: beside it
+        mode, items = self._clip["mode"], self._clip["paths"]
+        done, notes = [], []
+        for src in items:
+            await self.progress(src.name)
+            try:
+                s = self._resolve(src, write=(mode == "cut"))
+                if s.is_dir() and not s.is_symlink() and dm.inside(into, s):
+                    raise AdapterError("a folder can't go inside itself")
+                if mode == "cut" and s.parent == into:
+                    notes.append(f"{s.name} is already there")
+                    continue
+                dest = dm.free_copy(into, s.name, s.is_dir() and not s.is_symlink())
+                self._resolve(dest, write=True, must_exist=False)
+                await asyncio.to_thread(dm.move_item if mode == "cut" else dm.copy_item, s, dest)
+            except AdapterError as e:
+                notes.append(f"{src.name}: {e}")
+                continue
+            except OSError as e:
+                notes.append(f"{src.name}: {e.strerror or e}")
+                continue
+            done.append(dest)
+        if mode == "cut" and done:
+            self._clip = None                            # a cut can only land once
+        self._look(into)
+        self._poke()
+        if not done:
+            raise AdapterError("nothing was pasted: " + "; ".join(notes))
+        head = f"{'Moved' if mode == 'cut' else 'Pasted'} {done[0].name if len(done) == 1 else str(len(done)) + ' items'} into {self._short(into)}."
+        return head + (" Not done: " + "; ".join(notes) + "." if notes else "")
+
+    async def _rename(self, path: str, name: str) -> str:
+        s = self._resolve(path, write=True)
+        try:
+            new = dm.valid_name(name)
+        except ValueError as e:
+            raise AdapterError(str(e)) from None
+        if new == s.name:
+            raise AdapterError("that's already its name")
+        dest = self._resolve(s.parent / new, write=True, must_exist=False)
+        if os.path.lexists(dest):
+            raise AdapterError(f"{self._short(dest)} already exists; I won't overwrite it. Pick another name")
+        await self.progress(s.name)
+        try:
+            await asyncio.to_thread(os.rename, s, dest)
+        except OSError as e:
+            raise AdapterError(f"couldn't rename it: {e.strerror or e}") from None
+        self._poke()
+        return f"Renamed {s.name} to {dest.name}."
+
+    async def _duplicate(self, path: str) -> str:
+        s = self._resolve(path)
+        dest = dm.free_copy(s.parent, s.name, s.is_dir() and not s.is_symlink(), tag="copy")
+        self._resolve(dest, write=True, must_exist=False)
+        await self.progress(s.name)
+        try:
+            await asyncio.to_thread(dm.copy_item, s, dest)
+        except OSError as e:
+            raise AdapterError(f"couldn't copy it: {e.strerror or e}") from None
+        self._poke()
+        return f"Made a copy: {self._short(dest)}."
+
+    async def _new_folder(self, folder: str, name: str | None = None) -> str:
+        parent = self._resolve(folder)
+        if not parent.is_dir():
+            raise AdapterError(f"{self._short(parent)} is a file, not a folder")
+        if name is None:
+            dest = dm.free_copy(parent, "New Folder", True)
+        else:
+            try:
+                dest = parent / dm.valid_name(name)
+            except ValueError as e:
+                raise AdapterError(str(e)) from None
+        self._resolve(dest, write=True, must_exist=False)
+        if os.path.lexists(dest):
+            raise AdapterError(f"{self._short(dest)} already exists")
+        try:
+            await asyncio.to_thread(dest.mkdir)
+        except OSError as e:
+            raise AdapterError(f"couldn't make the folder: {e.strerror or e}") from None
+        self._look(parent)
+        self._poke()
+        return f"Made the folder {self._short(dest)}."
+
+    async def _compress(self, path: str, format: str = "zip") -> str:
+        s = self._resolve(path)
+        await self.progress(s.name)
+        try:
+            out, added, skipped = await asyncio.to_thread(self._compress_checked, s, format)
+        except dm.ArchiveError as e:
+            raise AdapterError(str(e)) from None
+        except OSError as e:
+            raise AdapterError(f"couldn't make the archive: {e.strerror or e}") from None
+        self._poke()
+        tail = f" ({skipped} link or private item(s) left out)" if skipped else ""
+        return f"Made {self._short(out)} with {added} item(s){tail}."
+
+    def _compress_checked(self, s: Path, fmt: str):
+        out_name = dm.free_copy(s.parent, dm.split_ext(s.name, s.is_dir())[0] + ".zip")
+        self._resolve(out_name, write=True, must_exist=False)      # the archive lands somewhere allowed
+        return dm.compress(s, fmt)
+
+    async def _extract(self, path: str) -> str:
+        s = self._resolve(path)
+        if s.is_dir():
+            raise AdapterError("that's a folder, not an archive")
+        self._resolve(s.parent / "x", write=True, must_exist=False)
+        await self.progress(s.name)
+        try:
+            out, count = await asyncio.to_thread(dm.extract, s)
+        except dm.ArchiveError as e:
+            raise AdapterError(str(e)) from None
+        except OSError as e:
+            raise AdapterError(f"couldn't extract it: {e.strerror or e}") from None
+        self._poke()
+        return f"Extracted {s.name} into {self._short(out)} ({count} item(s))."
+
+    async def _facts(self, path: str) -> tuple[Path, dict]:
+        p = self._resolve(path)
+        try:
+            return p, await asyncio.to_thread(dm.info, p)
+        except OSError as e:
+            raise AdapterError(f"couldn't read it: {e.strerror or e}") from None
+
+    async def _info(self, path: str) -> str:
+        p, facts = await self._facts(path)
+        return dm.info_text(p, facts, self.guard)
+
+    async def _properties(self, path: str) -> str:
+        p, facts = await self._facts(path)
+        await self.publish(protocol.menu(self.name, str(p), info=facts))
+        return ""

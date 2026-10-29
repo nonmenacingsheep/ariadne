@@ -13,6 +13,7 @@ from .. import protocol
 from . import models, prompt
 from .flows.engine import Engine
 from .loop import Conversation
+from .tools import GeneralTools
 from .server import CoreServer
 
 
@@ -94,7 +95,7 @@ async def run(args: argparse.Namespace) -> None:
     conversation = Conversation(server.publish, lambda: server.snapshots,
                                 model_name=args.model, personality=args.personality,
                                 on_sentence=voice.say if voice else None,
-                                adapters=adapters)
+                                adapters=adapters, toolsets=[GeneralTools()])
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)
     conversation.flows = engine

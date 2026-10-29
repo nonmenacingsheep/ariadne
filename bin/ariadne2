@@ -56,4 +56,7 @@ if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -x "$GODOT" ]; 
   pet=$!
   trap 'kill $core $pet 2>/dev/null; pkill -f "Godot_v4.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 fi
-python3 -m ariadne2.desk 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" -e "^$" >&2)
+# Through XWayland: as a native Wayland window the desk sometimes kept the
+# size KWin first gave it on the smaller monitor and refused to grow, cutting
+# off everything past x=1920. KWin resizes X11 windows reliably.
+GDK_BACKEND=${ARIADNE2_GDK_BACKEND:-x11} python3 -m ariadne2.desk 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" -e "^$" >&2)

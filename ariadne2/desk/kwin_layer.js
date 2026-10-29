@@ -38,9 +38,38 @@ function settlePet(p) {
     p.skipSwitcher = true;
     p.keepAbove = false;
     p.keepBelow = true;
-    // Same area as the desk (above the panel), so her floor is the panel's top.
-    var w = layer();
-    if (w) p.frameGeometry = w.frameGeometry;
+    // The ultrawide's usable area (above the panel), so her floor is the
+    // panel's top, whatever state the desk window is in.
+    var o = output();
+    if (o) {
+        var a = workspace.clientArea(KWin.MaximizeArea, o, workspace.currentDesktop);
+        p.frameGeometry = { x: a.x, y: a.y, width: a.width, height: a.height };
+    }
+}
+
+// KWin sometimes keeps a new window at the size it first gave it (on the
+// smaller monitor) without ever reporting a change, so the pin is repeated
+// on timers shortly after a window appears.
+function later(ms, fn) {
+    try {
+        var timer = new QTimer();
+        timer.singleShot = true;
+        timer.interval = ms;
+        timer.timeout.connect(fn);
+        timer.start();
+    } catch (e) {}
+}
+
+function settleSoon(w) {
+    [500, 1500, 4000].forEach(function (ms) {
+        later(ms, function () {
+            if (isPet(w)) settlePet(w);
+            else if (w.caption === TITLE) {
+                var o = output(), g = o ? o.geometry : null, f = w.frameGeometry;
+                if (g && (f.width !== g.width || f.x !== g.x)) pin(w);
+            }
+        });
+    });
 }
 
 function output() {
@@ -121,10 +150,10 @@ function hold(w) {
 }
 
 workspace.windowAdded.connect(function (w) {
-    if (w.caption === TITLE) { pin(w); hold(w); }
-    if (isPet(w)) settlePet(w);
+    if (w.caption === TITLE) { pin(w); hold(w); settleSoon(w); }
+    if (isPet(w)) { settlePet(w); settleSoon(w); }
     // Godot sets its title just after mapping; catch the rename too.
-    w.captionChanged.connect(function () { if (isPet(w)) settlePet(w); });
+    w.captionChanged.connect(function () { if (isPet(w)) { settlePet(w); settleSoon(w); } });
 });
 
 var existing = layer();

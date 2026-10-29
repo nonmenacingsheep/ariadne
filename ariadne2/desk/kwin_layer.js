@@ -7,6 +7,7 @@
 // script and this one never holds stale state.
 
 var TITLE = "ariadne2-desk";
+var PET = "ariadne2-pet";               // her body (pet/), which lives on the desk with her
 var OUTPUT = "DP-2";
 var SERVICE = "io.ariadne2.desk";
 var PATH = "/io/ariadne2/desk";
@@ -19,6 +20,26 @@ function layer() {
     return null;
 }
 
+// Godot adds " (DEBUG)" to the title when run from the editor binary.
+function isPet(w) { return String(w.caption).indexOf(PET) === 0; }
+
+function pet() {
+    var list = workspace.windowList();
+    for (var i = 0; i < list.length; i++)
+        if (isPet(list[i])) return list[i];
+    return null;
+}
+
+function settlePet(p) {
+    p.noBorder = true;
+    p.onAllDesktops = true;
+    p.skipTaskbar = true;
+    p.skipPager = true;
+    p.skipSwitcher = true;
+    p.keepAbove = false;
+    p.keepBelow = true;
+}
+
 function output() {
     var outs = workspace.screens;
     for (var i = 0; i < outs.length; i++)
@@ -28,12 +49,21 @@ function output() {
 
 function tell(up) { callDBus(SERVICE, PATH, IFACE, "Raised", up); }
 
-function drop(w) { w.keepAbove = false; w.keepBelow = true; tell(false); }
+function drop(w) {
+    w.keepAbove = false; w.keepBelow = true;
+    var p = pet(); if (p) { p.keepAbove = false; p.keepBelow = true; }
+    tell(false);
+}
 
 function raise(w) {
     w.keepBelow = false;
     w.keepAbove = true;
     workspace.activeWindow = w;
+    var p = pet();
+    if (p) {   // she comes up with the desk, in front of it
+        p.keepBelow = false; p.keepAbove = true;
+        try { workspace.raiseWindow(p); } catch (e) {}
+    }
     tell(true);
 }
 
@@ -70,7 +100,7 @@ registerShortcut("Ariadne2 Raise", "Ariadne 2: bring to front", "Meta+A",
 // Click away: any other window taking focus while she's up drops her.
 workspace.windowActivated.connect(function (active) {
     var w = layer();
-    if (w && w.keepAbove && active && active !== w) drop(w);
+    if (w && w.keepAbove && active && active !== w && !isPet(active)) drop(w);
 });
 
 // KWin first places a new window on whichever monitor it likes and clamps
@@ -89,7 +119,12 @@ function hold(w) {
 
 workspace.windowAdded.connect(function (w) {
     if (w.caption === TITLE) { pin(w); hold(w); }
+    if (isPet(w)) settlePet(w);
+    // Godot sets its title just after mapping; catch the rename too.
+    w.captionChanged.connect(function () { if (isPet(w)) settlePet(w); });
 });
 
 var existing = layer();
 if (existing) { pin(existing); hold(existing); }
+var existingPet = pet();
+if (existingPet) settlePet(existingPet);

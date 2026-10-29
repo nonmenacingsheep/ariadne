@@ -1,0 +1,24 @@
+; Aries's body: a small transparent window on the desktop.
+config_version=5
+
+[application]
+config/name="Aries pet"
+run/main_scene="res://pet.tscn"
+run/max_fps=30
+
+[display]
+window/size/viewport_width=420
+window/size/viewport_height=600
+window/size/borderless=true
+window/size/transparent=true
+window/per_pixel_transparency/allowed=true
+window/size/always_on_top=false
+window/subwindows/embed_subwindows=true
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/vrm/plugin.cfg", "res://addons/Godot-MToon-Shader/plugin.cfg")
+
+[rendering]
+renderer/rendering_method="mobile"
+viewport/transparent_background=true
+anti_aliasing/quality/msaa_3d=1

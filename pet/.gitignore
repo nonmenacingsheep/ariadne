@@ -1,0 +1,3 @@
+models/*.vrm
+models/*.vrm.import
+.godot/

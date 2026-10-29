@@ -38,6 +38,9 @@ for (var i = 0; i < list.length; i++) {
     var w = list[i];
     if (w.caption === "ariadne2-desk") {
         w.keepAbove = false; w.keepBelow = true;
+        var list2 = workspace.windowList();
+        for (var j = 0; j < list2.length; j++)
+            if (String(list2[j].caption).indexOf("ariadne2-pet") === 0) { list2[j].keepAbove = false; list2[j].keepBelow = true; }
         callDBus("io.ariadne2.desk", "/io/ariadne2/desk", "io.ariadne2.Layer",
                  "Raised", false);
     }

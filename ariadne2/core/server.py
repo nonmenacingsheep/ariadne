@@ -14,6 +14,7 @@ from .demo import Demo
 log = logging.getLogger("ariadne2.core")
 
 LINE_LIMIT = 1 << 20          # a state snapshot can be big; 1 MiB per line
+PET_PORT = 47120               # localhost only; her body (Godot) can't use a unix socket
 DRAIN_TIMEOUT = 2.0           # a stuck desk is dropped rather than stalling everyone
 SYSTEM_PERIOD = 2.0
 
@@ -30,6 +31,7 @@ class CoreServer:
         self.line: dict = protocol.core_line("")
         self._clients: set[asyncio.StreamWriter] = set()
         self._server: asyncio.AbstractServer | None = None
+        self._pet_server: asyncio.AbstractServer | None = None
         self._sampler = sysinfo.Sampler()
         self.snapshots["system"] = self._sampler.snapshot()
         self._system_task: asyncio.Task | None = None
@@ -47,6 +49,10 @@ class CoreServer:
             pass
         self._server = await asyncio.start_unix_server(
             self._handle, path=str(self.path), limit=LINE_LIMIT)
+        try:
+            self._pet_server = await asyncio.start_server(self._handle_pet, "127.0.0.1", PET_PORT)
+        except OSError as e:
+            log.warning("pet port %d unavailable (%s); her body won't connect", PET_PORT, e)
         self._system_task = asyncio.create_task(self._system_loop())
         if self._demo:
             self._demo.start()
@@ -60,6 +66,8 @@ class CoreServer:
             await asyncio.gather(self._system_task, return_exceptions=True)
         if self._server:
             self._server.close()
+        if self._pet_server:
+            self._pet_server.close()
         for w in list(self._clients):
             w.close()
         if self._server:
@@ -99,6 +107,20 @@ class CoreServer:
                 await self.publish(protocol.state("system", self._sampler.snapshot()))
             except Exception:
                 log.exception("system refresh failed")
+
+    async def _handle_pet(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        # Her body (pet/) only watches: it gets every broadcast, and anything
+        # it sends is read and thrown away, so nothing reaching this port can
+        # type to her or press anything.
+        self._clients.add(writer)
+        log.info("pet connected")
+        try:
+            while await reader.read(4096):
+                pass
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            self._drop(writer)
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         # No awaits between the catch-up writes and joining _clients, so a

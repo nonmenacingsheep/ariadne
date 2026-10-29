@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/.." || exit 1
 
 stop_running() {
-  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"
+  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"; pkill -TERM -f "Godot_v4.*--path pet"
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "m ariadne2.core" >/dev/null || return 0
     sleep 0.3
@@ -47,4 +47,13 @@ PY=${ARIADNE2_PYTHON:-$HOME/Claude Projects/ariadne/.venv-3.12/bin/python}
 "$PY" -m ariadne2.core "$@" &
 core=$!
 trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
+# Her body (pet/, Godot on the GPU), if its model is there. Started through
+# godot-gate.sh like every Godot run here (it links the host GPU libraries and
+# waits for the machine to be quiet enough). ARIADNE2_NO_PET=1 skips it.
+GODOT=/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64
+if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -x "$GODOT" ]; then
+  ( sleep 2; exec "$HOME/.local/bin/godot-gate.sh" "$GODOT" --path pet --display-driver x11 ) >/dev/null 2>&1 &
+  pet=$!
+  trap 'kill $core $pet 2>/dev/null; pkill -f "Godot_v4.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
+fi
 python3 -m ariadne2.desk 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" -e "^$" >&2)

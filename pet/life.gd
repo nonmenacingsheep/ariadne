@@ -13,7 +13,9 @@ const ITEMS := ["cookie", "drink", "ball", "plush"]
 const BALL_R := 0.09
 
 var pet                                   # pet.gd (her body)
-var needs := {"energy": 0.8, "fun": 0.6, "affection": 0.6}
+var needs := {"energy": 0.8, "fun": 0.6, "affection": 0.6, "hunger": 0.7}   # hunger: 1 = full
+# Drain multipliers, set from the Avatar settings (1 = normal).
+var rates := {"energy": 1.0, "fun": 1.0, "affection": 1.0, "hunger": 1.0}
 var tick_in := 1.0
 var save_in := 30.0
 var holding := ""                          # item in her hands
@@ -52,9 +54,10 @@ func _process(delta: float) -> void:
 	if pet.state == "sleep":
 		needs["energy"] += 0.05 * m
 	else:
-		needs["energy"] -= 0.009 * m
-	needs["fun"] += (0.06 if pet.state == "dance" else -0.012) * m
-	needs["affection"] -= 0.007 * m
+		needs["energy"] -= 0.009 * m * rates["energy"] * (1.4 if needs["hunger"] < 0.2 else 1.0)
+	needs["fun"] += (0.06 if pet.state == "dance" else -0.012 * rates["fun"]) * m
+	needs["affection"] -= 0.007 * m * rates["affection"]
+	needs["hunger"] -= 0.008 * m * rates["hunger"]
 	for k in needs:
 		needs[k] = clampf(needs[k], 0.0, 1.0)
 	save_in -= 1.0
@@ -68,6 +71,8 @@ func bump(need: String, amount: float) -> void:
 
 
 func mood() -> String:
+	if needs["hunger"] < 0.15:
+		return "hungry"
 	if needs["energy"] < 0.2:
 		return "sleepy"
 	if needs["affection"] < 0.25:
@@ -167,6 +172,7 @@ func give(item: String) -> void:
 			pet._play("Consume", 0.25)
 			pet._feel("joy", 0.8, 3.0)
 			bump("energy", 0.12)
+			bump("hunger", 0.45 if item == "cookie" else 0.25)
 			get_tree().create_timer(3.0).timeout.connect(func(): _hold(""))
 		"plush":
 			_hold("plush")

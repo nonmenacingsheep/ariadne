@@ -73,5 +73,6 @@ def mood_line() -> str | None:
     n = d.get("needs") or {}
     held = f", holding a {d['holding']}" if d.get("holding") else ""
     return (f"Your body on his desktop: {d.get('mood', 'content')} (energy {round(100 * n.get('energy', 0))}%, "
-            f"fun {round(100 * n.get('fun', 0))}%, affection {round(100 * n.get('affection', 0))}%){held}. "
+            f"fun {round(100 * n.get('fun', 0))}%, affection {round(100 * n.get('affection', 0))}%, "
+            f"fed {round(100 * n.get('hunger', 1))}%){held}. "
             "Mention it only if it fits; you can ask for music or a break like anyone would.")

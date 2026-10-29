@@ -18,6 +18,8 @@ const WALK_SPEED := 0.55                  # metres per second
 const GRAVITY := 9.0
 const SIT_DROP := 0.47                    # seat height in the sitting clips
 const SLEEP_AFTER := 480.0                # seconds of nothing before she dozes
+const MAX_THROW := 14.0                   # m/s, so a flick can't send her into orbit
+const HARD_LANDING := 5.5                 # m/s down: lands flat and dizzy instead of on her feet
 const FPS_BUSY := 30
 const FPS_IDLE := 15
 
@@ -81,6 +83,16 @@ var level := 0.0
 var speaking := false
 var mouth := {"a": 0.0, "i": 0.0, "u": 0.0, "e": 0.0, "o": 0.0}
 
+var roll := 0.0                           # her tilt while flying or dangling
+var spin := 0.0
+var held_vel := Vector2.ZERO
+var slab: Node3D                           # the glowing 'window' she holds while working
+var slab_widget := ""
+var slab_sending := false
+var slab_mat: StandardMaterial3D
+var slab_label: Label3D
+var carry_pose := {}                       # arm bones -> rotation, sampled from Walk_Carry
+var crumbs: CPUParticles3D
 var drag_from := Vector2.ZERO
 var drag_moved := false
 var last_rect := Rect2()
@@ -103,6 +115,8 @@ func _ready() -> void:
 		if i >= 0:
 			bones[b] = i
 	_load_clips()
+	_sample_carry_pose()
+	_make_slab()
 	_camera()
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
@@ -240,11 +254,14 @@ func _on_message(msg: Dictionary) -> void:
 			var w := str(msg.get("widget", ""))
 			if phase == "started":
 				_watch(w, 3.0)
+				_slab_show(w)
 			elif phase == "done":
 				_feel("joy", 0.8, 1.6)
+				_slab_send()
 				_react("Yes")
 			elif phase == "failed":
 				_feel("sorrow", 0.7, 2.4)
+				_slab_crumble()
 				_react("Idle_No")
 		"flow":
 			if msg.get("phase", "") == "fired":
@@ -382,17 +399,18 @@ func _process(delta: float) -> void:
 
 	_think(delta)
 	_move(delta)
-	ap.advance(delta)                       # clips first, then her head and face on top
+	ap.advance(delta)                       # clips first, then her arms, head and face on top
+	_carry_frame(delta)
 	_head()
 	_face_frame(delta)
 	_place_body()
 	_update_click_area()
-	var busy := state in ["wander", "fall", "held", "react", "dance"] or speaking or t < mood_until
+	var busy := state in ["wander", "fall", "held", "react", "dance", "knocked"] or speaking or t < mood_until or (slab and slab.visible)
 	Engine.max_fps = FPS_BUSY if busy else FPS_IDLE
 
 
 func _think(_delta: float) -> void:
-	if state in ["fall", "held"]:
+	if state in ["fall", "held"] or (state == "knocked" and t < state_until):
 		return
 	if state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit"]:
 		_set_state("sleep", 1e9)
@@ -431,6 +449,16 @@ func _move(delta: float) -> void:
 			var before := pos.y
 			vel.y -= GRAVITY * delta
 			pos += vel * delta
+			roll += spin * delta
+			# Screen edges are walls and a ceiling: she bounces off them.
+			var right := screen.x / PPM - 0.3
+			if pos.x < 0.3 or pos.x > right:
+				pos.x = clampf(pos.x, 0.3, right)
+				vel.x *= -0.55
+				spin *= -0.6
+				_feel("surprised", 0.6, 0.8)
+			if pos.y + 1.6 > screen.y / PPM and vel.y > 0.0:
+				vel.y = -absf(vel.y) * 0.4
 			var landed := false
 			for fl in floors:
 				if pos.x >= fl[1] and pos.x <= fl[2] and pos.y <= fl[0] and before >= fl[0] - 0.02:
@@ -440,14 +468,31 @@ func _move(delta: float) -> void:
 				pos.y = 0.0
 				landed = true
 			if landed:
+				var impact := -vel.y
 				vel = Vector2.ZERO
+				spin = 0.0
 				_land()
-				_set_state("react", 0.6)
-				_play("Jump_Land", 0.1)
+				if impact > HARD_LANDING or absf(wrapf(roll, -PI, PI)) > 1.2:
+					# Flat on her back, dizzy for a moment, then back up.
+					roll = 0.0
+					_set_state("knocked", 3.2)
+					_play("Death01", 0.08)
+					_feel("sorrow", 0.5, 3.0)
+				else:
+					roll = 0.0
+					_set_state("react", 0.6)
+					_play("Jump_Land", 0.1)
 		"held":
-			pass
+			# Dangling from your cursor: she sways behind the way you move her.
+			roll = lerpf(roll, clampf(-held_vel.x * 0.09, -0.7, 0.7), clampf(delta * 6.0, 0.0, 1.0))
+		"knocked":
+			pos.y = floor_y
+			if t > state_until - 1.4 and clip != "LayToIdle":
+				_play("LayToIdle", 0.25)
 		_:
 			pos.y = floor_y
+	if state not in ["fall", "held"]:
+		roll = lerpf(roll, 0.0, clampf(delta * 8.0, 0.0, 1.0))
 	pos.x = clampf(pos.x, 0.3, screen.x / PPM - 0.3)
 	if t > look_until and state != "wander":
 		yaw_target = sin(t * 0.17) * 0.25
@@ -457,7 +502,11 @@ func _move(delta: float) -> void:
 func _place_body() -> void:
 	var sitting := clip.begins_with("Sitting") and floor_y > 0.01
 	body.position = Vector3(pos.x, pos.y - (SIT_DROP if sitting else 0.0), 0.0)
-	body.rotation = Vector3(0, yaw, 0)
+	# Roll about the point she's held by (her upper chest), not her feet.
+	var pivot := Vector3(0, 1.3, 0)
+	body.rotation = Vector3(0, yaw, roll)
+	if state in ["held", "fall"]:
+		body.position += pivot - pivot.rotated(Vector3.FORWARD, -roll)
 
 
 func _head() -> void:
@@ -558,14 +607,19 @@ func _input(event: InputEvent) -> void:
 		if event.pressed:
 			drag_from = event.position
 			drag_moved = false
+			held_vel = Vector2.ZERO
 			_stir()
 			_set_state("held", 1e9)
 			_feel("surprised", 0.4, 1.0)
 		else:
 			if drag_moved:
+				# Let go: she keeps the speed you threw her with, and spins with it.
 				_set_state("fall", 99.0)
-				vel = Vector2.ZERO
+				vel = held_vel.limit_length(MAX_THROW)
+				spin = clampf(-vel.x * 1.6, -9.0, 9.0)
 				_play("Jump", 0.15)
+				if vel.length() > 4.0:
+					_feel("surprised", 0.8, 1.2)
 			else:                              # a click, not a drag: she nods at you
 				_set_state("react", 1.6)
 				_play("Yes", 0.2)
@@ -576,7 +630,131 @@ func _input(event: InputEvent) -> void:
 			if not drag_moved:
 				_play("Jump", 0.15, 0.0)      # a dangling pose while held
 			drag_moved = true
+		var v: Vector2 = event.velocity / PPM
+		held_vel = held_vel.lerp(Vector2(v.x, -v.y), 0.5)
 		pos = Vector2(event.position.x / PPM, (screen.y - event.position.y) / PPM - 1.3)
+
+
+# --- the window slab ---------------------------------------------------------
+# While she works in an app she holds a small glowing slab of it, like the
+# desk's widgets. When it works the slab flies off toward that widget; when it
+# fails it crumbles in her hands.
+func _make_slab() -> void:
+	slab = Node3D.new()
+	add_child(slab)
+	var glass := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.38, 0.25, 0.025)
+	glass.mesh = box
+	slab_mat = StandardMaterial3D.new()
+	slab_mat.albedo_color = Color(0.07, 0.05, 0.14, 0.82)
+	slab_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	slab_mat.emission_enabled = true
+	slab_mat.emission = Color(1.0, 0.16, 0.24)
+	slab_mat.emission_energy_multiplier = 0.35
+	slab_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glass.material_override = slab_mat
+	slab.add_child(glass)
+	var rim := MeshInstance3D.new()
+	var rbox := BoxMesh.new()
+	rbox.size = Vector3(0.40, 0.27, 0.012)
+	rim.mesh = rbox
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_color = Color(1.0, 0.16, 0.24)
+	rmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rim.material_override = rmat
+	rim.position.z = -0.012
+	slab.add_child(rim)
+	slab_label = Label3D.new()
+	slab_label.pixel_size = 0.0016
+	slab_label.font_size = 52
+	slab_label.outline_size = 8
+	slab_label.outline_modulate = Color(0.1, 0, 0.05)
+	slab_label.modulate = Color(1.0, 0.95, 0.96)
+	slab_label.position.z = 0.016
+	slab.add_child(slab_label)
+	crumbs = CPUParticles3D.new()
+	crumbs.emitting = false
+	crumbs.one_shot = true
+	crumbs.amount = 70
+	crumbs.lifetime = 1.3
+	crumbs.explosiveness = 0.9
+	crumbs.direction = Vector3(0, 1, 0.3)
+	crumbs.spread = 70.0
+	crumbs.initial_velocity_min = 0.6
+	crumbs.initial_velocity_max = 1.8
+	crumbs.gravity = Vector3(0, -6, 0)
+	var shard := BoxMesh.new()
+	shard.size = Vector3(0.035, 0.035, 0.01)
+	var smat := StandardMaterial3D.new()
+	smat.albedo_color = Color(1.0, 0.3, 0.4)
+	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shard.material = smat
+	crumbs.mesh = shard
+	add_child(crumbs)
+	slab.visible = false
+
+
+func _slab_show(widget: String) -> void:
+	if state in ["held", "fall", "knocked", "sleep"]:
+		return
+	slab_widget = widget
+	slab_sending = false
+	slab_label.text = widget.to_upper()
+	slab.scale = Vector3.ONE * 0.2
+	slab.visible = true
+	create_tween().tween_property(slab, "scale", Vector3.ONE, 0.25).set_trans(Tween.TRANS_BACK)
+
+
+func _slab_send() -> void:
+	if not slab.visible:
+		return
+	slab_sending = true
+	var dx: float = (widget_x.get(slab_widget, pos.x + 2.0) - pos.x)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(slab, "position", slab.position + Vector3(clampf(dx, -4, 4), 1.2, 0), 0.5).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(slab, "scale", Vector3.ONE * 0.05, 0.5)
+	tw.chain().tween_callback(func(): slab.visible = false)
+
+
+func _slab_crumble() -> void:
+	if not slab.visible:
+		return
+	crumbs.position = slab.global_position
+	crumbs.restart()
+	slab.visible = false
+
+
+# Arms out in front, as if carrying, laid over whatever clip is playing.
+func _sample_carry_pose() -> void:
+	if not ap.has_animation("Walk_Carry"):
+		return
+	ap.play("Walk_Carry")
+	ap.seek(0.0, true)
+	for b in ["LeftShoulder", "RightShoulder", "LeftUpperArm", "RightUpperArm", "LeftLowerArm",
+			"RightLowerArm", "LeftHand", "RightHand"]:
+		var i := skel.find_bone(b)
+		if i >= 0:
+			carry_pose[i] = skel.get_bone_pose_rotation(i)
+	ap.stop()
+
+
+func _carry_frame(delta: float) -> void:
+	if not slab.visible:
+		return
+	if state not in ["held", "fall", "knocked"]:
+		for i in carry_pose:
+			skel.set_bone_pose_rotation(i, carry_pose[i])
+	var l := skel.find_bone("LeftHand")
+	var r := skel.find_bone("RightHand")
+	if l >= 0 and r >= 0 and not slab_sending:
+		var hands := (skel.global_transform * skel.get_bone_global_pose(l).origin
+				+ skel.global_transform * skel.get_bone_global_pose(r).origin) / 2.0
+		slab.position = hands + Vector3(0, 0.12, 0.06)
+	slab.rotation = Vector3(-0.15, 0, 0)
+	# The holographic sheen: the slab's glow cycles while she works.
+	slab_mat.emission = Color.from_hsv(fmod(t * 0.35, 1.0), 0.75, 1.0)
+	slab_mat.emission_energy_multiplier = 0.35 + 0.25 * sin(t * 6.0)
 
 
 # --- setup helpers ----------------------------------------------------------
@@ -605,7 +783,8 @@ func _find_shapes(n: Node, shape: String) -> Array:
 func _snapshot() -> void:
 	floors.append([0.9, 0.0, 99.0])
 	var shots := [["Idle", 0.0, 0.0, "idle"], ["Walk", 1.2, 0.0, "walk"], ["Sitting_Idle", 0.0, 0.9, "sit"],
-			["Dance", 0.0, 0.0, "dance"], ["Idle_Talking", 0.0, 0.0, "talk"]]
+			["Dance", 0.0, 0.0, "dance"], ["Idle_Talking", 0.0, 0.0, "talk"], ["Idle", 0.0, 0.0, "slab"],
+			["Jump", 0.0, 0.6, "thrown"]]
 	for i in 3:
 		await get_tree().process_frame
 	_sync_screen()
@@ -616,6 +795,14 @@ func _snapshot() -> void:
 		clip = ""
 		_play(s[0], 0.0)
 		ap.advance(0.7)
+		state = "fall" if s[3] == "thrown" else "idle"
+		roll = 0.9 if s[3] == "thrown" else 0.0
+		if s[3] == "slab":
+			_slab_show("spotify")
+			slab.scale = Vector3.ONE
+		else:
+			slab.visible = false
+		_carry_frame(0.016)
 		_head()
 		mouth["a"] = 0.8 if s[3] == "talk" else 0.0
 		for v in mouth:

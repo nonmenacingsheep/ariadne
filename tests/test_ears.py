@@ -138,6 +138,20 @@ class PushToTalk(Base):
         self.assertTrue(await until(lambda: self.listening == [True, False]))
 
 
+    async def test_the_talk_key_follows_the_recorder_not_its_own_flag(self):
+        self.build(texts=["first", "second"], wake_word=False)
+        await self.go()
+        self.ears.toggle_talk()                             # press: recording
+        self.assertTrue(await until(lambda: self.mic.reads > 10))
+        self.ears.toggle_talk()                             # press: sent
+        self.assertTrue(await until(lambda: self.heard == ["first"]))
+        self.ears.toggle_talk()
+        self.assertTrue(await until(lambda: self.ears.listener.ptt_recording()))
+        self.ears.listener._give_up_ptt()                   # the recording ends without the key (cap, lost mic)
+        self.ears.toggle_talk()                             # so the next press starts one, not "stops" nothing
+        self.assertTrue(self.ears.listener.ptt_recording())
+
+
 class WakeWord(Base):
     async def test_hey_aries_then_words_are_heard_after_silence(self):
         script = [10] * 20 + speech(900)
@@ -157,6 +171,22 @@ class WakeWord(Base):
         self.assertTrue(await until(lambda: self.listening == [True]))
         self.assertTrue(await until(lambda: self.listening == [True, False]))
         self.assertTrue(self.mic.live.alive)               # wake word still held
+
+    async def test_while_she_works_the_open_mic_needs_her_name(self):
+        # He asks, she starts working; talk in the room meanwhile must not be
+        # drafted and sent the moment she's done.
+        busy = {"on": False}
+        script = [10] * 20 + speech(900) + [10] * 60 + speech(900) + [10] * 200
+        self.build(script, texts=["hey aries open firefox", "hey aries open firefox",
+                                  "when she's activated"], is_busy=lambda: busy["on"])
+        await self.go()
+        self.assertTrue(await until(lambda: self.heard))
+        busy["on"] = True
+        self.assertTrue(await until(lambda: len(self.tr.calls) >= 3))
+        self.assertEqual(self.tr.calls[2][1], self.ears.names.interrupt_hint)   # heard as over her
+        busy["on"] = False
+        await asyncio.sleep(0.15)
+        self.assertEqual(self.heard, ["open firefox"])
 
     async def test_speech_without_the_name_goes_nowhere(self):
         script = [10] * 20 + speech(800)

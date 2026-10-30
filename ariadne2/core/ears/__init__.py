@@ -125,6 +125,13 @@ class Ears:
         threading.Thread(target=go, daemon=True).start()
 
     # --------------------------------------------------------------- controls
+    def toggle_talk(self) -> None:
+        """The talk key (press, speak, press). Asks the listener whether it is
+        recording rather than keeping its own flag: a recording can end without
+        the key (the 60 s cap, a lost mic), and a flag would then be backwards."""
+        if self.available:
+            self.listener.push_to_talk(not self.listener.ptt_recording())
+
     def push_to_talk(self, down: bool) -> None:
         """Hold to talk, release to send. Works with the wake word off."""
         if self.available:

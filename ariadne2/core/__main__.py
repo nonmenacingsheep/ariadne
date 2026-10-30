@@ -134,14 +134,11 @@ async def run(args: argparse.Namespace) -> None:
     settings_mod.bind_core(settings, conversation=conversation, voice=voice, ears=ears, operate=operate_mod)
     settings.apply_all(skip=_cli_overrides(args))
 
-    talking = {"on": False}
-
     def on_desk(msg):
         # Push-to-talk (Meta+S via KWin and the desk): press, speak, press.
         if msg.get("t") == "press" and msg.get("widget") == "core" and msg.get("control") == "talk":
             if ears:
-                talking["on"] = not talking["on"]
-                ears.push_to_talk(talking["on"])
+                ears.toggle_talk()
             return None
         if msg.get("t") == "set":
             return _apply_set(settings, server, msg)

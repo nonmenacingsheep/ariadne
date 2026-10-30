@@ -19,7 +19,7 @@ import threading
 import time
 
 from . import mic, transcribe
-from .session import IDLE, OVER, PTT
+from .session import IDLE, OPEN, OVER, PTT
 
 log = logging.getLogger("ariadne2.ears")
 
@@ -85,6 +85,9 @@ class Listener:
                 pass
 
     # ----------------------------------------------------------- push to talk
+    def ptt_recording(self) -> bool:
+        return self._ptt_down
+
     def push_to_talk(self, down: bool) -> None:
         if down:
             self._ptt_down, self._ptt_release_at = True, 0.0
@@ -204,7 +207,11 @@ class Listener:
                 continue
             utterance = seg.feed(frame, her_voice=her_voice, awake=d.awake)
             if utterance is not None:
-                self._submit(utterance.pcm, OVER if utterance.interrupting else d.mode)
+                # While she works on a reply, the open mic is held to the rules for
+                # over her voice: her name or a skip, nothing else. Otherwise talk in
+                # the room is drafted while she works and sent the moment she's done.
+                busy = d.mode == OPEN and d.is_busy()
+                self._submit(utterance.pcm, OVER if utterance.interrupting or busy else d.mode)
             elif not seg.speaking:
                 d.tick()            # nothing is said or about to be: the safe moment to decide a sentence ended
 

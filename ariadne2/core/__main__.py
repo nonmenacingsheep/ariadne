@@ -136,11 +136,17 @@ async def run(args: argparse.Namespace) -> None:
 
     from .claude_live import LiveClaude
     live_claude = LiveClaude(server.publish)
+    from .updater import Updater
+    updater = Updater(server.publish, settings=settings)
+    settings.hooks[("general", "check_now")] = lambda _v: asyncio.ensure_future(updater.check())
 
     def on_desk(msg):
         # The Claude widget's own Claude Code session: his, never routed to her.
         if msg.get("t") == "cc_do":
             _spawn_flow(live_claude.on_desk(msg))
+            return None
+        if msg.get("t") == "update_do":
+            _spawn_flow(updater.on_desk(msg))
             return None
         # Push-to-talk (Meta+S via KWin and the desk): press, speak, press.
         if msg.get("t") == "press" and msg.get("widget") == "core" and msg.get("control") == "talk":
@@ -188,6 +194,7 @@ async def run(args: argparse.Namespace) -> None:
         except Exception:
             log.exception("adapter %s failed to start", adapter.name)
     await engine.start()
+    updater.start()
     for part in (voice, ears):
         if part:
             await part.start()
@@ -199,6 +206,7 @@ async def run(args: argparse.Namespace) -> None:
                 await part.stop()
         await engine.stop()
         await live_claude.end()
+        updater.stop()
         inbox_task.cancel()
         avatar_task.cancel()
         await conversation.stop()

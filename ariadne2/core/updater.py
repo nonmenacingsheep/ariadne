@@ -1,0 +1,140 @@
+"""Keeping Ariadne up to date from her GitHub repository.
+
+Ariadne runs straight from a git checkout, so updating means fetching and
+fast-forwarding to what the remote has. It only ever fast-forwards: if this
+checkout has local edits or commits the remote doesn't (a working copy he or
+Claude is developing in), it says so and leaves it alone. It never merges,
+rebases, resets or stashes.
+
+The running app keeps the code it started with; after an update the desk shows
+a Restart button (bin/ariadne2 replaces the running instance).
+
+Settings (General): check_updates (on), auto_update (install when found, on),
+check_now (an action).
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import subprocess
+import time
+from pathlib import Path
+
+log = logging.getLogger("ariadne2.updater")
+
+REPO = Path(__file__).resolve().parents[2]
+FIRST_CHECK = 90.0                 # after start: let her come up first
+EVERY = 6 * 3600.0
+GIT_TIMEOUT = 60.0
+
+
+async def _git(root: Path, *args: str) -> tuple[int, str]:
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}        # never wait on a password prompt
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", str(root), *args, env=env, stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await asyncio.wait_for(proc.communicate(), GIT_TIMEOUT)
+        return proc.returncode, out.decode(errors="replace").strip()
+    except (OSError, asyncio.TimeoutError) as e:
+        return 1, str(e)
+
+
+class Updater:
+    def __init__(self, publish, root: Path = REPO, git=_git, settings=None, spawn=subprocess.Popen) -> None:
+        self.publish = publish
+        self.root = root
+        self.git = git
+        self.settings = settings
+        self.spawn = spawn
+        self.state: dict = {"status": "unchecked"}
+        self.restart_needed = False
+        self._lock = asyncio.Lock()
+        self._task: asyncio.Task | None = None
+
+    def _want(self, key: str, default: bool = True) -> bool:
+        try:
+            return bool(self.settings.get("general", key)) if self.settings else default
+        except Exception:
+            return default
+
+    async def _say(self, **state) -> dict:
+        state["restart"] = self.restart_needed
+        state["checked"] = int(time.time())
+        self.state = state
+        await self.publish({"t": "update", **state})
+        return state
+
+    async def check(self, install: bool | None = None) -> dict:
+        """Fetch, compare, and fast-forward when allowed. Returns (and publishes) the state."""
+        install = self._want("auto_update") if install is None else install
+        async with self._lock:
+            git, root = self.git, self.root
+            code, branch = await git(root, "rev-parse", "--abbrev-ref", "HEAD")
+            if code or branch == "HEAD":
+                return await self._say(status="not on a branch")
+            code, upstream = await git(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+            if code:
+                return await self._say(status="no remote")
+            remote = upstream.split("/", 1)[0]
+            code, out = await git(root, "fetch", "--quiet", remote)
+            if code:
+                log.info("update check: fetch failed: %s", out[:200])
+                return await self._say(status="offline")
+            code, counts = await git(root, "rev-list", "--left-right", "--count", f"HEAD...{upstream}")
+            try:
+                ahead, behind = (int(x) for x in counts.split())
+            except ValueError:
+                return await self._say(status="error")
+            code, log_out = await git(root, "log", "--format=%s", "-n", "6", f"HEAD..{upstream}")
+            commits = [line for line in log_out.splitlines() if line][:6] if behind else []
+            if not behind:
+                return await self._say(status="up to date", ahead=ahead)
+            if ahead:
+                return await self._say(status="diverged", behind=behind, ahead=ahead, commits=commits)
+            code, dirty = await git(root, "status", "--porcelain", "--untracked-files=no")
+            if dirty:
+                return await self._say(status="local changes", behind=behind, commits=commits)
+            if not install:
+                return await self._say(status="available", behind=behind, commits=commits)
+            code, out = await git(root, "merge", "--ff-only", "--quiet", upstream)
+            if code:
+                log.warning("update failed: %s", out[:300])
+                return await self._say(status="failed", behind=behind, commits=commits)
+            self.restart_needed = True
+            log.info("updated %d commit(s) from %s", behind, upstream)
+            return await self._say(status="updated", behind=behind, commits=commits)
+
+    def restart(self) -> None:
+        """Start Ariadne again; bin/ariadne2 stops this instance first."""
+        self.spawn([str(self.root / "bin" / "ariadne2")], cwd=str(self.root), start_new_session=True,
+                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    async def on_desk(self, msg: dict) -> None:
+        op = msg.get("op")
+        if op == "check":
+            await self.check()
+        elif op == "install":
+            await self.check(install=True)
+        elif op == "restart":
+            self.restart()
+        elif op == "hello":
+            await self.publish({"t": "update", **self.state})
+
+    async def loop(self) -> None:
+        await asyncio.sleep(FIRST_CHECK)
+        while True:
+            if self._want("check_updates"):
+                try:
+                    await self.check()
+                except Exception:
+                    log.exception("update check failed")
+            await asyncio.sleep(EVERY)
+
+    def start(self) -> None:
+        self._task = asyncio.ensure_future(self.loop())
+
+    def stop(self) -> None:
+        if self._task:
+            self._task.cancel()

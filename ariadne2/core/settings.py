@@ -127,6 +127,12 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     for kind in SOUND_KINDS:
         s.append(_entry("voice", f"sound_{kind}", _SOUND_LABELS[kind], "bool", True,
                         "Play this sound; off mutes just this one."))
+    s.append(_entry("general", "check_updates", "Check for updates", "bool", True,
+                    "Look for a newer Ariadne on GitHub every few hours."))
+    s.append(_entry("general", "auto_update", "Install updates automatically", "bool", True,
+                    "Download them when found; a Restart button appears on her core. Never touches local edits."))
+    s.append(_entry("general", "check_now", "Check for updates now", "bool", False,
+                    "Look right away.", action=True))
     # ---- desktop ----
     s.append(_entry("desktop", "raise_key", "Raise hotkey", "key", "Meta+A",
                     "Lifts the desk over your windows. Rebind it in System Settings, Shortcuts.",
@@ -404,7 +410,7 @@ class Settings:
 
 
 # Momentary or one-off: running them every start would be wrong (a reset, a write to autostart).
-NOT_AT_START = {("desktop", "reset_layout"), ("desktop", "autostart")}
+NOT_AT_START = {("desktop", "reset_layout"), ("desktop", "autostart"), ("general", "check_now")}
 
 
 # ---- per-key checks for text settings ----
@@ -469,7 +475,7 @@ def set_autostart(on: bool, directory: Path | None = None, template: Path | None
 
 
 def bind_core(settings: Settings, conversation=None, voice=None, ears=None, operate=None,
-              autostart=set_autostart, reset_layout=None) -> None:
+              autostart=set_autostart, reset_layout=None, updater=None) -> None:
     """Wire each setting to the part of the running core it changes. Any part may be None (a quiet run)."""
     h = settings.hooks
     if conversation is not None:
@@ -491,5 +497,8 @@ def bind_core(settings: Settings, conversation=None, voice=None, ears=None, oper
         h[("general", "wake_phrase")] = phrase
         h[("general", "mic")] = ears.set_mic
     h[("desktop", "autostart")] = lambda v: autostart(bool(v))
+    if updater is not None:
+        import asyncio
+        h[("general", "check_now")] = lambda _v: asyncio.ensure_future(updater.check())
     if reset_layout is not None:
         h[("desktop", "reset_layout")] = lambda _v: reset_layout()

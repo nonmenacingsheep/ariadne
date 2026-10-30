@@ -45,7 +45,7 @@ function build(name) {
       <button class="brace" title="Widgets"><svg viewBox="0 0 120 12"><path d="M2 2 Q2 8 14 8 H52 Q58 8 60 11 Q62 8 68 8 H106 Q118 8 118 2"/></svg></button>
       <div class="line"></div><div class="ports"></div>
       <button class="power" title="Close Aries">${POWER}</button>
-      <button class="gear" title="Settings"><svg viewBox="0 0 16 16"><path d="M8 5.2A2.8 2.8 0 1 0 8 10.8 2.8 2.8 0 0 0 8 5.2zm6.4 3.8V7l-1.7-.4a5 5 0 0 0-.5-1.2l.9-1.5-1.4-1.4-1.5.9a5 5 0 0 0-1.2-.5L8.6 1.6H7.4L7 3.3a5 5 0 0 0-1.2.5l-1.5-.9-1.4 1.4.9 1.5a5 5 0 0 0-.5 1.2L1.6 7.4v1.2l1.7.4c.1.4.3.8.5 1.2l-.9 1.5 1.4 1.4 1.5-.9c.4.2.8.4 1.2.5l.4 1.7h1.2l.4-1.7c.4-.1.8-.3 1.2-.5l1.5.9 1.4-1.4-.9-1.5c.2-.4.4-.8.5-1.2z"/></svg></button>`;
+      <button class="upd" hidden></button><button class="gear" title="Settings"><svg viewBox="0 0 16 16"><path d="M8 5.2A2.8 2.8 0 1 0 8 10.8 2.8 2.8 0 0 0 8 5.2zm6.4 3.8V7l-1.7-.4a5 5 0 0 0-.5-1.2l.9-1.5-1.4-1.4-1.5.9a5 5 0 0 0-1.2-.5L8.6 1.6H7.4L7 3.3a5 5 0 0 0-1.2.5l-1.5-.9-1.4 1.4.9 1.5a5 5 0 0 0-.5 1.2L1.6 7.4v1.2l1.7.4c.1.4.3.8.5 1.2l-.9 1.5 1.4 1.4 1.5-.9c.4.2.8.4 1.2.5l.4 1.7h1.2l.4-1.7c.4-.1.8-.3 1.2-.5l1.5.9 1.4-1.4-.9-1.5c.2-.4.4-.8.5-1.2z"/></svg></button>`;
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
@@ -72,6 +72,11 @@ function build(name) {
     w.line = root.querySelector(".line"); w.ports = root.querySelector(".ports");
     root.querySelector(".brace").addEventListener("click", () => setDrawer(!drawerOpen));
     root.querySelector(".gear").addEventListener("click", () => Settings.toggle());
+    root.querySelector(".upd").addEventListener("click", e => {
+      e.stopPropagation();
+      const b = e.currentTarget;
+      if (b.dataset.op) { post({ t: "send", msg: { t: "update_do", op: b.dataset.op } }); b.textContent = b.dataset.op === "restart" ? "RESTARTING…" : "UPDATING…"; }
+    });
     // While the drawer is open, right-click a port to send its widget back into it.
     w.ports.addEventListener("contextmenu", e => {
       const b = e.target.closest(".port"); if (!b) return;
@@ -633,6 +638,18 @@ function watchRects(el) {
   el.addEventListener("transitionend", e => { if (e.target === el) queueRects(); });
 }
 
+// An update from GitHub: a chip on her core. Found (auto-install off): click
+// to install; installed: click to restart into it.
+function showUpdate(m) {
+  const b = W.core && W.core.root.querySelector(".upd");
+  if (!b) return;
+  const op = m.restart ? "restart" : m.status === "available" ? "install" : "";
+  b.hidden = !op;
+  b.dataset.op = op;
+  b.textContent = op === "restart" ? "RESTART TO UPDATE" : "UPDATE";
+  b.title = (m.commits || []).map(c => "• " + c).join("\n") || "";
+}
+
 function reportRects() {
   const m = HALO + DEPTH;
   const out = Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]);
@@ -728,8 +745,9 @@ window.desk = {
       case "flow": flowEvent(msg); FlowEditor.message(msg); break;
       case "catalog": case "flow_graph": case "flow_saved": case "flow_tested": FlowEditor.message(msg); break;
       case "menu": FileMenu.reply(msg); break;
-      case "settings": Settings.message(msg); Claude.hello(); break;     // sent on every (re)connect
+      case "settings": Settings.message(msg); Claude.hello(); post({ t: "send", msg: { t: "update_do", op: "hello" } }); break;     // sent on every (re)connect
       case "cc": Claude.message(msg); break;
+      case "update": showUpdate(msg); break;
       case "attached": if (W.chat) addChip(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;
       case "ears":

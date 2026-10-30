@@ -624,3 +624,11 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .cc-pk-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-pk-when { font: 600 9.5px Rajdhani, sans-serif; letter-spacing: .14em; color: var(--cyan); flex: none; }
 .cc-pk-none { font-size: 12px; opacity: .5; padding: 4px; }
+
+/* An update waiting (core/updater.py): a chip beside the gear. */
+.upd { position: absolute; top: 8px; left: 42px; height: 22px; z-index: 7; cursor: pointer; padding: 0 9px;
+  font: 700 10px Rajdhani, sans-serif; letter-spacing: .18em; color: #0b0710; background: var(--cyan); border: none;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  box-shadow: 0 0 12px rgba(0,229,255,.45); animation: updpulse 1.6s ease-in-out infinite alternate; }
+.upd[hidden] { display: none; }
+@keyframes updpulse { to { box-shadow: 0 0 2px rgba(0,229,255,.2); } }

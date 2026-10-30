@@ -50,6 +50,8 @@ _REQUIRED = {
     "set": ("section", "key", "value"),
     "cc": ("ev",),              # the Claude widget's live Claude Code session (core/claude_live.py)
     "cc_do": ("op",),
+    "update": ("status",),       # core/updater.py: what the update check found
+    "update_do": ("op",),
 }
 MAX_ATTACHMENTS = 8
 

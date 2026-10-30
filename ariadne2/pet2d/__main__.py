@@ -31,6 +31,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("WebKit", "6.0")
 from gi.repository import Gdk, GLib, Gtk, WebKit  # noqa: E402
 
+from .beats import BeatListener  # noqa: E402
+
 log = logging.getLogger("ariadne2.pet2d")
 
 TITLE = "ariadne2-pet-l2d"            # KWin's script matches the "ariadne2-pet" prefix
@@ -39,6 +41,7 @@ WEB = Path(__file__).with_name("web")
 MODELS = WEB / "models"
 CONFIG = Path.home() / ".config" / "ariadne2"
 SCREEN = (3440, 1440)
+PIN_FILE = Path.home() / ".local" / "share" / "ariadne2" / "pet" / "pin2d.json"
 CSS = "window.ariadne2-pet2d, window.ariadne2-pet2d > * { background: transparent; }"
 
 
@@ -78,6 +81,8 @@ class PetWindow(Gtk.Window):
         self.settings: dict = {}
         self.settings_mtime = 0.0
         self.layout_mtime = 0.0
+        self.music = False                         # Spotify is playing
+        self.beats = BeatListener(lambda period, strength: GLib.idle_add(self._beat, period, strength))
 
         ctx = WebKit.WebContext.get_default()     # the host GPU driver, as the desk does
         for d in ("/run/host/usr/lib64", "/run/host/usr/share/egl", "/run/host/usr/share/glvnd",
@@ -95,6 +100,7 @@ class PetWindow(Gtk.Window):
         s.set_allow_file_access_from_file_urls(True)
         s.set_allow_universal_access_from_file_urls(True)    # the model's files, fetched from file://
         self.view.connect("load-changed", self._loaded)
+        self.view.connect("context-menu", lambda *_: True)      # no Back/Reload menu on her
         self.view.load_uri((WEB / "index.html").as_uri())
         self.set_child(self.view)
         self.connect("realize", lambda *_: self._update_input())
@@ -129,6 +135,12 @@ class PetWindow(Gtk.Window):
         if msg.get("t") == "hit":
             self.hit = [r for r in msg.get("rects", []) if isinstance(r, list) and len(r) == 4]
             self._update_input()
+        elif msg.get("t") == "pin":
+            try:
+                PIN_FILE.parent.mkdir(parents=True, exist_ok=True)
+                PIN_FILE.write_text(json.dumps({"x": float(msg["x"]), "y": float(msg["y"])}))
+            except (OSError, KeyError, TypeError, ValueError):
+                pass
         elif msg.get("t") == "log":
             log.warning("page: %s", msg.get("msg"))
 
@@ -158,6 +170,7 @@ class PetWindow(Gtk.Window):
             self.settings = data
             self._js("settings", data.get("avatar") or {})
             self._apply()
+            self._beats_wanted()
         layout, self.layout_mtime = self._read("layout.json", self.layout_mtime)
         if isinstance(layout, dict):
             hidden, _ = self._read("hidden.json", 0.0)
@@ -170,6 +183,11 @@ class PetWindow(Gtk.Window):
             return
         self.model = want
         if want:
+            try:
+                pin = json.loads(PIN_FILE.read_text())
+                self._js("pinAt", float(pin["x"]), float(pin["y"]))
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
             self._js("load", Path(live2d_models()[want]).as_uri())
             self.set_visible(True)
             self.present()
@@ -177,6 +195,19 @@ class PetWindow(Gtk.Window):
             self._js("unload")
             self.set_visible(False)       # nothing drawn, nothing to composite
         self._update_input()
+        self._beats_wanted()
+
+    # ---- dancing: listen for beats only while music plays and she shows -----
+    def _beats_wanted(self) -> None:
+        av = self.settings.get("avatar") if isinstance(self.settings.get("avatar"), dict) else {}
+        if self.model and self.music and av.get("dance_to_music", True):
+            self.beats.start()
+        else:
+            self.beats.stop()
+
+    def _beat(self, period: float, strength: float) -> bool:
+        self._js("beat", round(period, 3), round(strength, 2))
+        return False
 
     # ---- the core's broadcasts (read-only port) ----------------------------
     def _listen(self) -> None:
@@ -201,9 +232,15 @@ class PetWindow(Gtk.Window):
             time.sleep(2)
 
     def _forward(self, msg: dict) -> bool:
-        if self.model:
-            if msg.get("t") == "state" and msg.get("widget") not in ("spotify",):
+        if msg.get("t") == "state":
+            if msg.get("widget") != "spotify" or not isinstance(msg.get("data"), dict):
                 return False
+            playing = msg["data"].get("status") == "playing"
+            if playing != self.music:
+                self.music = playing
+                self._beats_wanted()
+            msg = {"t": "state", "widget": "spotify", "data": {"status": msg["data"].get("status")}}
+        if self.model:
             self._js("message", msg)
         return False
 

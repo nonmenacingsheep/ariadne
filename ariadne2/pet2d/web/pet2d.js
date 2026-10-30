@@ -52,7 +52,8 @@ const pet = (() => {
   let app = null, model = null, canvas = null, loadingUri = "";
   let W = innerWidth || 3440, H = innerHeight || 1366;
   const opt = { size: 300, fps_cap: 30, sleep_after: 8, wander: true, sit_on_widgets: true,
-                walk_off_edges: true, nap: true, lip_sync: true, react_to_work: true };
+                walk_off_edges: true, nap: true, lip_sync: true, react_to_work: true,
+                pinned: false, dance_to_music: true };
   let surfaces = [];                       // [{x0, x1, y}] widget tops she can stand on
   // Her feet's centre, in page pixels; velocity in px/s.
   const me = { x: 1700, y: 1366, vx: 0, vy: 0, mode: "fall", on: null, target: null, until: 0,
@@ -60,6 +61,13 @@ const pet = (() => {
   const face = { look: "", until: 0, w: {}, mouth: 0, speaking: false, level: 0, gaze: { x: 0, y: 0 } };
   let held = null, pokes = [], hitKey = "";
   let dispW = 0, dispH = 0, cw = 0, ch = 0;
+  let pinPos = null;                       // where she was pinned (saved by the host)
+  // The beat clock: real beats from the music (beats.py) re-anchor it; between
+  // and without them it keeps time on its own.
+  let music = false;
+  const beat = { period: 0.53, last: 0, count: 0, energy: 0.5, heard: 0 };
+  const dance = { bob: 0 };
+  const MOVES = ["sway", "bounce", "groove", "hop"];
 
   // ------------------------------------------------------------------ model
   async function load(uri) {
@@ -73,6 +81,10 @@ const pet = (() => {
         canvas = app.view;
         document.body.appendChild(canvas);
         canvas.addEventListener("pointerdown", down);
+        // WebKit's own menu would take the pointer mid-grab; she has no menu, so none at all.
+        addEventListener("contextmenu", e => e.preventDefault());
+        canvas.addEventListener("pointercancel", () => { if (held) up(); });
+        addEventListener("blur", () => { if (held) up(); });
         addEventListener("pointermove", move);
         addEventListener("pointerup", up);
         app.ticker.add(() => frame(Math.min(app.ticker.deltaMS / 1000, 0.1)));
@@ -85,6 +97,10 @@ const pet = (() => {
       fit();
       me.x = clamp(me.x, dispW / 2, W - dispW / 2);
       me.mode = "fall"; me.vy = 0; me.y = Math.min(me.y, H - 1);
+      if (opt.pinned) {
+        if (pinPos) { me.x = clamp(pinPos.x, dispW / 2, W - dispW / 2); me.y = clamp(pinPos.y, dispH * 0.3, H); }
+        me.mode = "pinned";
+      }
       canvas.style.display = "block";
     } catch (e) { log("couldn't load " + uri + ": " + e); loadingUri = ""; }
   }
@@ -110,18 +126,27 @@ const pet = (() => {
   function screen(w, h) { W = w; H = h; me.x = clamp(me.x, dispW / 2 || 100, W - (dispW / 2 || 100)); if (me.y > H) me.y = H; place(); }
   function settings(av) {
     let refit = false;
+    const wasPinned = opt.pinned;
     for (const k of Object.keys(opt)) if (k in av) {
       const v = typeof opt[k] === "boolean" ? !!av[k] : Number(av[k]);
       if (k === "size" && v !== opt.size) refit = true;
       opt[k] = v;
     }
     if (refit) fit();
+    if (model && opt.pinned && !wasPinned) pin();                       // pinned where she is now
+    if (model && !opt.pinned && wasPinned && me.mode === "pinned") { me.mode = "fall"; me.vx = me.vy = 0; }
   }
+  function pin() {
+    me.mode = "pinned"; me.vx = me.vy = 0; me.on = null;
+    pinPos = { x: me.x, y: me.y };
+    post({ t: "pin", x: Math.round(me.x), y: Math.round(me.y) });
+  }
+  function pinAt(x, y) { pinPos = { x, y }; }
   function layout(rects, hidden) {
     const skip = new Set(hidden || []);
     surfaces = Object.entries(rects || {}).filter(([n, r]) => !skip.has(n) && Array.isArray(r) && r.length === 4)
       .map(([, [x, y, w]]) => ({ x0: x + 20, x1: x + w - 20, y })).filter(s => s.x1 - s.x0 > 80 && s.y > 120);
-    if (me.on && me.on !== "floor" && !surfaces.some(s => Math.abs(s.y - me.y) < 2 && me.x >= s.x0 && me.x <= s.x1)) {
+    if (me.mode !== "pinned" && me.on && me.on !== "floor" && !surfaces.some(s => Math.abs(s.y - me.y) < 2 && me.x >= s.x0 && me.x <= s.x1)) {
       me.on = null; me.mode = "fall";         // the widget she stood on moved away
     }
   }
@@ -136,7 +161,8 @@ const pet = (() => {
     if (!model) return;
     model.update(dt * 1000);              // on this ticker, so the frame cap holds for the rig too
     const t = now();
-    if (me.mode === "held") {
+    tick(t);
+    if (me.mode === "held" || me.mode === "pinned") {
       // follows the pointer (move()); velocity is measured there
     } else if (me.mode === "fall") {
       me.vy += 2600 * dt; me.x += me.vx * dt;
@@ -165,9 +191,9 @@ const pet = (() => {
     me.lean += (lean - me.lean) * Math.min(1, dt * 6);
     me.tilt += ((me.mode === "held" ? clamp(-me.vx / 45, -30, 30) : 0) - me.tilt) * Math.min(1, dt * 5);
     // Sleep after long quiet.
-    if (opt.nap && me.mode === "stand" && t - me.lastStir > opt.sleep_after * 60 && face.look !== "asleep") feel("asleep", 1e9);
+    if (opt.nap && (me.mode === "stand" || me.mode === "pinned") && !dancing() && t - me.lastStir > opt.sleep_after * 60 && face.look !== "asleep") feel("asleep", 1e9);
     place();
-    const busy = me.mode !== "stand" || face.speaking || t < face.until && face.look !== "asleep" || held;
+    const busy = (me.mode !== "stand" && me.mode !== "pinned") || dancing() || face.speaking || t < face.until && face.look !== "asleep" || held;
     app.ticker.maxFPS = face.look === "asleep" ? 10 : busy ? clamp(opt.fps_cap, 10, 60) : Math.max(10, opt.fps_cap / 2);
   }
   function land(s) {
@@ -175,7 +201,7 @@ const pet = (() => {
   }
   function stand() { me.mode = "stand"; me.until = now() + 4 + Math.random() * 10; }
   function decide(t) {
-    if (face.look === "asleep" || face.speaking) { me.until = t + 3; return; }
+    if (face.look === "asleep" || face.speaking || dancing()) { me.until = t + 3; return; }
     const r = Math.random();
     if (opt.sit_on_widgets && r < 0.25 && surfaces.length) {
       // hop to a widget top within reach (or back down to the floor)
@@ -201,7 +227,7 @@ const pet = (() => {
   }
   function place() {
     if (!canvas || !model) return;
-    const left = Math.round(me.x - cw / 2), top = Math.round(me.y - ch + (me.mode === "walk" ? -Math.abs(Math.sin(me.bob)) * 5 : 0));
+    const left = Math.round(me.x - cw / 2), top = Math.round(me.y - ch + (me.mode === "walk" ? -Math.abs(Math.sin(me.bob)) * 5 : 0) - dance.bob);
     canvas.style.transform = `translate(${left}px, ${top}px)`;
     report(false, left, top);
   }
@@ -215,7 +241,7 @@ const pet = (() => {
 
   // ---------------------------------------------------------------- hands on
   function down(e) {
-    if (!model) return;
+    if (!model || e.button !== 0) return;      // right/middle click: not a grab (see contextmenu below)
     stir();
     held = { dx: e.clientX - me.x, dy: e.clientY - me.y, x: e.clientX, y: e.clientY, t: now(), moved: 0 };
     canvas.setPointerCapture(e.pointerId);
@@ -241,6 +267,7 @@ const pet = (() => {
     canvas.classList.remove("held");
     const wasHeld = me.mode === "held";
     held = null;
+    if (wasHeld && opt.pinned) { pin(); return; }
     if (wasHeld) { me.mode = "fall"; me.vx = clamp(me.vx, -3000, 3000); me.vy = clamp(me.vy, -3000, 3000); return; }
     // A click, not a drag: a poke. A few in a row and she's had enough.
     const t = now();
@@ -285,6 +312,7 @@ const pet = (() => {
     core.setParameterValueById("Anime_Cry", (t * 0.8) % 1);
     core.setParameterValueById("AnimeAngry", Math.sin(t * 7));
     core.setParameterValueById("AnimeAngry2", Math.sin(t * 7 + 1.3));
+    groove(core, t);
     // Swing and breath (and a woozy wobble when dizzy).
     const wobble = face.look === "dizzy" ? Math.sin(t * 5) * 12 : 0;
     core.setParameterValueById("ParamAngleZ", me.tilt + wobble + Math.sin(t * 0.7) * 2);
@@ -296,6 +324,53 @@ const pet = (() => {
     if (face.gaze.until && t < face.gaze.until) model.focus(face.gaze.x, face.gaze.y);
     else if (me.mode === "walk") model.focus(Math.sign(me.target - me.x) > 0 ? cw : 0, ch * 0.2);
     else if (Math.random() < dt * 0.25) model.focus(Math.random() * cw, Math.random() * ch * 0.6);
+  }
+
+  // ---------------------------------------------------------------- dancing
+  function dancing() {
+    return opt.dance_to_music && music && model && (me.mode === "stand" || me.mode === "pinned")
+      && face.look !== "asleep" && !held;
+  }
+  function onBeat(period, strength) {
+    const t = now();
+    beat.period = clamp(Number(period) || 0.53, 0.33, 0.75);
+    beat.energy = Math.max(beat.energy * 0.7, clamp(Number(strength) || 0.5, 0.2, 1));
+    beat.heard = t;
+    if (t - beat.last < beat.period * 0.5) beat.last = t;     // our own count was just ahead: re-anchor
+    else { beat.count++; beat.last = t; }
+    if (music) stir();
+  }
+  function tick(t) {
+    // Keep time between real beats (and without any, at the last tempo).
+    while (t - beat.last > beat.period * 1.25 && t - beat.last < 10) { beat.last += beat.period; beat.count++; }
+    if (t - beat.last >= 10) beat.last = t;
+    beat.energy += ((t - beat.heard < 2 ? 0.6 : 0.35) - beat.energy) * 0.01;
+  }
+  // Four moves, eight beats each; the rig's physics swings her hair and tail along.
+  function groove(core, t) {
+    const on = dancing();
+    if (!on) { dance.bob += (0 - dance.bob) * 0.2; return; }
+    const phi = clamp((t - beat.last) / beat.period, 0, 1), b = beat.count + phi;
+    const e = 0.55 + 0.45 * beat.energy, kick = Math.pow(1 - phi, 3);
+    const move = MOVES[Math.floor(beat.count / 8) % MOVES.length];
+    const sw = Math.sin(Math.PI * b), add = (id, v) => core.addParameterValueById(id, v);
+    let bob = 0;
+    if (move === "sway") {
+      add("ParamBodyAngleX0", 8 * e * sw); add("ParamAngleZ", 8 * e * sw); add("ParamHipAngleX0", -4 * e * sw);
+      add("ParamAngleX", 12 * Math.sin(Math.PI * b / 2)); bob = 5 * e * Math.abs(sw);
+    } else if (move === "bounce") {
+      add("ParamAngleY", -14 * e * kick); add("ParamBodyAngleY0", -6 * e * kick); add("ParamShoulderAngleY", 6 * kick);
+      add("ParamAngleZ", 4 * sw); bob = 11 * e * kick;
+    } else if (move === "groove") {
+      add("ParamBodyAngleZ0", 6 * e * sw); add("ParamHipAngleZ0", 5 * e * Math.sin(Math.PI * b + 1.2));
+      add("ParamAngleZ", 6 * sw); add("ParamAngleX", -10 * sw); bob = 4 * e * Math.abs(Math.sin(Math.PI * b + 1.2));
+    } else {   // hop: a little jump every other beat
+      const up = beat.count % 2 === 0 ? Math.sin(Math.PI * phi) : 0;
+      add("ParamAngleY", 8 * up - 6 * kick); add("ParamBodyAngleX0", 3 * sw); bob = 26 * e * up;
+    }
+    dance.bob += (bob - dance.bob) * 0.5;
+    // Happy while she dances, and starry-eyed now and then.
+    if (!face.look || face.look === "smile") feel(beat.count % 32 >= 28 ? "stars" : "smile", 0.6);
   }
 
   // ---------------------------------------------------------------- the core
@@ -321,6 +396,13 @@ const pet = (() => {
         else if (m.phase === "failed") feel("gloom", 2.2);
         break;
       case "chat": stir(); break;
+      case "state":
+        if (m.widget === "spotify" && m.data) {
+          const was = music;
+          music = m.data.status === "playing";
+          if (music && !was) { stir(); beat.last = now(); }
+        }
+        break;
     }
   }
 
@@ -328,5 +410,6 @@ const pet = (() => {
   addEventListener("resize", () => screen(innerWidth, innerHeight));
   screen(innerWidth, innerHeight);
 
-  return { load, unload, screen, settings, layout, message, feel };
+  return { load, unload, screen, settings, layout, message, feel, pinAt, beat: onBeat,
+           _debug: { me, beat, setMusic: v => { music = v; } } };
 })();

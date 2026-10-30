@@ -158,6 +158,8 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
                     "Minutes of nothing before she dozes off.", min=1, max=120, step=1, unit="min"))
     for key, label, help_ in (
             ("wander", "Wander", "Walk about on her own."),
+            ("pinned", "Pin in place", "She stays where you put her, even mid-air: no walking, hopping or "
+                                         "falling. Drag her to move the pin."),
             ("sit_on_widgets", "Sit on widgets", "Perch on the edges of widgets."),
             ("walk_off_edges", "Walk off edges", "Step off a widget and drop to the floor."),
             ("dance_to_music", "Dance to music", "Dance when Spotify is playing."),
@@ -166,7 +168,7 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
             ("seek_cursor", "Come to the cursor", "Walk over to you when she is lonely."),
             ("react_to_work", "React to her work", "Hold the glowing slab while she works in an app."),
             ("lip_sync", "Lip sync", "Shape her mouth to what she says.")):
-        s.append(_entry("avatar", key, label, "bool", True, help_))
+        s.append(_entry("avatar", key, label, "bool", key != "pinned", help_))
     return s
 
 

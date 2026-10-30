@@ -47,3 +47,32 @@ class WantedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BeatTests(unittest.TestCase):
+    def feed(self, bpm, seconds=10.0, hop=256 / 11025):
+        from ariadne2.pet2d.beats import BeatTracker
+        tr, hits, t, period = BeatTracker(), [], 0.0, 60.0 / bpm
+        while t < seconds:
+            kick = (t % period) < hop                      # one loud hop per beat, quiet between
+            hit = tr.feed(900.0 if kick else 120.0 + 10 * ((int(t / hop) * 7) % 5), t)
+            if hit:
+                hits.append(hit)
+            t += hop
+        return hits
+
+    def test_finds_the_tempo_of_a_steady_kick(self):
+        for bpm in (96, 120, 140):
+            hits = self.feed(bpm)
+            self.assertGreater(len(hits), 10)
+            self.assertAlmostEqual(hits[-1][0], 60.0 / bpm, delta=0.03)
+
+    def test_silence_is_not_a_beat(self):
+        from ariadne2.pet2d.beats import BeatTracker
+        tr = BeatTracker()
+        self.assertFalse([h for i in range(500) if (h := tr.feed(5.0 + (i % 3), i * 0.023))])
+
+    def test_slow_tempos_fold_into_dance_range(self):
+        from ariadne2.pet2d.beats import fold
+        self.assertAlmostEqual(fold(1.0), 0.5)
+        self.assertAlmostEqual(fold(0.25), 0.5)

@@ -19,8 +19,13 @@ log = logging.getLogger("ariadne2.ears")
 # elapses -- so it is worth being tight: a pause for breath is a third of a
 # second; this is nearly four of those.
 AUTOSEND_S = 1.2
-# After her reply, how long the mic stays open for a follow-up before closing.
+# After "hey Aries" on its own, how long she waits for the words before closing.
+# There is no follow-up window after a message: once one is sent she stops
+# listening (he asked: an open mic after her reply drafted whatever was said in
+# the room, which she answered, which opened it again).
 FOLLOW_UP_S = 8.0
+# However loud the room stays (music, a stream), the window never outlives this.
+MAX_OPEN_S = 30.0
 # Deaf for a moment either side of opening/closing: the desk plays a chime a
 # foot from the microphone, which would otherwise read as an utterance.
 DEAF_S = 0.6
@@ -52,6 +57,7 @@ class Dialogue:
         self.draft: list[str] = []
         self._drafted_at = 0.0
         self._active_at = 0.0
+        self._opened_at = 0.0
         self._reported = False
         self.sure = True
 
@@ -70,7 +76,7 @@ class Dialogue:
             if self.awake:
                 return
             self.awake = True
-            self._active_at = self.clock()
+            self._active_at = self._opened_at = self.clock()
             self.deaf_until = self.clock() + DEAF_S
             self._sync()
 
@@ -159,14 +165,26 @@ class Dialogue:
         message = " ".join(self.draft).strip()
         self.draft = []
         if message:
-            self._active_at = self.clock()
             self._send(message)
+            self.close()            # sent: stop listening until her name (or the key) again
 
     def _send(self, message: str) -> None:
         try:
             self._heard(message, self.sure)
         except Exception:
             log.exception("on_heard failed")
+
+    def expire(self) -> None:
+        """Called every frame, sound or not: a window held open by a room that is
+        never quiet (music, a stream) still closes, and what it drafted goes."""
+        with self._lock:
+            if self.awake and not self.is_busy() and not self.is_speaking() \
+                    and self.clock() - self._opened_at >= MAX_OPEN_S:
+                log.info("ears: closing a window the room kept open")
+                if self.draft and not self.transcribing:
+                    self._flush()           # he did start a message: send it (which closes)
+                else:
+                    self.close()
 
     def tick(self) -> None:
         """Called from quiet moments in the audio loop: send a finished draft,

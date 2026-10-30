@@ -214,6 +214,7 @@ class Listener:
                 self._submit(utterance.pcm, OVER if utterance.interrupting or busy else d.mode)
             elif not seg.speaking:
                 d.tick()            # nothing is said or about to be: the safe moment to decide a sentence ended
+            d.expire()
 
     # -------------------------------------------------------------- the worker
     def _submit(self, pcm: bytes, mode: str) -> None:

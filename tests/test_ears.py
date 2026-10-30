@@ -183,7 +183,8 @@ class WakeWord(Base):
         self.assertTrue(await until(lambda: self.heard))
         busy["on"] = True
         self.assertTrue(await until(lambda: len(self.tr.calls) >= 3))
-        self.assertEqual(self.tr.calls[2][1], self.ears.names.interrupt_hint)   # heard as over her
+        # the message was sent, so the mic closed: this is heard as idle, needing her name
+        self.assertEqual(self.tr.calls[2][1], self.ears.names.wake_hint)
         busy["on"] = False
         await asyncio.sleep(0.15)
         self.assertEqual(self.heard, ["open firefox"])

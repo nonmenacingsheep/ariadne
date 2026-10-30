@@ -1,6 +1,6 @@
 import unittest
 
-from ariadne2.core.ears.session import (AUTOSEND_S, FOLLOW_UP_S, IDLE, OPEN, OVER, PTT, Dialogue)
+from ariadne2.core.ears.session import (AUTOSEND_S, FOLLOW_UP_S, MAX_OPEN_S, IDLE, OPEN, OVER, PTT, Dialogue)
 from ariadne2.core.ears.wake import Names
 
 
@@ -93,18 +93,39 @@ class Wake(unittest.TestCase):
         self.assertFalse(r.d.awake)
         self.assertEqual(r.mic, [True, False])
 
-    def test_stays_open_while_she_speaks_then_gives_a_follow_up_window(self):
+    def test_a_sent_message_closes_the_mic_and_room_talk_after_goes_nowhere(self):
         r = Rig()
         r.say("hey aries tell me a story")
         r.advance(AUTOSEND_S + 0.1)
         self.assertEqual(r.heard, ["tell me a story"])
+        self.assertFalse(r.d.awake)                         # stopped listening once it was sent
         r.speaking = True
-        r.advance(60)                      # a long reply
-        self.assertTrue(r.d.awake)
+        r.advance(20)
         r.speaking = False
-        r.advance(FOLLOW_UP_S - 1)
-        self.assertTrue(r.d.awake)         # window counts from when she stopped
-        r.advance(2)
+        r.say("look at that one, it's so aesthetic")        # him, to the stream: not for her
+        r.advance(AUTOSEND_S + 1)
+        self.assertEqual(r.heard, ["tell me a story"])
+        r.say("hey aries and another thing")                # her name opens it again
+        r.advance(AUTOSEND_S + 0.1)
+        self.assertEqual(r.heard, ["tell me a story", "and another thing"])
+
+    def test_a_room_that_never_goes_quiet_still_closes(self):
+        r = Rig()
+        r.say("hey aries")
+        self.assertTrue(r.d.awake)
+        r.now += MAX_OPEN_S - 1             # never quiet, so tick() (silence only) never runs
+        r.d.expire()
+        self.assertTrue(r.d.awake)
+        r.now += 2
+        r.d.expire()                                        # called every frame, loud or not
+        self.assertFalse(r.d.awake)
+
+    def test_at_the_limit_a_started_message_is_sent_not_dropped(self):
+        r = Rig()
+        r.say("hey aries remind me to")
+        r.advance(MAX_OPEN_S + 1)
+        r.d.expire()
+        self.assertEqual(r.heard, ["remind me to"])
         self.assertFalse(r.d.awake)
 
     def test_while_open_everything_said_is_for_her(self):

@@ -55,24 +55,7 @@ const Dolphin = (() => {
   return { build, set, progress, touch: (c, on) => touchIn(w, c, on) };
 })();
 
-/* ---------------- Claude ---------------- */
-// The body is claude.ai itself (the layer lays a browser view over it, see
-// desk/claude_pane.py); the header tag still shows what her hands and his
-// Claude Code sessions are doing, from the adapter.
-const Claude = (() => {
-  let w;
-  function build(widget) {
-    w = widget;
-    w.bd.innerHTML = `<div class="cl-wait">loading claude.ai…</div>`;
-  }
-  function set(st) {
-    if (!w) return;
-    const ss = (st && st.sessions) || [];
-    const busy = ss.filter(x => x.state === "working").length, hers = ss.filter(x => x.mine && x.state === "working").length;
-    if (w.tag && !w.tagWas) w.tag.textContent = hers ? `${hers} OF HER HANDS WORKING` : busy ? `${busy} WORKING` : "";
-  }
-  return { build, set, touch: (c, on) => touchIn(w, c, on) };
-})();
+/* The Claude widget lives in claude_ui.js. */
 
 /* ---------------- System ---------------- */
 const System = (() => {

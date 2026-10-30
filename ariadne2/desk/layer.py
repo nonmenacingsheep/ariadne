@@ -62,12 +62,7 @@ class Layer(Gtk.Window):
         settings.set_enable_developer_extras(True)
         settings.set_media_playback_requires_user_gesture(False)   # her sounds play unprompted
         self.view.load_uri(PAGE.as_uri())
-        # The desk page, with claude.ai laid over the Claude widget's body.
-        overlay = Gtk.Overlay()
-        overlay.set_child(self.view)
-        self.set_child(overlay)
-        from .claude_pane import ClaudePane
-        self.claude = ClaudePane(overlay)
+        self.set_child(self.view)
 
         self.link = CoreLink(self._on_message, self._on_status)
         self.connect("realize", lambda *_: self._update_input())
@@ -111,8 +106,6 @@ class Layer(Gtk.Window):
             kwin.drop()
         elif t == "raise":
             kwin.raise_layer()
-        elif t == "pane" and msg.get("name") == "claude":
-            self.claude.place(msg.get("rect"))
         elif t == "log":
             log.warning("page: %s", msg.get("msg"))
         elif t == "quit":

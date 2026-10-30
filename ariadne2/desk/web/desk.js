@@ -591,7 +591,6 @@ document.addEventListener("pointerdown", e => {
   const name = root.dataset.w, isGrip = e.target.classList.contains("grip");
   if (!isGrip && !e.target.closest(".hd") && !(name === "core" && !e.target.closest("input"))) return;
   drag = { name, mode: isGrip ? "size" : "move", x0: e.clientX, y0: e.clientY, r0: rects[name].slice() };
-  reportPane();          // hide claude.ai while its widget is being dragged
   e.preventDefault();
 });
 addEventListener("pointermove", e => {
@@ -606,25 +605,13 @@ addEventListener("pointerup", () => {
   rects[drag.name] = clampRect(drag.mode === "move" ? [snap(x), snap(y), w, h] : [x, y, snap(x + w) - x, snap(y + h) - y]);
   drag = null;
   relayout(true);
-  reportPane();
   post({ t: "layout", widgets: rects });
 });
 addEventListener("keydown", e => { if (e.key === "Escape" && raised) post({ t: "drop" }); });
 
-// claude.ai is drawn by the layer over the Claude widget's body; tell it where.
-let paneKey = "";
-function reportPane() {
-  const w = W.claude, r = rects.claude;
-  const show = w && r && !hidden.has("claude") && !(drag && drag.name === "claude");
-  const rect = show ? [r[0] + 8, r[1] + 40, r[2] - 16, r[3] - 48] : null;
-  const k = JSON.stringify(rect);
-  if (k !== paneKey) { paneKey = k; post({ t: "pane", name: "claude", rect }); }
-}
-
 function relayout(report) {
   for (const n of Object.keys(rects)) if (W[n]) place(n);
   if (typeof Settings !== "undefined" && Settings.isOpen()) Settings.place();
-  reportPane();
   if (drawerOpen) placeDrawer();
   routeWires(); needsDraw = true; kick();
   if (report) reportRects();
@@ -741,7 +728,8 @@ window.desk = {
       case "flow": flowEvent(msg); FlowEditor.message(msg); break;
       case "catalog": case "flow_graph": case "flow_saved": case "flow_tested": FlowEditor.message(msg); break;
       case "menu": FileMenu.reply(msg); break;
-      case "settings": Settings.message(msg); break;
+      case "settings": Settings.message(msg); Claude.hello(); break;     // sent on every (re)connect
+      case "cc": Claude.message(msg); break;
       case "attached": if (W.chat) addChip(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;
       case "ears":

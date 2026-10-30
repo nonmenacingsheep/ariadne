@@ -134,7 +134,14 @@ async def run(args: argparse.Namespace) -> None:
     settings_mod.bind_core(settings, conversation=conversation, voice=voice, ears=ears, operate=operate_mod)
     settings.apply_all(skip=_cli_overrides(args))
 
+    from .claude_live import LiveClaude
+    live_claude = LiveClaude(server.publish)
+
     def on_desk(msg):
+        # The Claude widget's own Claude Code session: his, never routed to her.
+        if msg.get("t") == "cc_do":
+            _spawn_flow(live_claude.on_desk(msg))
+            return None
         # Push-to-talk (Meta+S via KWin and the desk): press, speak, press.
         if msg.get("t") == "press" and msg.get("widget") == "core" and msg.get("control") == "talk":
             if ears:
@@ -191,6 +198,7 @@ async def run(args: argparse.Namespace) -> None:
             if part:
                 await part.stop()
         await engine.stop()
+        await live_claude.end()
         inbox_task.cancel()
         avatar_task.cancel()
         await conversation.stop()

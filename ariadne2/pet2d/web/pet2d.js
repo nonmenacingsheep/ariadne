@@ -30,6 +30,9 @@ const pet = (() => {
     sleepy:  { ParamEyeLOpen: 0.45, ParamEyeROpen: 0.45, ParamBrowLY: -0.3, ParamBrowRY: -0.3 },
     dizzy:   { ParamSwitch6: 1, ParamMouthForm: -0.4 },
     asleep:  { ParamEyeLOpen: 0, ParamEyeROpen: 0, ParamMouthForm: 0.3 },
+    soft:    { ParamBrowLY: -0.4, ParamBrowRY: -0.4, ParamMouthForm: 0.35, ParamEyeLSmile: 0.3, ParamEyeRSmile: 0.3 },
+    smirk:   { ParamEyeLSmile: 0.45, ParamEyeRSmile: 0.45, ParamMouthForm: 0.6, ParamBrowRY: 0.5, ParamBrowLY: -0.2 },
+    thoughtful: { ParamEyeLOpen: 0.8, ParamEyeROpen: 0.8, ParamBrowLY: 0.35, ParamBrowRY: 0.1, ParamMouthForm: -0.15 },
   };
   const EMOTION_LOOK = {
     happy: "smile", content: "smile", peaceful: "smile", serene: "smile", calm: "smile", grateful: "blush",
@@ -42,7 +45,8 @@ const pet = (() => {
     sarcastic: "eyeroll", ironic: "eyeroll", contempt: "eyeroll", skeptical: "eyeroll", envious: "eyeroll",
     disappointed: "gloom", disgusted: "gloom", threatened: "gloom", scared: "gloom", panicked: "gloom",
     alarmed: "wide", anxious: "gloom", surprised: "wide", curious: "wide", confused: "wide",
-    tired: "sleepy", bored: "sleepy", resigned: "sleepy", wistful: "sleepy",
+    tired: "sleepy", bored: "sleepy", resigned: "sleepy", wistful: "sleepy", distant: "sleepy",
+    sympathetic: "soft", mysterious: "smirk", contemplative: "thoughtful", anticipation: "wide",
   };
 
   let app = null, model = null, canvas = null, loadingUri = "";
@@ -92,11 +96,11 @@ const pet = (() => {
   // Her height follows the Avatar "size" (px per metre), as the 3D body's does.
   function fit() {
     if (!model) return;
-    const h = clamp(opt.size, 200, 420) * 1.62;
+    const h = clamp(opt.size, 200, 840) * 1.62;
     const s = h / model.internalModel.height;
     model.scale.set(s);
     dispW = model.internalModel.width * s; dispH = h;
-    cw = Math.ceil(dispW * 1.5); ch = Math.ceil(dispH * 1.12);
+    cw = Math.ceil(dispW * 2.4); ch = Math.ceil(dispH * 1.15);
     app.renderer.resize(cw, ch);
     model.x = (cw - dispW) / 2; model.y = ch - dispH;
     place();
@@ -286,7 +290,8 @@ const pet = (() => {
     core.setParameterValueById("ParamAngleZ", me.tilt + wobble + Math.sin(t * 0.7) * 2);
     core.addParameterValueById("ParamBodyAngleX0", me.lean);
     core.addParameterValueById("ParamBodyAngleZ0", me.tilt * 0.6);
-    core.setParameterValueById("ParamBreath", (Math.sin(t * (face.look === "asleep" ? 1.2 : 2.2)) + 1) / 2);
+    // Slow: the rig hangs her tail off this parameter, so a quick breath whips it about.
+    core.setParameterValueById("ParamBreath", (Math.sin(t * (face.look === "asleep" ? 0.6 : 1.0)) + 1) / 2);
     // Where she looks: the pointer when it's near her, else idly around.
     if (face.gaze.until && t < face.gaze.until) model.focus(face.gaze.x, face.gaze.y);
     else if (me.mode === "walk") model.focus(Math.sign(me.target - me.x) > 0 ? cw : 0, ch * 0.2);
@@ -305,6 +310,7 @@ const pet = (() => {
         stir();
         const look = EMOTION_LOOK[m.emotion];
         if (look) feel(look, (Number(m.seconds) || 1) + 0.6);
+        else if (m.emotion === "neutral" && face.look !== "asleep") { face.look = ""; face.until = 0; }
         break;
       }
       case "ears": if (m.listening) { stir(); feel("wide", 1.0); face.gaze = { x: cw / 2, y: ch * 0.15, until: now() + 2 }; } break;

@@ -150,7 +150,7 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
                         f"Rate multiplier: {what}. 1 is the normal pace.",
                         min=0.25, max=4.0, step=0.05, unit="x"))
     s.append(_entry("avatar", "size", "Size", "number", 300, "Screen pixels per metre; bigger is taller.",
-                    min=200, max=420, step=10, unit="px/m"))
+                    min=200, max=840, step=10, unit="px/m"))
     s.append(_entry("avatar", "fps_cap", "Frame rate cap", "number", 30,
                     "Most frames a second while she is busy; idle is slower still.",
                     min=10, max=60, step=5, unit="fps"))

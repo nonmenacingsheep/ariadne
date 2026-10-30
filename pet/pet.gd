@@ -436,7 +436,7 @@ func _read_settings() -> void:
 	if av.has("sleep_after"):
 		SLEEP_AFTER = clampf(float(av["sleep_after"]), 1, 120) * 60.0
 	if av.has("size") and absf(float(av["size"]) - PPM) > 0.5:
-		PPM = clampf(float(av["size"]), 200, 420)
+		PPM = clampf(float(av["size"]), 200, 840)
 		screen = Vector2.ZERO                 # forces the camera to re-fit
 	# Hidden while she wears another body (a Live2D model: ariadne2/pet2d).
 	var want_shown: bool = bool(desk.get("body", true)) and str(av.get("model", "aries")) == "aries"

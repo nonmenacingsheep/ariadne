@@ -74,6 +74,25 @@ def personalities() -> list[str]:
         return [prompt.DEFAULT_PERSONALITY]
 
 
+LIVE2D_MODELS = Path(__file__).resolve().parents[1] / "pet2d" / "web" / "models"
+
+
+def bodies() -> list[tuple[str, str]]:
+    """The bodies she can wear: the 3D one (pet/) and each Live2D model folder (pet2d/)."""
+    out = [("aries", "Aries (3D, walks about)")]
+    try:
+        for d in sorted(LIVE2D_MODELS.iterdir()):
+            if d.is_dir() and any(d.glob("*.model3.json")):
+                try:
+                    name = json.loads((d / "about.json").read_text()).get("name") or d.name
+                except (OSError, ValueError):
+                    name = d.name
+                out.append((d.name, f"{name} (Live2D)"))
+    except OSError:
+        pass
+    return out
+
+
 def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     names = personality_names or [prompt.DEFAULT_PERSONALITY]
     s: list[dict] = []
@@ -121,6 +140,8 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     s.append(_entry("desktop", "autostart", "Start when I log in", "bool", False,
                     "Open with the desktop."))
     # ---- avatar (the pet) ----
+    s.append(_entry("avatar", "model", "Model", "choice", "aries",
+                    "Which body she wears on the desktop.", options=_choices(bodies())))
     for key, label, what in (("energy_drain", "Energy drain", "how fast she tires"),
                              ("fun_drain", "Boredom", "how fast she gets bored"),
                              ("affection_drain", "Affection drain", "how fast she misses you"),

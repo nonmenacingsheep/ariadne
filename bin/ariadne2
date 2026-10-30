@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/.." || exit 1
 
 stop_running() {
-  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"; pkill -TERM -f "Godot_v4.*--path pet"
+  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"; pkill -TERM -f "Godot_v4.*--path pet"; pkill -TERM -f "m ariadne2[.]pet2d"
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "m ariadne2.core" >/dev/null || return 0
     sleep 0.3
@@ -55,6 +55,13 @@ if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -x "$GODOT" ]; 
   ( sleep 2; exec "$HOME/.local/bin/godot-gate.sh" "$GODOT" --path pet --display-driver x11 ) >/dev/null 2>&1 &
   pet=$!
   trap 'kill $core $pet 2>/dev/null; pkill -f "Godot_v4.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
+fi
+# Her Live2D body (ariadne2/pet2d): idles hidden unless the Avatar "Model" names
+# a Live2D model. Through XWayland like the desk, for the click-through region.
+if [ -z "$ARIADNE2_NO_PET" ] && [ -f ariadne2/pet2d/web/vendor/live2dcubismcore.min.js ]; then
+  ( sleep 2; GDK_BACKEND=x11 exec python3 -m ariadne2.pet2d ) 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" >&2) &
+  pet2d=$!
+  trap 'kill $core $pet $pet2d 2>/dev/null; pkill -f "Godot_v4.*--path pet" 2>/dev/null; pkill -f "[a]riadne2.pet2d" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 fi
 # Through XWayland: as a native Wayland window the desk sometimes kept the
 # size KWin first gave it on the smaller monitor and refused to grow, cutting

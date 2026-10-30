@@ -23,11 +23,13 @@ function layer() {
 // Godot adds " (DEBUG)" to the title when run from the editor binary.
 function isPet(w) { return String(w.caption).indexOf(PET) === 0; }
 
-function pet() {
-    var list = workspace.windowList();
+// Her bodies: the 3D one (pet/, Godot) and the Live2D one (ariadne2/pet2d);
+// both windows exist, whichever is hidden draws nothing.
+function pets() {
+    var list = workspace.windowList(), out = [];
     for (var i = 0; i < list.length; i++)
-        if (isPet(list[i])) return list[i];
-    return null;
+        if (isPet(list[i])) out.push(list[i]);
+    return out;
 }
 
 function settlePet(p) {
@@ -83,7 +85,7 @@ function tell(up) { callDBus(SERVICE, PATH, IFACE, "Raised", up); }
 
 function drop(w) {
     w.keepAbove = false; w.keepBelow = true;
-    var p = pet(); if (p) { p.keepAbove = false; p.keepBelow = true; }
+    pets().forEach(function (p) { p.keepAbove = false; p.keepBelow = true; });
     tell(false);
 }
 
@@ -91,11 +93,10 @@ function raise(w) {
     w.keepBelow = false;
     w.keepAbove = true;
     workspace.activeWindow = w;
-    var p = pet();
-    if (p) {   // she comes up with the desk, in front of it
+    pets().forEach(function (p) {   // she comes up with the desk, in front of it
         p.keepBelow = false; p.keepAbove = true;
         try { workspace.raiseWindow(p); } catch (e) {}
-    }
+    });
     tell(true);
 }
 
@@ -156,12 +157,14 @@ function hold(w) {
 // slab where she can't be grabbed. Whenever the stacking changes, put her
 // back on top of the desk (both stay below his windows unless raised).
 function petOverDesk() {
-    var p = pet(), w = layer();
-    if (!p || !w) return;
+    var w = layer();
+    if (!w) return;
     var order = workspace.stackingOrder;
-    if (order.indexOf(p) < order.indexOf(w)) {
-        try { workspace.raiseWindow(p); } catch (e) {}
-    }
+    pets().forEach(function (p) {
+        if (order.indexOf(p) < order.indexOf(w)) {
+            try { workspace.raiseWindow(p); } catch (e) {}
+        }
+    });
 }
 try { workspace.stackingOrderChanged.connect(petOverDesk); } catch (e) {}
 workspace.windowActivated.connect(function () { petOverDesk(); });
@@ -175,5 +178,4 @@ workspace.windowAdded.connect(function (w) {
 
 var existing = layer();
 if (existing) { pin(existing); hold(existing); }
-var existingPet = pet();
-if (existingPet) settlePet(existingPet);
+pets().forEach(settlePet);

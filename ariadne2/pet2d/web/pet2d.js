@@ -1,0 +1,326 @@
+"use strict";
+// Her Live2D body (ariadne2/pet2d). The model sits in a small canvas that moves
+// about a full-screen transparent page; only the box around her takes clicks.
+//
+// She stands on the floor (the panel's top) or on a widget's top edge, wanders
+// and hops between them, can be picked up and thrown (a hard landing leaves her
+// dizzy), sleeps when left alone, and her face follows the core: lip sync from
+// her voice's level, and her voice's emotion marks onto the rig's expression
+// switches. Hair, tail and clothes swing from the rig's own physics, driven by
+// how she leans and tilts while she moves.
+
+const pet = (() => {
+  const post = m => { try { window.webkit.messageHandlers.pet.postMessage(JSON.stringify(m)); } catch (e) {} };
+  const log = msg => post({ t: "log", msg: String(msg) });
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const now = () => performance.now() / 1000;
+
+  // Emotion marks (Cartesia's names) onto this rig's expression switches.
+  // Each look is a set of parameter targets, eased in and out.
+  const LOOKS = {
+    smile:   { ParamEyeLSmile: 0.8, ParamEyeRSmile: 0.8, ParamMouthForm: 1 },
+    stars:   { ParamSwitch5: 1, ParamMouthForm: 1 },
+    hearts:  { ParamSwitch8: 1, ParamSwitch2: 0.7, ParamMouthForm: 1 },
+    blush:   { ParamSwitch2: 1, ParamMouthForm: 0.4 },
+    angry:   { ParamSwitch4: 1, ParamBrowRForm: -1, ParamBrowLForm: -1, ParamMouthForm: -1 },
+    tears:   { ParamSwitch7: 1, ParamSwitch9: 1, ParamMouthForm: -0.8, ParamBrowLY: -0.5, ParamBrowRY: -0.5 },
+    eyeroll: { ParamSwitch6: 1, ParamMouthForm: -0.3 },
+    gloom:   { ParamSwitch1: 1, ParamSwitch21: 1, ParamMouthForm: -0.6 },
+    wide:    { ParamBrowLY: 0.8, ParamBrowRY: 0.8, ParamEyeLOpen: 1.15, ParamEyeROpen: 1.15 },
+    sleepy:  { ParamEyeLOpen: 0.45, ParamEyeROpen: 0.45, ParamBrowLY: -0.3, ParamBrowRY: -0.3 },
+    dizzy:   { ParamSwitch6: 1, ParamMouthForm: -0.4 },
+    asleep:  { ParamEyeLOpen: 0, ParamEyeROpen: 0, ParamMouthForm: 0.3 },
+  };
+  const EMOTION_LOOK = {
+    happy: "smile", content: "smile", peaceful: "smile", serene: "smile", calm: "smile", grateful: "blush",
+    confident: "smile", proud: "smile", trust: "smile", nostalgic: "smile", determined: "smile",
+    excited: "stars", enthusiastic: "stars", elated: "stars", euphoric: "stars", triumphant: "stars", amazed: "stars",
+    affectionate: "hearts", flirtatious: "hearts",
+    insecure: "blush", hesitant: "blush", apologetic: "blush", guilty: "blush",
+    angry: "angry", mad: "angry", outraged: "angry", frustrated: "angry", agitated: "angry",
+    sad: "tears", dejected: "tears", melancholic: "tears", hurt: "tears", rejected: "tears",
+    sarcastic: "eyeroll", ironic: "eyeroll", contempt: "eyeroll", skeptical: "eyeroll", envious: "eyeroll",
+    disappointed: "gloom", disgusted: "gloom", threatened: "gloom", scared: "gloom", panicked: "gloom",
+    alarmed: "wide", anxious: "gloom", surprised: "wide", curious: "wide", confused: "wide",
+    tired: "sleepy", bored: "sleepy", resigned: "sleepy", wistful: "sleepy",
+  };
+
+  let app = null, model = null, canvas = null, loadingUri = "";
+  let W = innerWidth || 3440, H = innerHeight || 1366;
+  const opt = { size: 300, fps_cap: 30, sleep_after: 8, wander: true, sit_on_widgets: true,
+                walk_off_edges: true, nap: true, lip_sync: true, react_to_work: true };
+  let surfaces = [];                       // [{x0, x1, y}] widget tops she can stand on
+  // Her feet's centre, in page pixels; velocity in px/s.
+  const me = { x: 1700, y: 1366, vx: 0, vy: 0, mode: "fall", on: null, target: null, until: 0,
+               lastStir: now(), lean: 0, tilt: 0, bob: 0 };
+  const face = { look: "", until: 0, w: {}, mouth: 0, speaking: false, level: 0, gaze: { x: 0, y: 0 } };
+  let held = null, pokes = [], hitKey = "";
+  let dispW = 0, dispH = 0, cw = 0, ch = 0;
+
+  // ------------------------------------------------------------------ model
+  async function load(uri) {
+    if (uri === loadingUri) return;
+    loadingUri = uri;
+    unload();
+    try {
+      if (!app) {
+        app = new PIXI.Application({ width: 10, height: 10, backgroundAlpha: 0, antialias: true,
+                                     autoStart: true, resolution: 1 });
+        canvas = app.view;
+        document.body.appendChild(canvas);
+        canvas.addEventListener("pointerdown", down);
+        addEventListener("pointermove", move);
+        addEventListener("pointerup", up);
+        app.ticker.add(() => frame(Math.min(app.ticker.deltaMS / 1000, 0.1)));
+      }
+      const m = await PIXI.live2d.Live2DModel.from(uri, { autoInteract: false, autoUpdate: false });
+      if (uri !== loadingUri) { m.destroy(); return; }
+      model = m;
+      app.stage.addChild(model);
+      model.internalModel.on("beforeModelUpdate", drive);
+      fit();
+      me.x = clamp(me.x, dispW / 2, W - dispW / 2);
+      me.mode = "fall"; me.vy = 0; me.y = Math.min(me.y, H - 1);
+      canvas.style.display = "block";
+    } catch (e) { log("couldn't load " + uri + ": " + e); loadingUri = ""; }
+  }
+  function unload() {
+    if (model) { app.stage.removeChild(model); model.destroy(); model = null; }
+    if (canvas) canvas.style.display = "none";
+    report(true);
+  }
+  // Her height follows the Avatar "size" (px per metre), as the 3D body's does.
+  function fit() {
+    if (!model) return;
+    const h = clamp(opt.size, 200, 420) * 1.62;
+    const s = h / model.internalModel.height;
+    model.scale.set(s);
+    dispW = model.internalModel.width * s; dispH = h;
+    cw = Math.ceil(dispW * 1.5); ch = Math.ceil(dispH * 1.12);
+    app.renderer.resize(cw, ch);
+    model.x = (cw - dispW) / 2; model.y = ch - dispH;
+    place();
+  }
+
+  // ---------------------------------------------------------------- the world
+  function screen(w, h) { W = w; H = h; me.x = clamp(me.x, dispW / 2 || 100, W - (dispW / 2 || 100)); if (me.y > H) me.y = H; place(); }
+  function settings(av) {
+    let refit = false;
+    for (const k of Object.keys(opt)) if (k in av) {
+      const v = typeof opt[k] === "boolean" ? !!av[k] : Number(av[k]);
+      if (k === "size" && v !== opt.size) refit = true;
+      opt[k] = v;
+    }
+    if (refit) fit();
+  }
+  function layout(rects, hidden) {
+    const skip = new Set(hidden || []);
+    surfaces = Object.entries(rects || {}).filter(([n, r]) => !skip.has(n) && Array.isArray(r) && r.length === 4)
+      .map(([, [x, y, w]]) => ({ x0: x + 20, x1: x + w - 20, y })).filter(s => s.x1 - s.x0 > 80 && s.y > 120);
+    if (me.on && me.on !== "floor" && !surfaces.some(s => Math.abs(s.y - me.y) < 2 && me.x >= s.x0 && me.x <= s.x1)) {
+      me.on = null; me.mode = "fall";         // the widget she stood on moved away
+    }
+  }
+  function groundAt(x, fromY) {        // the first surface at or below fromY under x
+    let best = { y: H, s: "floor" };
+    for (const s of surfaces) if (x >= s.x0 && x <= s.x1 && s.y >= fromY - 1 && s.y < best.y) best = { y: s.y, s };
+    return best;
+  }
+
+  // ---------------------------------------------------------------- moving
+  function frame(dt) {
+    if (!model) return;
+    model.update(dt * 1000);              // on this ticker, so the frame cap holds for the rig too
+    const t = now();
+    if (me.mode === "held") {
+      // follows the pointer (move()); velocity is measured there
+    } else if (me.mode === "fall") {
+      me.vy += 2600 * dt; me.x += me.vx * dt;
+      const before = me.y; me.y += me.vy * dt;
+      if (me.x < dispW * 0.8 || me.x > W - dispW * 0.8) { me.x = clamp(me.x, dispW * 0.8, W - dispW * 0.8); me.vx *= -0.55; }
+      const g = groundAt(me.x, before);
+      if (me.y >= g.y) {
+        me.y = g.y;
+        if (me.vy > 1400) { me.vy *= -0.28; me.vx *= 0.6; feel("dizzy", 2.4); }
+        else { land(g.s); }
+      }
+    } else if (me.mode === "walk") {
+      const dir = Math.sign(me.target - me.x), speed = 150;
+      me.x += dir * speed * dt;
+      me.bob += dt * 9;
+      const g = me.on === "floor" ? null : me.on;
+      if (g && (me.x < g.x0 || me.x > g.x1)) {
+        if (opt.walk_off_edges) { me.mode = "fall"; me.vx = dir * 120; me.vy = -60; me.on = null; }
+        else { me.x = clamp(me.x, g.x0, g.x1); stand(); }
+      } else if (Math.abs(me.target - me.x) < 4 || t > me.until) stand();
+    } else if (me.mode === "stand" && t > me.until) {
+      decide(t);
+    }
+    // Lean into motion and tilt with the swing: the rig's physics does the rest.
+    const lean = me.mode === "walk" ? Math.sign(me.target - me.x) * 8 : me.mode === "held" || me.mode === "fall" ? clamp(me.vx / 60, -25, 25) : 0;
+    me.lean += (lean - me.lean) * Math.min(1, dt * 6);
+    me.tilt += ((me.mode === "held" ? clamp(-me.vx / 45, -30, 30) : 0) - me.tilt) * Math.min(1, dt * 5);
+    // Sleep after long quiet.
+    if (opt.nap && me.mode === "stand" && t - me.lastStir > opt.sleep_after * 60 && face.look !== "asleep") feel("asleep", 1e9);
+    place();
+    const busy = me.mode !== "stand" || face.speaking || t < face.until && face.look !== "asleep" || held;
+    app.ticker.maxFPS = face.look === "asleep" ? 10 : busy ? clamp(opt.fps_cap, 10, 60) : Math.max(10, opt.fps_cap / 2);
+  }
+  function land(s) {
+    me.vy = 0; me.vx = 0; me.on = s; stand();
+  }
+  function stand() { me.mode = "stand"; me.until = now() + 4 + Math.random() * 10; }
+  function decide(t) {
+    if (face.look === "asleep" || face.speaking) { me.until = t + 3; return; }
+    const r = Math.random();
+    if (opt.sit_on_widgets && r < 0.25 && surfaces.length) {
+      // hop to a widget top within reach (or back down to the floor)
+      const reach = surfaces.filter(s => s !== me.on && Math.abs((s.x0 + s.x1) / 2 - me.x) < 900 && s.y < me.y + 10);
+      const s = reach[Math.floor(Math.random() * reach.length)];
+      if (s) { hop(s.x0 + 30 + Math.random() * (s.x1 - s.x0 - 60), s.y); return; }
+    }
+    if (opt.wander && r < 0.7) {
+      const g = me.on && me.on !== "floor" ? me.on : { x0: dispW * 0.8, x1: W - dispW * 0.8 };
+      me.target = clamp(me.x + (Math.random() - 0.5) * 900, g.x0, g.x1);
+      me.mode = "walk"; me.until = t + 12; return;
+    }
+    if (me.on && me.on !== "floor" && r > 0.92) { hop(me.x + (Math.random() - 0.5) * 500, H); return; }
+    me.until = t + 4 + Math.random() * 8;
+  }
+  // A ballistic jump that peaks above both ends and lands on (tx, ty).
+  function hop(tx, ty) {
+    const peak = Math.min(me.y, ty) - 140, g = 2600;
+    const up = Math.sqrt(2 * g * Math.max(40, me.y - peak));
+    const down = Math.sqrt(2 * Math.max(1, ty - peak) / g);
+    const tUp = up / g, T = tUp + down;
+    me.vx = (tx - me.x) / T; me.vy = -up; me.mode = "fall"; me.on = null;
+  }
+  function place() {
+    if (!canvas || !model) return;
+    const left = Math.round(me.x - cw / 2), top = Math.round(me.y - ch + (me.mode === "walk" ? -Math.abs(Math.sin(me.bob)) * 5 : 0));
+    canvas.style.transform = `translate(${left}px, ${top}px)`;
+    report(false, left, top);
+  }
+  // The box around her body is the only part of the screen that takes clicks.
+  function report(clear, left, top) {
+    if (clear || !model) { if (hitKey !== "none") { hitKey = "none"; post({ t: "hit", rects: [] }); } return; }
+    const r = [Math.round(left + (cw - dispW * 0.62) / 2), Math.round(top + ch - dispH * 0.98), Math.round(dispW * 0.62), Math.round(dispH * 0.98)];
+    const k = r.map(v => Math.round(v / 3)).join(",");
+    if (k !== hitKey) { hitKey = k; post({ t: "hit", rects: [r] }); }
+  }
+
+  // ---------------------------------------------------------------- hands on
+  function down(e) {
+    if (!model) return;
+    stir();
+    held = { dx: e.clientX - me.x, dy: e.clientY - me.y, x: e.clientX, y: e.clientY, t: now(), moved: 0 };
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add("held");
+  }
+  function move(e) {
+    if (!model) return;
+    const r = canvas.getBoundingClientRect();
+    face.gaze = { x: e.clientX - r.left, y: e.clientY - r.top, until: now() + 1.5 };
+    if (!held) return;
+    const t = now(), dt = Math.max(0.008, t - held.t);
+    held.moved += Math.abs(e.clientX - held.x) + Math.abs(e.clientY - held.y);
+    if (held.moved > 6 && me.mode !== "held") { me.mode = "held"; me.on = null; feel("wide", 0.8); }
+    if (me.mode === "held") {
+      me.vx = me.vx * 0.5 + (e.clientX - held.x) / dt * 0.5;
+      me.vy = me.vy * 0.5 + (e.clientY - held.y) / dt * 0.5;
+      me.x = e.clientX - held.dx; me.y = e.clientY - held.dy;
+    }
+    held.x = e.clientX; held.y = e.clientY; held.t = t;
+  }
+  function up() {
+    if (!held) return;
+    canvas.classList.remove("held");
+    const wasHeld = me.mode === "held";
+    held = null;
+    if (wasHeld) { me.mode = "fall"; me.vx = clamp(me.vx, -3000, 3000); me.vy = clamp(me.vy, -3000, 3000); return; }
+    // A click, not a drag: a poke. A few in a row and she's had enough.
+    const t = now();
+    pokes = pokes.filter(p => t - p < 4); pokes.push(t);
+    if (face.look === "asleep") feel("sleepy", 2);
+    else if (pokes.length >= 5) feel("angry", 2.2);
+    else if (pokes.length >= 3) feel("eyeroll", 1.8);
+    else feel(Math.random() < 0.5 ? "blush" : "smile", 1.6);
+  }
+  function stir() {
+    me.lastStir = now();
+    if (face.look === "asleep") { face.look = ""; face.until = 0; feel("sleepy", 1.5); }
+  }
+
+  // ---------------------------------------------------------------- her face
+  function feel(look, seconds) { if (LOOKS[look]) { face.look = look; face.until = now() + seconds; } }
+  function drive() {
+    const core = model.internalModel.coreModel, t = now(), dt = Math.min(app.ticker.deltaMS / 1000, 0.1);
+    if (face.look && t > face.until) face.look = "";
+    const want = LOOKS[face.look] || {};
+    const keys = new Set([...Object.keys(face.w), ...Object.keys(want)]);
+    for (const id of keys) {
+      if (id === "ParamEyeLOpen" || id === "ParamEyeROpen") continue;
+      const target = want[id] || 0, cur = face.w[id] || 0;
+      const v = cur + (target - cur) * Math.min(1, dt * 7);
+      if (Math.abs(v) < 0.002 && !target) { delete face.w[id]; continue; }
+      face.w[id] = v;
+      core.setParameterValueById(id, v);
+    }
+    // Eyes scale the blink rather than replace it, so she still blinks while sleepy.
+    const eye = want.ParamEyeLOpen ?? 1;
+    face.eye = (face.eye ?? 1) + (eye - (face.eye ?? 1)) * Math.min(1, dt * 5);
+    core.multiplyParameterValueById("ParamEyeLOpen", face.eye);
+    core.multiplyParameterValueById("ParamEyeROpen", face.eye);
+    // Lip sync: mouth open with her voice's loudness.
+    const open = opt.lip_sync && face.speaking ? clamp(face.level * 4.5, 0.15, 1) * (0.75 + 0.25 * Math.sin(t * 23)) : 0;
+    face.mouth += (open - face.mouth) * Math.min(1, dt * 18);
+    core.setParameterValueById("ParamMouthOpenY", face.mouth);
+    // The rig's looping effects (spinning star/heart eyes, running tears, the
+    // pulsing anger mark) are 0-1 phases: cycle them, or they sit still.
+    core.setParameterValueById("Anime_Eye", (t * 0.6) % 1);
+    core.setParameterValueById("Anime_Cry", (t * 0.8) % 1);
+    core.setParameterValueById("AnimeAngry", Math.sin(t * 7));
+    core.setParameterValueById("AnimeAngry2", Math.sin(t * 7 + 1.3));
+    // Swing and breath (and a woozy wobble when dizzy).
+    const wobble = face.look === "dizzy" ? Math.sin(t * 5) * 12 : 0;
+    core.setParameterValueById("ParamAngleZ", me.tilt + wobble + Math.sin(t * 0.7) * 2);
+    core.addParameterValueById("ParamBodyAngleX0", me.lean);
+    core.addParameterValueById("ParamBodyAngleZ0", me.tilt * 0.6);
+    core.setParameterValueById("ParamBreath", (Math.sin(t * (face.look === "asleep" ? 1.2 : 2.2)) + 1) / 2);
+    // Where she looks: the pointer when it's near her, else idly around.
+    if (face.gaze.until && t < face.gaze.until) model.focus(face.gaze.x, face.gaze.y);
+    else if (me.mode === "walk") model.focus(Math.sign(me.target - me.x) > 0 ? cw : 0, ch * 0.2);
+    else if (Math.random() < dt * 0.25) model.focus(Math.random() * cw, Math.random() * ch * 0.6);
+  }
+
+  // ---------------------------------------------------------------- the core
+  function message(m) {
+    if (!model) return;
+    switch (m.t) {
+      case "voice":
+        face.speaking = !!m.speaking; face.level = Number(m.level) || 0;
+        if (face.speaking) stir();
+        break;
+      case "speak": {
+        stir();
+        const look = EMOTION_LOOK[m.emotion];
+        if (look) feel(look, (Number(m.seconds) || 1) + 0.6);
+        break;
+      }
+      case "ears": if (m.listening) { stir(); feel("wide", 1.0); face.gaze = { x: cw / 2, y: ch * 0.15, until: now() + 2 }; } break;
+      case "action":
+        if (!opt.react_to_work) break;
+        stir();
+        if (m.phase === "done") feel("smile", 1.6);
+        else if (m.phase === "failed") feel("gloom", 2.2);
+        break;
+      case "chat": stir(); break;
+    }
+  }
+
+  // The page's own size is the window's: KWin sets it to the area above the panel.
+  addEventListener("resize", () => screen(innerWidth, innerHeight));
+  screen(innerWidth, innerHeight);
+
+  return { load, unload, screen, settings, layout, message, feel };
+})();

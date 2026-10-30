@@ -438,7 +438,8 @@ func _read_settings() -> void:
 	if av.has("size") and absf(float(av["size"]) - PPM) > 0.5:
 		PPM = clampf(float(av["size"]), 200, 420)
 		screen = Vector2.ZERO                 # forces the camera to re-fit
-	var want_shown: bool = bool(desk.get("body", true))
+	# Hidden while she wears another body (a Live2D model: ariadne2/pet2d).
+	var want_shown: bool = bool(desk.get("body", true)) and str(av.get("model", "aries")) == "aries"
 	if want_shown != shown:
 		shown = want_shown
 		body.visible = shown
@@ -482,6 +483,7 @@ func _process(delta: float) -> void:
 		settings_check = 3.0
 		_read_settings()
 	if not shown:
+		Engine.max_fps = 5                  # still reading settings, so she can come back
 		return
 	_think(delta)
 	_move(delta)

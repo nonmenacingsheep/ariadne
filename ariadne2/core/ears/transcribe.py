@@ -121,8 +121,10 @@ class Transcriber:
                 if where != "cpu":
                     # Prove it before trusting it: building the model touches none of
                     # the maths libraries; the first transcription does.
-                    list(model.transcribe(array.array("f", [0.0] * (RATE // 2)),
-                                          beam_size=1, language="en")[0])
+                    # Half a second of silence, as levelled() hands it over (a numpy
+                    # array: faster-whisper takes an array.array for a file and refuses
+                    # it, which once sent every GPU load to the CPU).
+                    list(model.transcribe(levelled(bytes(RATE)), beam_size=1, language="en")[0])
             except Exception as exc:
                 if where == "cpu":
                     raise

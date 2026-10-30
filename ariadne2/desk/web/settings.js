@@ -15,6 +15,7 @@ const Settings = (() => {
     panel = document.createElement("div"); panel.className = "setpanel";
     panel.innerHTML = `<div class="sp-tabs"></div><div class="sp-body"></div>`;
     document.body.appendChild(panel);
+    watchRects(panel);
     const tabs = panel.querySelector(".sp-tabs");
     for (const [k, label] of TABS) {
       const b = document.createElement("button"); b.className = "port sp-tab"; b.dataset.k = k;

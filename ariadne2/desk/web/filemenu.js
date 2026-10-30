@@ -29,6 +29,7 @@ const FileMenu = (() => {
   function init(sendFn) {
     send = sendFn;
     box = document.createElement("div"); box.className = "fmenu"; document.body.appendChild(box);
+    watchRects(box);
     addEventListener("pointerdown", e => { if (box.classList.contains("open") && !box.contains(e.target)) close(); }, true);
     addEventListener("keydown", e => { if (e.key === "Escape") close(); });
   }

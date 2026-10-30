@@ -360,6 +360,7 @@ let drawerOpen = false;
 const drawer = document.createElement("div");
 drawer.className = "drawer";
 document.body.appendChild(drawer);
+watchRects(drawer);
 
 function setDrawer(open) {
   drawerOpen = open;
@@ -629,6 +630,22 @@ function relayout(report) {
   if (report) reportRects();
 }
 // Where clicks should land on the layer: each slab plus its thickness and glow.
+// Menus that slide open (max-height transitions) or change height (a settings
+// tab, a file menu filling in) are measured again whenever their box changes and
+// when the slide ends. Measured only on open, they were caught at ~0 px tall, so
+// the layer let clicks through until a widget drag reported them again.
+let rectsQueued = false;
+function queueRects() {
+  if (rectsQueued) return;
+  rectsQueued = true;
+  requestAnimationFrame(() => { rectsQueued = false; reportRects(); });
+}
+var rectWatch;            // made on first use: the drawer is built above this line
+function watchRects(el) {
+  (rectWatch ||= new ResizeObserver(queueRects)).observe(el);
+  el.addEventListener("transitionend", e => { if (e.target === el) queueRects(); });
+}
+
 function reportRects() {
   const m = HALO + DEPTH;
   const out = Object.entries(rects).filter(([n]) => !hidden.has(n)).map(([, [x, y, w, h]]) => [x - m, y - m, w + 2 * m, h + 2 * m]);

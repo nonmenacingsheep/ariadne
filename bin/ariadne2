@@ -56,9 +56,16 @@ trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 # godot-gate.sh like every Godot run here (it links the host GPU libraries and
 # waits for the machine to be quiet enough). ARIADNE2_NO_PET=1 skips it.
 GODOT=${ARIADNE2_GODOT:-/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64}
+[ -x "$GODOT" ] || GODOT=$PWD/tools/godot/godot          # install.sh can fetch it here
 [ -x "$GODOT" ] || GODOT=$(command -v godot4 || command -v godot || true)
 GATE=$HOME/.local/bin/godot-gate.sh; [ -x "$GATE" ] || GATE=
 if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -n "$GODOT" ] && [ -x "$GODOT" ]; then
+  # A fresh copy has never been imported (pet/.godot isn't in git), and Godot
+  # can't load the model or the animations until it has: do it once.
+  if [ ! -d pet/.godot/imported ] || [ pet/models/aries.vrm -nt pet/.godot/imported ]; then
+    echo "preparing her 3D body (first run, a few seconds)"
+    timeout 300 "$GODOT" --headless --path pet --import >/dev/null 2>&1
+  fi
   ( sleep 2; exec $GATE "$GODOT" --path pet --display-driver x11 ) >/dev/null 2>&1 &
   pet=$!
   trap 'kill $core $pet 2>/dev/null; pkill -f "[Gg]odot.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM

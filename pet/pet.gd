@@ -139,16 +139,22 @@ func _ready() -> void:
 
 
 # --- window and camera ------------------------------------------------------
+# Her window covers the biggest screen's usable area (KWin pins it there too,
+# desk/kwin_layer.js). Any size: this once only did it for a 3000 px+
+# ultrawide, so on an ordinary monitor she stood outside her own 420 px window.
 func _cover_ultrawide() -> void:
 	if snapshot_path != "":
 		get_window().size = Vector2i(1500, 700)
 		return
+	var best := Rect2i()
 	for s in DisplayServer.get_screen_count():
 		var r := DisplayServer.screen_get_usable_rect(s)
-		if r.size.x >= 3000:
-			screen = Vector2(r.size)
-			get_window().position = r.position
-			get_window().size = r.size
+		if r.size.x * r.size.y > best.size.x * best.size.y:
+			best = r
+	if best.size.x > 0:
+		screen = Vector2(best.size)
+		get_window().position = best.position
+		get_window().size = best.size
 
 
 func _camera() -> void:
@@ -458,6 +464,7 @@ func _sync_screen() -> void:
 		cam.position = Vector3(screen.x / PPM / 2.0, screen.y / PPM / 2.0, 10.0)
 		_read_layout()
 		_land()
+		pos.x = clampf(pos.x, 0.4, maxf(0.4, screen.x / PPM - 0.4))   # a smaller screen than assumed: keep her on it
 
 
 func fetch(x: float) -> void:

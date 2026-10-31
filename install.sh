@@ -169,8 +169,25 @@ if [ ! -f pet/models/aries.vrm ] && [ $YES = 0 ]; then
   read -r -p "   Path to a VRM model (e.g. from VRoid Studio) for the 3D body, or Enter to skip: " vrm
   if [ -n "$vrm" ] && [ -f "$vrm" ]; then
     mkdir -p pet/models && cp "$vrm" pet/models/aries.vrm && ok "VRM copied"
-    command -v godot4 >/dev/null || command -v godot >/dev/null || [ -n "${ARIADNE2_GODOT:-}" ] \
-      || warn "the 3D body runs in Godot 4 (godotengine.org): put godot4 on your PATH or set ARIADNE2_GODOT"
+  fi
+fi
+if [ -f pet/models/aries.vrm ]; then
+  # The 3D body runs in Godot 4.7 (older Godots can't open the project).
+  GODOT=${ARIADNE2_GODOT:-}
+  [ -n "$GODOT" ] || [ ! -x tools/godot/godot ] || GODOT=$PWD/tools/godot/godot
+  [ -n "$GODOT" ] || GODOT=$(command -v godot4 || command -v godot || true)
+  if [ -z "$GODOT" ] && ask "The 3D body needs Godot 4.7. Download the official build from github.com/godotengine (78 MB)?" y; then
+    mkdir -p tools/godot \
+      && curl -fsSL -o tools/godot/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip \
+      && (cd tools/godot && python3 -c "import zipfile; zipfile.ZipFile('godot.zip').extractall('.')" && rm godot.zip \
+          && mv Godot_v4.7.2-stable_linux.x86_64 godot && chmod +x godot) \
+      && GODOT=$PWD/tools/godot/godot && ok "Godot 4.7.2 in tools/godot"
+  fi
+  if [ -n "$GODOT" ]; then
+    timeout 300 "$GODOT" --headless --path pet --import >/dev/null 2>&1 && ok "3D body prepared" \
+      || warn "Godot couldn't prepare the 3D body; it'll try again on first start"
+  else
+    warn "no Godot, so no 3D body: get Godot 4.7 from godotengine.org (or set ARIADNE2_GODOT)"
   fi
 fi
 

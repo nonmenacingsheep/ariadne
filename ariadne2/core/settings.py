@@ -79,7 +79,8 @@ LIVE2D_MODELS = Path(__file__).resolve().parents[1] / "pet2d" / "web" / "models"
 
 def bodies() -> list[tuple[str, str]]:
     """The bodies she can wear: the 3D one (pet/) and each Live2D model folder (pet2d/)."""
-    out = [("aries", "Aries (3D, walks about)")]
+    vrm = Path(__file__).resolve().parents[2] / "pet" / "models" / "aries.vrm"
+    out = [("aries", "Aries (3D, walks about)" if vrm.exists() else "Aries (3D: needs pet/models/aries.vrm)")]
     try:
         for d in sorted(LIVE2D_MODELS.iterdir()):
             if d.is_dir() and any(d.glob("*.model3.json")):

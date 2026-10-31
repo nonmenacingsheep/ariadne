@@ -21,6 +21,10 @@ from ..pet2d import importer
 log = logging.getLogger("ariadne2.body_models")
 
 EVERY = 30.0
+REPO = Path(__file__).resolve().parents[2]
+NO_BODY = ("I don't have a body on screen yet. For a Live2D one, put a model download in ~/Aries Models "
+           "(or right-click it in Files > Use as her body). For the 3D one, a VRoid .vrm goes at "
+           "pet/models/aries.vrm and needs Godot 4 (install.sh can fetch it).")
 README = """Put a Live2D model here to give Aries a new body.
 
 Drop the download in as it came: a .zip, .rar or .7z, or the unpacked
@@ -106,7 +110,51 @@ class BodyModels:
             seen_path.write_text(json.dumps(sorted(seen)))
             await self.add(p)
 
+    def _three_d_ready(self) -> bool:
+        import shutil
+        godot = (os.environ.get("ARIADNE2_GODOT") or shutil.which("godot4") or shutil.which("godot")
+                 or (REPO / "tools" / "godot" / "godot").exists()
+                 or Path("/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64").exists())
+        return (REPO / "pet" / "models" / "aries.vrm").exists() and bool(godot)
+
+    def _live2d_ready(self) -> list[str]:
+        if not (REPO / "ariadne2" / "pet2d" / "web" / "vendor" / "live2dcubismcore.min.js").exists():
+            return []
+        try:
+            return sorted(p.name for p in importer.MODELS.iterdir() if any(p.glob("*.model3.json")))
+        except OSError:
+            return []
+
+    async def check_body(self) -> None:
+        """A body that can't run shows nothing at all: switch to one that can, or say what to add."""
+        try:
+            av = self.settings.get("avatar", "model")
+            body_on = self.settings.get("desktop", "body")
+        except Exception:
+            return
+        if not body_on:
+            return
+        live2d = await asyncio.to_thread(self._live2d_ready)
+        if av == "aries" and self._three_d_ready() or av in live2d:
+            return
+        if live2d:
+            self.settings.set("avatar", "model", live2d[0])
+            await self.publish(self.settings.message())
+            await self._say(f"My 3D body can't run here, so I'm wearing the Live2D one ({live2d[0]}). "
+                            "Switch in Avatar > Model.")
+            return
+        flag = _seen_path().with_name("told_no_body")
+        if not flag.exists():
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            flag.write_text("1")
+            await self._say(NO_BODY)
+
     async def _loop(self) -> None:
+        await asyncio.sleep(15)            # the desk connects first, so she can be heard
+        try:
+            await self.check_body()
+        except Exception:
+            log.exception("body check failed")
         while True:
             try:
                 await self.scan()

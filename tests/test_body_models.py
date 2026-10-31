@@ -116,5 +116,29 @@ class DropFolderTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("wearing it now", [m for m in self.sent if m["t"] == "chat"][-1]["delta"])
 
 
+class NoBodyTests(DropFolderTests):
+    async def test_switches_to_a_live2d_body_when_the_3d_one_cant_run(self):
+        self.bm.settings.get.side_effect = lambda s, k: {"model": "aries", "body": True}[k]
+        with mock.patch.object(self.bm, "_three_d_ready", return_value=False), \
+             mock.patch.object(self.bm, "_live2d_ready", return_value=["mika"]):
+            await self.bm.check_body()
+        self.assertEqual(self.set, [("avatar", "model", "mika")])
+
+    async def test_says_once_when_there_is_no_body_at_all(self):
+        self.bm.settings.get.side_effect = lambda s, k: {"model": "aries", "body": True}[k]
+        with mock.patch.object(self.bm, "_three_d_ready", return_value=False), \
+             mock.patch.object(self.bm, "_live2d_ready", return_value=[]):
+            await self.bm.check_body()
+            await self.bm.check_body()
+        said = [m["delta"] for m in self.sent if m["t"] == "chat"]
+        self.assertEqual(said, [self.B.NO_BODY])
+
+    async def test_a_working_body_is_left_alone(self):
+        self.bm.settings.get.side_effect = lambda s, k: {"model": "aries", "body": True}[k]
+        with mock.patch.object(self.bm, "_three_d_ready", return_value=True):
+            await self.bm.check_body()
+        self.assertEqual((self.set, self.sent), ([], []))
+
+
 if __name__ == "__main__":
     unittest.main()

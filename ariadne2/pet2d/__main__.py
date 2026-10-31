@@ -58,6 +58,19 @@ def live2d_models() -> dict[str, str]:
     return out
 
 
+def biggest_monitor() -> tuple[int, int]:
+    """The size to start at: the biggest monitor (KWin then pins the window to it)."""
+    best = SCREEN
+    try:
+        mons = Gdk.Display.get_default().get_monitors()
+        sizes = [(m.get_geometry().width, m.get_geometry().height) for m in (mons.get_item(i) for i in range(mons.get_n_items()))]
+        if sizes:
+            best = max(sizes, key=lambda wh: wh[0] * wh[1])
+    except Exception:
+        pass
+    return best
+
+
 def wanted_model(settings: dict) -> str | None:
     """The Live2D model to show, or None while the 3D body (or no body) is chosen."""
     av = settings.get("avatar") if isinstance(settings.get("avatar"), dict) else {}
@@ -73,7 +86,7 @@ class PetWindow(Gtk.Window):
         super().__init__(application=app)
         self.set_title(TITLE)
         self.set_decorated(False)
-        self.set_default_size(*SCREEN)
+        self.set_default_size(*biggest_monitor())
         self.add_css_class("ariadne2-pet2d")
         self.ready = False
         self.model: str | None = None

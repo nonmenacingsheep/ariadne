@@ -40,7 +40,8 @@ const Settings = (() => {
       const text = document.createElement("div"); text.className = "sp-text";
       const l = document.createElement("div"); l.className = "sp-label"; l.textContent = s.label;
       const h = document.createElement("div"); h.className = "sp-help"; h.textContent = s.help || "";
-      text.append(l, h); row.append(text, control(s));
+      text.append(l); if (s.help) text.append(h);
+      row.append(text, control(s));
       box.appendChild(row);
     }
   }

@@ -165,7 +165,7 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
                     options=_choices(EYES_MODELS)))
     for key, (_f, env, label, help_) in API_KEYS.items():
         s.append(_entry("models", key, label, "secret", "",
-                        f"{help_} Kept in a private file; ${env} overrides it.",
+                        "",
                         secret=True))
     # ---- voice ----
     s.append(_entry("voice", "voice", "Voice", "text", "skylar",

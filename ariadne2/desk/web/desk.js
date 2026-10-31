@@ -634,6 +634,23 @@ addEventListener("pointerup", () => {
 });
 addEventListener("keydown", e => { if (e.key === "Escape" && raised) post({ t: "drop" }); });
 
+// Text can be selected inside a text box or her Claude conversation, never
+// across the desk. Ctrl+A elsewhere, or a drag that wandered out of the box
+// it started in, used to select the whole page: everything went blue.
+const SELECTABLE = "input, textarea, .cc-msgs, [contenteditable]";
+addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !e.target.closest?.(SELECTABLE)) e.preventDefault();
+}, true);
+document.addEventListener("selectionchange", () => {
+  const sel = getSelection();
+  if (!sel || sel.isCollapsed || !sel.anchorNode) return;
+  const act = document.activeElement;
+  if (act && (act.tagName === "INPUT" || act.tagName === "TEXTAREA")) return;   // selecting inside a text box
+  const home = n => (n.nodeType === 1 ? n : n.parentElement)?.closest(SELECTABLE) || null;
+  const a = home(sel.anchorNode), f = home(sel.focusNode);
+  if (!a || a !== f) sel.removeAllRanges();
+});
+
 function relayout(report) {
   for (const n of Object.keys(rects)) if (W[n]) place(n);
   if (typeof Settings !== "undefined" && Settings.isOpen()) Settings.place();

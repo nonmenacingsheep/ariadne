@@ -50,11 +50,12 @@ const Settings = (() => {
     if (s.action || s.type === "button" || s.type === "action") {
       // A button, not a switch. Ones that undo his work (a layout reset) take two clicks.
       const b = document.createElement("button"); b.className = "fe-btn"; b.textContent = s.button || (s.key === "check_now" ? "Check" : "Do it");
+      const status = s.key === "check_now" ? updateNote : (typeof v === "string" ? v : "");
       if (s.confirm) twoClick(b, "Sure?", () => set(s.section, s.key, true));
       else b.onclick = e => { e.stopPropagation(); set(s.section, s.key, true); if (s.key === "check_now") updateStatus({ status: "checking" }); };
-      if (s.key !== "check_now") return b;
+      if (s.key !== "check_now" && !status) return b;
       const wrap = document.createElement("div"); wrap.className = "sp-secret";
-      const note = document.createElement("span"); note.className = "sp-note"; note.textContent = updateNote;
+      const note = document.createElement("span"); note.className = s.key === "check_now" ? "sp-note" : "sp-note own"; note.textContent = status;
       wrap.append(note, b); return wrap;
     }
     if (s.type === "bool") {
@@ -113,7 +114,7 @@ const Settings = (() => {
     let t = m.status === "available" ? `${m.behind} update${m.behind === 1 ? "" : "s"} available` : UPDATE_WORDS[m.status] || m.status;
     if (m.checked) t += " · " + new Date(m.checked * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     updateNote = t;
-    if (panel) panel.querySelectorAll(".sp-note").forEach(n => { n.textContent = t; });
+    if (panel) panel.querySelectorAll(".sp-note:not(.own)").forEach(n => { n.textContent = t; });
   }
 
   // The panel opens to the left of her core, like the drawer opens below it.

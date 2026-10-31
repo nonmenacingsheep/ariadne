@@ -141,6 +141,22 @@ async def run(args: argparse.Namespace) -> None:
     from .updater import Updater
     updater = Updater(server.publish, settings=settings)
     settings.hooks[("general", "check_now")] = lambda _v: asyncio.ensure_future(updater.check())
+    # Spotify's Web API login, from Settings > Models (adapters/spotify_login.py).
+    from ..adapters import spotify_login
+    spotify_note = {"text": ""}
+
+    def spotify_said(text: str) -> None:
+        spotify_note["text"] = "" if text.startswith("Connected") or text == "Not connected" else text
+        asyncio.ensure_future(server.publish(settings.message()))
+    settings.status_providers[("models", "spotify_connect")] = lambda: spotify_note["text"] or spotify_login.status()
+    if not settings.get("models", "spotify_client_id") and spotify_login.saved_client_id():
+        try:     # an existing login's app ID, so the box isn't blank while it's connected
+            settings.set("models", "spotify_client_id", spotify_login.saved_client_id())
+        except settings_mod.SettingsError:
+            pass
+    settings.hooks[("models", "spotify_connect")] = lambda _v: asyncio.ensure_future(
+        spotify_login.connect(settings.get("models", "spotify_client_id") or spotify_login.saved_client_id(), spotify_said))
+    settings.hooks[("models", "spotify_disconnect")] = lambda _v: spotify_said(spotify_login.disconnect())
 
     def on_desk(msg):
         # The Claude widget's own Claude Code session: his, never routed to her.

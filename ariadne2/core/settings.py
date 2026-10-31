@@ -167,6 +167,10 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
         s.append(_entry("models", key, label, "secret", "",
                         "",
                         secret=True))
+    s.append(_entry("models", "spotify_client_id", "Spotify Client ID", "text", "", ""))
+    s.append(_entry("models", "spotify_connect", "Spotify", "bool", False, "", action=True, button="Connect"))
+    s.append(_entry("models", "spotify_disconnect", "Disconnect Spotify", "bool", False, "", action=True,
+                    confirm=True, button="Disconnect"))
     # ---- voice ----
     s.append(_entry("voice", "voice", "Voice", "text", "skylar",
                     "A Cartesia voice id, or a name she knows: skylar."))
@@ -295,6 +299,8 @@ class Settings:
         self._personalities = personality_names or personalities
         self._lock = threading.RLock()
         self.hooks: dict[tuple[str, str], object] = {}
+        # An action row's status line (Spotify: "Connected as …"), shown beside its button.
+        self.status_providers: dict[tuple[str, str], object] = {}
         self.listeners: list = []
         self._load()
 
@@ -413,6 +419,12 @@ class Settings:
         for e in self.schema():
             if e.get("readonly") or e.get("action"):
                 out[e["section"]][e["key"]] = e["default"]
+                provider = self.status_providers.get((e["section"], e["key"]))
+                if provider is not None:
+                    try:
+                        out[e["section"]][e["key"]] = str(provider())
+                    except Exception:
+                        log.exception("status for %s.%s", e["section"], e["key"])
             elif e.get("secret"):
                 out[e["section"]][e["key"]] = key_status(e["key"])
         return out
@@ -476,7 +488,8 @@ class Settings:
 
 
 # Momentary or one-off: running them every start would be wrong (a reset, a write to autostart).
-NOT_AT_START = {("desktop", "reset_layout"), ("desktop", "autostart"), ("general", "check_now")}
+NOT_AT_START = {("desktop", "reset_layout"), ("desktop", "autostart"), ("general", "check_now"),
+                ("models", "spotify_connect"), ("models", "spotify_disconnect")}
 
 
 # ---- per-key checks for text settings ----

@@ -28,6 +28,7 @@ import cairo
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 gi.require_version("WebKit", "6.0")
 from gi.repository import Gdk, GLib, Gtk, WebKit  # noqa: E402
 
@@ -126,6 +127,8 @@ class PetWindow(Gtk.Window):
         self.connect("notify::default-width", lambda *_: self._size())
         self.connect("notify::default-height", lambda *_: self._size())
         GLib.timeout_add_seconds(2, self._poll_files)
+        if os.environ.get("ARIADNE2_PET2D_PROBE"):
+            GLib.timeout_add_seconds(4, self._probe)
         threading.Thread(target=self._listen, daemon=True, name="pet2d-core").start()
 
     # ---- page --------------------------------------------------------------
@@ -134,8 +137,22 @@ class PetWindow(Gtk.Window):
             call = f"pet.{fn}({', '.join(json.dumps(a) for a in args)})"
             self.view.evaluate_javascript(call, -1, None, None, None, None, None)
 
+    def _probe(self) -> bool:
+        js = ("JSON.stringify({pixi: typeof PIXI, core: typeof Live2DCubismCore, l2d: typeof (PIXI.live2d || {}).Live2DModel,"
+              " canvas: !!document.querySelector('canvas'), mode: pet._debug && pet._debug.me.mode,"
+              " w: innerWidth, h: innerHeight})")
+
+        def done(view, res):
+            try:
+                log.info("probe: %s", view.evaluate_javascript_finish(res).to_string())
+            except Exception as e:
+                log.info("probe failed: %s", e)
+        self.view.evaluate_javascript(js, -1, None, None, None, done)
+        return True
+
     def _loaded(self, _view, event) -> None:
         if event == WebKit.LoadEvent.FINISHED:
+            log.info("page loaded")
             self.ready = True
             self.settings_mtime = self.layout_mtime = 0.0
             self._poll_files()
@@ -161,6 +178,9 @@ class PetWindow(Gtk.Window):
             except (OSError, KeyError, TypeError, ValueError):
                 pass
         elif msg.get("t") == "state" and self.model:
+            if not getattr(self, "_told", False):
+                self._told = True
+                log.info("the page is reporting her body")
             # What her body is doing, for her avatar tool (adapters/avatar.py).
             try:
                 about = json.loads((MODELS / self.model / "about.json").read_text())
@@ -231,6 +251,7 @@ class PetWindow(Gtk.Window):
         if want == self.model:
             return
         self.model = want
+        log.info("body: %s", want or "hidden (3D or none chosen)")
         if want:
             try:
                 pin = json.loads(PIN_FILE.read_text())
@@ -284,13 +305,13 @@ class PetWindow(Gtk.Window):
                                 self._voice_latest = msg
                                 if not self._voice_pending:
                                     self._voice_pending = True
-                                    GLib.idle_add(self._flush_voice, priority=GLib.PRIORITY_HIGH)
+                                    GLib.idle_add(self._flush_voice)
                             elif msg.get("t") == "chat" and not msg.get("done"):
                                 continue        # every streamed fragment of her text: the body only needs the end
                             elif msg.get("t") in ("speak", "ears", "action", "chat", "state", "body"):
                                 if msg.get("t") == "speak":
                                     log.info("speak %r arrived", msg.get("emotion"))
-                                GLib.idle_add(self._forward, msg, priority=GLib.PRIORITY_HIGH)
+                                GLib.idle_add(self._forward, msg)
             except OSError:
                 pass
             time.sleep(2)

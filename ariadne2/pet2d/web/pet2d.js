@@ -12,6 +12,10 @@
 const pet = (() => {
   const post = m => { try { window.webkit.messageHandlers.pet.postMessage(JSON.stringify(m)); } catch (e) {} };
   const log = msg => post({ t: "log", msg: String(msg) });
+  // Any error on the page goes to the host's log: one in the frame loop stops her
+  // silently otherwise.
+  addEventListener("error", e => log(`${e.message} @ ${(e.filename || "").split("/").pop()}:${e.lineno}`));
+  addEventListener("unhandledrejection", e => log(`unhandled: ${e.reason}`));
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const now = () => performance.now() / 1000;
 
@@ -475,8 +479,8 @@ const pet = (() => {
         stir();
         const look = EMOTION_LOOK[m.emotion];
         if (look) feel(look, Math.max(2.5, (Number(m.seconds) || 1) + 0.6));   // long enough to see
-        post({ t: "face", look: face.look, emotion: m.emotion });     // logged by the host, with the time
         else if (m.emotion === "neutral" && face.look !== "asleep") { face.look = ""; face.until = 0; }
+        post({ t: "face", look: face.look, emotion: m.emotion });     // logged by the host, with the time
         break;
       }
       case "ears": if (m.listening) { stir(); feel("wide", 1.0); face.gaze = { x: cw / 2, y: ch * 0.15, until: now() + 2 }; } break;

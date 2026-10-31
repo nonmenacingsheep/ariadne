@@ -46,6 +46,8 @@ command -v pactl >/dev/null && command -v parec >/dev/null || need+=("pactl/pare
 command -v git >/dev/null || need+=(git)
 python3 -c 'import pyatspi' 2>/dev/null \
   || warn "optional: pyatspi (python3-pyatspi) lets her press buttons inside other apps' windows"
+command -v unar >/dev/null || command -v 7z >/dev/null || command -v 7zz >/dev/null \
+  || warn "optional: unar (or 7zip) lets her add Live2D models that come as .rar or .7z (.zip always works)"
 if [ ${#need[@]} = 0 ]; then
   ok "all there"
 else

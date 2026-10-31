@@ -205,8 +205,9 @@ class Voice:
         for part in split_at_marks(self._skip.apply(raw)):
             words, rate, emotion = strip_marks(part)
             marked = bool(emotion) or rate != 1.0
-            if not marked and self._carry:
-                rate, emotion = self._carry
+            if self._carry:                  # a mark left standing: fill in what this part didn't say
+                rate = rate if rate != 1.0 else self._carry[0]
+                emotion = emotion or self._carry[1]
                 marked = True
             self._carry = None
             parts = [(words, 1.0, "")]

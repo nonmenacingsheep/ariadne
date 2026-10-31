@@ -290,9 +290,13 @@ def split_at_marks(text: str) -> list[str]:
     Oh, brilliant." must not be said in one voice."""
     cuts = [m.start() for m in ANY_MARK.finditer(text)
             if m.group(1).lower() in MARK_WORDS and m.group(1).lower() not in ("skip", "/skip")]
-    cuts = [c for c in cuts if text[:c].strip()]          # a mark at the very start is not a cut
     parts, last = [], 0
     for c in cuts + [len(text)]:
+        # A cut needs words before it since the last one: "((sad)) ((slow)) I
+        # waited" is one part with both marks, not "((sad))" alone (whose sadness
+        # was lost) and "((slow)) I waited".
+        if c < len(text) and not ANY_MARK.sub("", text[last:c]).strip():
+            continue
         parts.append(text[last:c])
         last = c
     return [p for p in parts if p.strip()]

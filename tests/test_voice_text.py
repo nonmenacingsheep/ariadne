@@ -37,6 +37,12 @@ class Marks(unittest.TestCase):
     def test_first_emotion_wins(self):
         self.assertEqual(strip_marks("((calm)) a ((excited)) b")[2], "calm")
 
+    def test_a_run_of_marks_stays_together(self):
+        from ariadne2.core.voice.text import split_at_marks
+        self.assertEqual(split_at_marks("((sad)) ((slow)) I waited. Fine. ((sarcastic)) Oh."),
+                         ["((sad)) ((slow)) I waited. Fine. ", "((sarcastic)) Oh."])
+        self.assertEqual(strip_marks("((sad)) ((slow)) I waited."), ("  I waited.", 0.78, "sad"))
+
     def test_an_unknown_mark_is_never_read_aloud(self):
         self.assertEqual(strip_marks("((grumpy)) hm"), (" hm", 1.0, ""))
 

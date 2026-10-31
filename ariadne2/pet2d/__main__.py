@@ -100,8 +100,9 @@ class PetWindow(Gtk.Window):
         self.settings_mtime = 0.0
         self.layout_mtime = 0.0
         self.music = False                         # Spotify is playing
-        self._voice_latest = None                  # the newest voice level, waiting to go to the page
-        self._voice_pending = False
+        self._inbox: list = []                     # from the core, waiting for the next 50 ms delivery
+        self._inbox_lock = threading.Lock()
+        GLib.timeout_add(50, self._deliver)
         self.beats = BeatListener(lambda period, strength: GLib.idle_add(self._beat, period, strength))
 
         ctx = WebKit.WebContext.get_default()     # the host GPU driver, as the desk does
@@ -297,31 +298,32 @@ class PetWindow(Gtk.Window):
                                 continue
                             if not isinstance(msg, dict):
                                 continue
-                            if msg.get("t") == "voice":
-                                # ~12 a second while she talks (lip sync). Queued one by one
-                                # at idle priority behind the drawing, they backed up and her
-                                # faces (the speak messages behind them) came seconds late or
-                                # not at all. Only the newest level matters: keep that one.
-                                self._voice_latest = msg
-                                if not self._voice_pending:
-                                    self._voice_pending = True
-                                    GLib.idle_add(self._flush_voice)
-                            elif msg.get("t") == "chat" and not msg.get("done"):
+                            if msg.get("t") == "chat" and not msg.get("done"):
                                 continue        # every streamed fragment of her text: the body only needs the end
-                            elif msg.get("t") in ("speak", "ears", "action", "chat", "state", "body"):
+                            if msg.get("t") in ("voice", "speak", "ears", "action", "chat", "state", "body"):
                                 if msg.get("t") == "speak":
                                     log.info("speak %r arrived", msg.get("emotion"))
-                                GLib.idle_add(self._forward, msg)
+                                with self._inbox_lock:
+                                    if msg.get("t") == "voice":     # only the newest lip-sync level matters
+                                        self._inbox = [m for m in self._inbox if m.get("t") != "voice"]
+                                    self._inbox.append(msg)
             except OSError:
                 pass
             time.sleep(2)
 
-    def _flush_voice(self) -> bool:
-        self._voice_pending = False
-        msg, self._voice_latest = self._voice_latest, None
-        if msg is not None:
+    def _deliver(self) -> bool:
+        """Every 50 ms, whatever arrived goes to the page in one call. One idle
+        callback per message waited behind drawing a 3440 px window and her
+        faces landed seconds after her words; a timer at normal priority with
+        a batch can't back up."""
+        with self._inbox_lock:
+            batch, self._inbox = self._inbox, []
+        self._batch = []
+        for msg in batch:
             self._forward(msg)
-        return False
+        if self._batch:
+            self._js("messages", self._batch)
+        return True
 
     def _forward(self, msg: dict) -> bool:
         if msg.get("t") == "state":
@@ -333,7 +335,7 @@ class PetWindow(Gtk.Window):
                 self._beats_wanted()
             msg = {"t": "state", "widget": "spotify", "data": {"status": msg["data"].get("status")}}
         if self.model:
-            self._js("message", msg)
+            self._batch.append(msg)
         return False
 
 

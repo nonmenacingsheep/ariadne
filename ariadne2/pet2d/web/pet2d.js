@@ -345,7 +345,10 @@ const pet = (() => {
     core.multiplyParameterValueById("ParamEyeLOpen", face.eye);
     core.multiplyParameterValueById("ParamEyeROpen", face.eye);
     // Lip sync: mouth open with her voice's loudness.
-    const open = opt.lip_sync && face.speaking ? clamp(face.level * 4.5, 0.15, 1) * (0.75 + 0.25 * Math.sin(t * 23)) : 0;
+    // Talking only while levels keep coming and there's sound: a last "speaking,
+    // level 0" after she stopped used to leave her mouth flapping for ever.
+    const talking = face.speaking && face.level > 0.01 && t - (face.voiceAt || 0) < 0.6;
+    const open = opt.lip_sync && talking ? clamp(face.level * 4.5, 0.15, 1) * (0.75 + 0.25 * Math.sin(t * 23)) : 0;
     face.mouth += (open - face.mouth) * Math.min(1, dt * 18);
     core.setParameterValueById("ParamMouthOpenY", face.mouth);
     // The rig's looping effects (spinning star/heart eyes, running tears, the
@@ -472,7 +475,7 @@ const pet = (() => {
     if (!model) return;
     switch (m.t) {
       case "voice":
-        face.speaking = !!m.speaking; face.level = Number(m.level) || 0;
+        face.speaking = !!m.speaking; face.level = Number(m.level) || 0; face.voiceAt = now();
         if (face.speaking) stir();
         break;
       case "speak": {
@@ -506,6 +509,7 @@ const pet = (() => {
   addEventListener("resize", () => screen(innerWidth, innerHeight));
   screen(innerWidth, innerHeight);
 
-  return { load, unload, screen, settings, layout, message, feel, pinAt, beat: onBeat,
+  const messages = list => { for (const m of list || []) { try { message(m); } catch (e) { log(e); } } };
+  return { load, unload, screen, settings, layout, message, messages, feel, pinAt, beat: onBeat,
            _debug: { me, beat, setMusic: v => { music = v; } } };
 })();

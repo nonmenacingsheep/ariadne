@@ -47,6 +47,7 @@ LOOK_WORDS = {
     "eyeroll": ("eyeroll", "roll", "白眼"),
     "gloom": ("dark", "gloom", "shadow", "脸黑", "黑"),
     "dizzy": ("dizzy", "swirl", "spin", "晕", "转圈"),
+    "blood": ("blood", "bloody", "血"),
 }
 
 

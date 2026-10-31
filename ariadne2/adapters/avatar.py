@@ -19,7 +19,7 @@ from .base import Adapter, AdapterError, Verb
 
 FRESH_S = 5.0
 LOOKS = ("smile", "stars", "hearts", "blush", "angry", "tears", "eyeroll", "gloom", "wide", "sleepy",
-         "dizzy", "soft", "smirk", "thoughtful")
+         "dizzy", "soft", "smirk", "thoughtful", "blood")
 SIDES = ("left", "center", "right", "floor")
 
 

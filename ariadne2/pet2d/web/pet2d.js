@@ -301,7 +301,7 @@ const pet = (() => {
     smirk: ["smirk", "eyeroll", "smile"], eyeroll: ["eyeroll", "smirk", "gloom"],
     gloom: ["gloom", "tears", "sleepy"], tears: ["tears", "gloom", "sleepy"], angry: ["angry", "gloom", "eyeroll"],
     dizzy: ["dizzy", "eyeroll", "wide"], wide: ["wide", "stars"], thoughtful: ["thoughtful", "sleepy"],
-    sleepy: ["sleepy"], asleep: ["asleep"],
+    sleepy: ["sleepy"], asleep: ["asleep"], blood: ["blood"],
   };
   function resolve(look) {
     const kin = KIN[look] || [look];

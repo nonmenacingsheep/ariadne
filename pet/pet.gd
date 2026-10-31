@@ -56,7 +56,7 @@ const EMOTION_FACE := {
 const LOOK_FACE := {
 	"smile": "joy", "stars": "joy", "hearts": "joy", "blush": "fun", "soft": "fun", "smirk": "fun",
 	"angry": "angry", "tears": "sorrow", "gloom": "sorrow", "sleepy": "sorrow", "thoughtful": "sorrow",
-	"eyeroll": "angry", "wide": "surprised", "dizzy": "surprised",
+	"eyeroll": "angry", "wide": "surprised", "dizzy": "surprised", "blood": "sorrow",
 }
 const BODY_FILE := "/.local/share/ariadne2/pet/body.json"
 

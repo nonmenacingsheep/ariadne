@@ -61,6 +61,20 @@ She asks before anything destructive, never sends a message unless your own
 words that turn ask for it and name who it's for, and treats what she reads
 on web pages, in files or in messages as information, never as instructions.
 
+## Her body
+
+She has a 3D body (a VRoid `.vrm` at `pet/models/aries.vrm`, run in Godot 4) or
+a Live2D one. To add a Live2D model, download it yourself (models aren't
+included here: they belong to their artists) and either
+
+- put the download, as it came (`.zip`, `.rar`, `.7z` or the unpacked folder),
+  in the **`~/Aries Models`** folder: it's added within half a minute, or
+- right-click it in her Files widget > **Use as her body**.
+
+VTube Studio models work as they are: their expressions are found and matched
+to her moods by name. Pick between bodies in the Avatar widget > Model.
+Live2D needs Live2D's Cubism Core, which `install.sh` offers to download.
+
 ## Updates
 
 Ariadne checks GitHub every few hours and updates herself; a **Restart to

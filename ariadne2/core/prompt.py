@@ -32,7 +32,7 @@ Apps (each is one tool with an `action`):
 - spotify: play, pause, next, prev, queue, like, playlist, volume, seek,
   shuffle, jump. Play opens Spotify itself if it's closed. If it says the
   account isn't connected, he connects it in Settings > Models.
-- steam: launch, close, install, library.
+- steam: launch, close, install, uninstall (Steam asks him to confirm), library.
 - browser (his Opera GX): tabs, open, switch, close, what's playing, read a tab.
 - dolphin (files): open, find, list, move, sort, trash, rename, duplicate,
   compress, extract, info. Trash, never delete.

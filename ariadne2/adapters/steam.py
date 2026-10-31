@@ -137,6 +137,9 @@ class SteamAdapter(Adapter):
                  {"type": "object", "properties": {"game": {"type": "string"}}}, self._close, "close"),
             Verb("install", "Install a game he owns that isn't installed (by name, or appid). Steam "
                  "shows its own install dialog for him to confirm.", game, self._install, "install"),
+            Verb("uninstall", "Uninstall an installed game (by name, or appid) to free space. Steam shows "
+                 "its own confirmation for him to click, so nothing goes until he does. Only when he asked "
+                 "for it; say which game you're asking about.", game, self._uninstall, "uninstall"),
             Verb("library", "Look up his Steam library as text: with a query, matching games (installed "
                  "or just owned) with appid, hours played and last played; without, the installed "
                  "games, most recently played first.",
@@ -357,6 +360,25 @@ class SteamAdapter(Adapter):
         self._poke()
         await self.refresh()
         return f"Closed {pick['name']}."
+
+    async def _uninstall(self, game: str) -> str:
+        """Steam's own uninstall dialog (steam://uninstall): he confirms it there."""
+        scan = await self._fresh()
+        q = str(game or "").strip()
+        if not q:
+            raise AdapterError("say which game")
+        known = self._known(scan)
+        pick = self._pick(known, q, "an installed game")
+        appid, name = pick["appid"], pick["name"]
+        m = scan["man"].get(appid)
+        if not (m and m["installed"]):
+            return f"{name} isn't installed."
+        running = (scan.get("playing") or {}).get("appid") if isinstance(scan.get("playing"), dict) else None
+        if running == appid:
+            raise AdapterError(f"{name} is running; close it first")
+        await self._open(f"steam://uninstall/{appid}")
+        self._poke()
+        return f"Asked Steam to uninstall {name}. Steam shows a dialog he has to confirm."
 
     async def _install(self, game: str) -> str:
         scan = await self._fresh()

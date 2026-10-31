@@ -423,6 +423,15 @@ class VerbTests(Base):
         self.assertIn("confirm with him first", a.verb("close").description)
         self.assertIn("unsaved", a.verb("close").description)
 
+    async def test_uninstall_asks_steam_which_asks_him(self):
+        a = self.make()
+        self.assertIn("Asked Steam to uninstall Enshrouded", await a.run("uninstall", {"game": "enshrouded"}))
+        self.assertEqual(self.opened, ["steam://uninstall/1203620"])
+        self.assertIn("isn't installed", await a.run("uninstall", {"game": "roadcraft"}))
+        self.assertEqual(len(self.opened), 1)
+        with self.assertRaises(AdapterError):
+            await a.run("uninstall", {"game": " "})
+
     async def test_install(self):
         a = self.make()
         self.assertIn("Asked Steam to install RoadCraft", await a.run("install", {"game": "roadcraft"}))
@@ -472,10 +481,10 @@ class VerbTests(Base):
         self.assertEqual(adapters.REGISTRY["steam"], "ariadne2.adapters.steam:SteamAdapter")
         a = self.make()
         names = {adapters.tool_name(a, v) for v in a.verbs}
-        self.assertEqual(names, {"steam_launch", "steam_close", "steam_install", "steam_library"})
+        self.assertEqual(names, {"steam_launch", "steam_close", "steam_install", "steam_uninstall", "steam_library"})
         schemas = {t["name"]: t["input_schema"] for t in adapters.tools({"steam": a})}
         self.assertEqual(list(schemas), ["steam"])
-        self.assertEqual(set(schemas["steam"]["properties"]["action"]["enum"]), {"launch", "close", "install", "library"})
+        self.assertEqual(set(schemas["steam"]["properties"]["action"]["enum"]), {"launch", "close", "install", "uninstall", "library"})
 
 
 class ProcessTests(unittest.TestCase):

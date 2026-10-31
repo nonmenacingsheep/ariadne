@@ -68,6 +68,26 @@ else
   fi
 fi
 
+# --------------------------------------------- updates (a ZIP download too)
+bold "Updates"
+if [ -d .git ] && git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+  ok "installed with git; it updates itself from GitHub"
+else
+  # Downloaded as a ZIP: make it a git checkout of the repo so it can update.
+  [ -d .git ] || git init -q && git symbolic-ref HEAD refs/heads/master
+  git remote get-url origin >/dev/null 2>&1 || git remote add origin https://github.com/nonmenacingsheep/ariadne.git
+  if git fetch -q origin master && git reset -q origin/master; then
+    git branch -q --set-upstream-to=origin/master master 2>/dev/null || true
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+      git checkout -q -f master && ok "linked to GitHub and brought up to date"
+    else
+      ok "linked to GitHub; it updates itself from now on"
+    fi
+  else
+    warn "couldn't reach GitHub; run this again later to turn on updates"
+  fi
+fi
+
 # ------------------------------------------------------------ python env
 bold "Python environment (.venv)"
 if [ ! -x .venv/bin/python ]; then

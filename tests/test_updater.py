@@ -93,3 +93,57 @@ class UpdaterTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ZipDownloadTests(unittest.IsolatedAsyncioTestCase):
+    """A folder downloaded as a ZIP (no .git) gets linked to the repo and can update."""
+
+    async def asyncSetUp(self):
+        import os
+        import shutil
+        self.tmp = Path(tempfile.mkdtemp())
+        self.remote, self.dev = self.tmp / "remote.git", self.tmp / "dev"
+        git(self.tmp, "init", "--bare", "-b", "master", str(self.remote))
+        git(self.tmp, "clone", str(self.remote), str(self.dev))
+        git(self.dev, "checkout", "-b", "master")
+        (self.dev / "ariadne2").mkdir(); (self.dev / "bin").mkdir()
+        (self.dev / "ariadne2" / "core.py").write_text("v1\n"); (self.dev / "bin" / "ariadne2").write_text("#!/bin/sh\n")
+        git(self.dev, "add", "-A"); git(self.dev, "commit", "-m", "v1"); git(self.dev, "push", "origin", "master")
+        self.zip = self.tmp / "download"                     # what the ZIP unpacks to: files, no history
+        shutil.copytree(self.dev, self.zip, ignore=shutil.ignore_patterns(".git"))
+        (self.zip / ".venv").mkdir(); (self.zip / ".venv" / "keep").write_text("theirs")
+        os.environ["ARIADNE2_REPO"] = str(self.remote)
+        self.addCleanup(os.environ.pop, "ARIADNE2_REPO", None)
+        self.env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
+        async def publish(m):
+            protocol.decode(protocol.encode(m))
+        self.publish = publish
+
+    async def test_a_current_download_is_linked_and_up_to_date(self):
+        st = await Updater(self.publish, root=self.zip).check(install=True)
+        self.assertEqual(st["status"], "up to date")
+        self.assertTrue((self.zip / ".git").is_dir())
+        st = await Updater(self.publish, root=self.zip).check(install=True)    # and from now on, a normal clone
+        self.assertEqual(st["status"], "up to date")
+
+    async def test_an_older_download_is_brought_up_to_date(self):
+        (self.dev / "ariadne2" / "core.py").write_text("v2\n")
+        git(self.dev, "commit", "-am", "v2"); git(self.dev, "push", "origin", "master")
+        st = await Updater(self.publish, root=self.zip).check(install=False)
+        self.assertEqual(st["status"], "available")
+        self.assertEqual((self.zip / "ariadne2" / "core.py").read_text(), "v1\n")
+        st = await Updater(self.publish, root=self.zip).check(install=True)
+        self.assertEqual((st["status"], st["restart"]), ("updated", True))
+        self.assertEqual((self.zip / "ariadne2" / "core.py").read_text(), "v2\n")
+        self.assertEqual((self.zip / ".venv" / "keep").read_text(), "theirs")   # untracked: untouched
+        (self.dev / "ariadne2" / "core.py").write_text("v3\n")
+        git(self.dev, "commit", "-am", "v3"); git(self.dev, "push", "origin", "master")
+        st = await Updater(self.publish, root=self.zip).check(install=True)     # then ordinary updates
+        self.assertEqual((st["status"], st["behind"]), ("updated", 1))
+
+    async def test_a_folder_that_isnt_ariadne_is_left_alone(self):
+        other = self.tmp / "other"; other.mkdir()
+        st = await Updater(self.publish, root=other).check(install=True)
+        self.assertEqual(st["status"], "not a git checkout")
+        self.assertFalse((other / ".git").exists())

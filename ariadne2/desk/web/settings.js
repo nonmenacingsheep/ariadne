@@ -107,7 +107,7 @@ const Settings = (() => {
   const UPDATE_WORDS = { "checking": "Checking…", "up to date": "Up to date", "updated": "Updated: restart to use it",
     "local changes": "Not updated: this copy has local edits", "diverged": "Not updated: this copy has its own commits",
     "offline": "Couldn't reach GitHub", "no remote": "Not installed from GitHub", "failed": "The update failed",
-    "not on a branch": "Not on a branch", "error": "Couldn't check" };
+    "not on a branch": "Not on a branch (git switch master)", "not a git checkout": "Can't update this folder", "error": "Couldn't check" };
   function updateStatus(m) {
     if (!m || !m.status || m.status === "unchecked") return;
     let t = m.status === "available" ? `${m.behind} update${m.behind === 1 ? "" : "s"} available` : UPDATE_WORDS[m.status] || m.status;

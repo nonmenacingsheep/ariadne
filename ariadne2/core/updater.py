@@ -24,6 +24,8 @@ from pathlib import Path
 log = logging.getLogger("ariadne2.updater")
 
 REPO = Path(__file__).resolve().parents[2]
+# Where a ZIP download (no git history) is linked to, so it can update too.
+REPO_URL = "https://github.com/nonmenacingsheep/ariadne.git"
 FIRST_CHECK = 90.0                 # after start: let her come up first
 EVERY = 6 * 3600.0
 GIT_TIMEOUT = 60.0
@@ -71,6 +73,10 @@ class Updater:
         install = self._want("auto_update") if install is None else install
         async with self._lock:
             git, root = self.git, self.root
+            code, top = await git(root, "rev-parse", "--show-toplevel")
+            unborn = (await git(root, "rev-parse", "--verify", "-q", "HEAD"))[0] != 0
+            if code or Path(top).resolve() != root.resolve() or unborn:
+                return await self._adopt(install)
             code, branch = await git(root, "rev-parse", "--abbrev-ref", "HEAD")
             if code or branch == "HEAD":
                 return await self._say(status="not on a branch")
@@ -111,9 +117,12 @@ class Updater:
     async def _packages(self, before: str) -> None:
         """An update that changed requirements.txt installs them into the
         install.sh environment (.venv), if there is one."""
-        code, changed = await self.git(self.root, "diff", "--name-only", before, "HEAD")
         pip = self.root / ".venv" / "bin" / "python"
-        if code or "requirements.txt" not in changed.split() or not pip.exists():
+        if before != "HEAD":
+            code, changed = await self.git(self.root, "diff", "--name-only", before, "HEAD")
+            if code or "requirements.txt" not in changed.split():
+                return
+        if not pip.exists():
             return
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -124,6 +133,46 @@ class Updater:
                 log.warning("update: pip failed: %s", err.decode(errors="replace")[-300:])
         except (OSError, asyncio.TimeoutError) as e:
             log.warning("update: couldn't install packages: %s", e)
+
+    async def _adopt(self, install: bool) -> dict:
+        """A folder with no git history (downloaded as a ZIP): make it a checkout
+        of the GitHub repo, so it can update like a clone. Only tracked files
+        are ever replaced; .venv, models and anything else of theirs stay."""
+        git, root = self.git, self.root
+        if not (root / "ariadne2").is_dir() or not (root / "bin" / "ariadne2").exists():
+            return await self._say(status="not a git checkout")
+        url = os.environ.get("ARIADNE2_REPO", REPO_URL)
+        made = not (root / ".git").exists()
+        if made:
+            code, out = await git(root, "init", "-q")
+            if code:
+                return await self._say(status="not a git checkout")
+            await git(root, "symbolic-ref", "HEAD", "refs/heads/master")
+        if (await git(root, "remote", "get-url", "origin"))[0]:
+            await git(root, "remote", "add", "origin", url)
+        code, out = await git(root, "fetch", "--quiet", "origin", "master")
+        if code:
+            log.info("adopting this download: fetch failed: %s", out[:200])
+            return await self._say(status="offline")
+        await git(root, "reset", "-q", "origin/master")            # history now; files untouched
+        await git(root, "branch", "-q", "--set-upstream-to=origin/master", "master")
+        code, differ = await git(root, "status", "--porcelain", "--untracked-files=no")
+        log.info("this download is now a git checkout of %s", url)
+        if not differ:
+            return await self._say(status="up to date", ahead=0)
+        commits = ["This download is older than GitHub's version"]
+        if not install:
+            if made:      # only reporting: undo the link, or the next check would think it's current
+                import shutil
+                shutil.rmtree(root / ".git", ignore_errors=True)
+            return await self._say(status="available", behind=1, commits=commits)
+        code, out = await git(root, "checkout", "-q", "-f", "master")
+        if code:
+            log.warning("update failed: %s", out[:300])
+            return await self._say(status="failed", behind=1, commits=commits)
+        await self._packages("HEAD")                               # always worth a pip pass here
+        self.restart_needed = True
+        return await self._say(status="updated", behind=1, commits=commits)
 
     def restart(self) -> None:
         """Start Ariadne again; bin/ariadne2 stops this instance first."""

@@ -122,6 +122,7 @@ async def run(args: argparse.Namespace) -> None:
     if not args.quiet:
         voice = _make_voice(server)
     from .extensions import Extensions, ExtensionTools
+    from .settings_tool import SettingsTools
     extensions = Extensions(server.publish)
     memory = MemoryToolset()
     memory.warm()           # the model and the old transcript, loaded off the main thread
@@ -129,7 +130,8 @@ async def run(args: argparse.Namespace) -> None:
                                 model_name=args.model or settings.get("models", "conversation_model"),
                                 personality=args.personality or settings.get("general", "personality"),
                                 on_sentence=voice.say if voice else None,
-                                adapters=adapters, toolsets=[GeneralTools(), memory, ExtensionTools(extensions)],
+                                adapters=adapters, toolsets=[GeneralTools(), memory, ExtensionTools(extensions),
+                                          SettingsTools(settings, server.publish)],
                                 on_turn=memory.on_turn)
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)

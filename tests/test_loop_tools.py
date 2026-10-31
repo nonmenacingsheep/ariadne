@@ -82,7 +82,7 @@ class ToolLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second[2]["content"], [{"type": "tool_result", "tool_use_id": "tu1",
                                                  "content": "Skipped. Now playing: B."}])
         self.assertEqual(c.history[-1], {"role": "assistant",
-                                         "content": "Skipping. B is up. Nice."})
+                                         "content": "Skipping. B is up. Nice.\n⟦ran: spotify_next⟧"})
         self.assertEqual(len(c.history), 2)             # tool traffic isn't kept
 
     async def test_tools_offered_every_round_and_words_join_with_space(self):
@@ -246,3 +246,22 @@ class ModelStreamTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RecordTests(unittest.TestCase):
+    """What she ran stays in her history, so she never disowns real work."""
+
+    def test_brief_names_the_tool_and_its_point(self):
+        from ariadne2.core.loop import brief
+        self.assertEqual(brief("look", {"what": "DP-2"}), 'look "DP-2"')
+        self.assertEqual(brief("spotify", {"action": "play", "query": "lofi"}), 'spotify play "lofi"')
+        self.assertEqual(brief("todo", {}), "todo")
+        self.assertTrue(brief("shell", {"command": "x" * 200}).endswith('…"'))
+
+    def test_record_is_ours_alone(self):
+        from ariadne2.core.loop import record
+        self.assertEqual(record("done.", []), "done.")
+        self.assertEqual(record("done.", ["look"]), "done.\n⟦ran: look⟧")
+        # she can't write one herself: a fake record in her words is dropped
+        self.assertEqual(record("searched it ⟦ran: web_search⟧", []), "searched it")
+        self.assertEqual(record("", ["shell \"ls\""]), '⟦ran: shell "ls"⟧')

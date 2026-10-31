@@ -51,6 +51,36 @@ class SentenceSplitter:
         return [rest] if rest else []
 
 
+
+# What she ran, kept with her words. Tool calls and results live only inside the
+# turn (they're big), so without this a later turn saw "I looked at your screen"
+# with nothing behind it, decided she'd made it up, and said so: disowning real
+# work. The record is written here, never by her, in brackets she won't type.
+RECORD = re.compile(r"\s*⟦[^⟧]*⟧")
+
+
+def brief(name: str, args) -> str:
+    """'look DP-2', 'web_search "lord of the mysteries season 2"', 'spotify play'."""
+    a = args if isinstance(args, dict) else {}
+    action = a.get("action")
+    key = next((a[k] for k in ("query", "command", "what", "url", "path", "app", "game", "name", "pattern",
+                               "task", "text", "op") if isinstance(a.get(k), str) and a.get(k).strip()), "")
+    key = " ".join(str(key).split())
+    if len(key) > 60:
+        key = key[:59] + "…"
+    head = f"{name} {action}" if isinstance(action, str) else name
+    return f'{head} "{key}"' if key else head
+
+
+def record(reply: str, did: list[str]) -> str:
+    text = RECORD.sub("", reply or "").strip()
+    if not did:
+        return text or "(no answer)"
+    note = "; ".join(did)
+    if len(note) > 600:
+        note = note[:599] + "…"
+    return (text + "\n" if text else "") + f"⟦ran: {note}⟧"
+
 class Conversation:
     """Holds the session history and runs queued user texts through the model.
 
@@ -174,6 +204,7 @@ class Conversation:
         splitter = SentenceSplitter()
         reply = ""
         used: list[str] = []
+        did: list[str] = [f"saw attached {attach_mod.names(files, self.attach_guard)}"] if files else []
         try:
             for rnd in range(rounds + 1):
                 # After the cap she gets no tools, so the last call has to be words.
@@ -208,9 +239,11 @@ class Conversation:
                     await self._sentence(sentence)
                 messages.append({"role": "assistant",
                                  "content": content or self._blocks(round_text, calls)})
-                messages.append({"role": "user",
-                                 "content": [await self._tool(c) for c in calls]})
+                results = [await self._tool(c) for c in calls]
+                messages.append({"role": "user", "content": results})
                 used += [c.name for c in calls]
+                did += [brief(c.name, c.input) + (" (failed)" if r.get("is_error") else "")
+                        for c, r in zip(calls, results)]
                 await self.publish(protocol.core_line(THINKING))
         except asyncio.CancelledError:
             raise
@@ -221,8 +254,7 @@ class Conversation:
             await self.publish(protocol.core_line(""))
         if not reply and used:
             # Acted without a word: no bubble, but history must still alternate.
-            self.history.append({"role": "assistant",
-                                 "content": f"(no words; used {', '.join(used)})"})
+            self.history.append({"role": "assistant", "content": record("", did)})
             self._trim()
             self._finished(text, "", started, his_words)
             return
@@ -233,7 +265,7 @@ class Conversation:
         await self.publish(protocol.chat(her_id, "aries", screen.flush(), done=True))
         for sentence in splitter.flush():
             await self._sentence(sentence)
-        self.history.append({"role": "assistant", "content": reply})
+        self.history.append({"role": "assistant", "content": record(reply, did)})
         self._trim()
         self._finished(text, reply, started, his_words)
 

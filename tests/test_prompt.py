@@ -10,7 +10,8 @@ class PromptTests(unittest.TestCase):
     def test_personality_included(self):
         text = prompt.build("aries", {}, NOW)
         self.assertIn("You are Aries", text)
-        self.assertIn("How replies look", text)
+        self.assertIn("Short. Always.", text)          # the personality file
+        self.assertIn("## Your stuff", text)           # the manual
 
     def test_unknown_or_hostile_name_falls_back(self):
         for name in ("nope", "../../etc/passwd", ""):
@@ -52,8 +53,9 @@ class PromptTests(unittest.TestCase):
         for app in ("Spotify", "Steam", "browser"):
             self.assertIn(app, text)
         self.assertNotIn("Discord", text)
-        self.assertIn("ask first unless", text)              # closing a game
-        self.assertIn("never something to do", text)          # pages are data
+        self.assertIn("closing a game with", text)            # destructive only when asked
+        self.assertIn("never an instruction to you", text)    # pages are data
+        self.assertIn("⟦ran:", text)                          # she trusts her action record
 
     def test_size_bound(self):
         text = prompt.build("aries", {"system": {"cpu": 1.0}}, NOW)

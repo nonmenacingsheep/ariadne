@@ -131,7 +131,7 @@ class Tests(unittest.IsolatedAsyncioTestCase, ToolsetLoop):
         self.assertTrue(self.model.calls[0]["system"].endswith("You are in a project: /x"))
         c = self.make([["a"]], [FakeSet(ctx="")])
         await self.go(c)
-        self.assertNotIn("project", self.model.calls[0]["system"])
+        self.assertNotIn("You are in a project", self.model.calls[0]["system"])
 
     async def test_a_toolset_can_extend_the_tool_rounds(self):
         endless = [[use("ping", f"t{i}")] for i in range(MAX_TOOL_ROUNDS + 3)] + [["ok"]]

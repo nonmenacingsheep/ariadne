@@ -50,6 +50,11 @@ class Layer(Gtk.Window):
                   str(Path.home() / ".local/lib/nvidia-host"), str(Path.home() / ".local/share/glvnd")):
             if Path(d).exists():
                 ctx.add_path_to_sandbox(d, True)
+        # Pictures her extensions make are shown in the chat straight from disk.
+        from ..core.extensions import pictures
+        pics = pictures()
+        pics.mkdir(parents=True, exist_ok=True)
+        ctx.add_path_to_sandbox(str(pics), True)
         ucm = WebKit.UserContentManager()
         ucm.register_script_message_handler("desk", None)
         ucm.connect("script-message-received::desk", self._from_page)

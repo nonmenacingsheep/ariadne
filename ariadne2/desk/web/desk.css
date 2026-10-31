@@ -637,3 +637,9 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .sp-secret .sp-input { width: 170px; font-family: "Fira Code", monospace; }
 .sp-secret .sp-x { padding: 3px 8px; }
 .sp-note { font: 11px "Fira Code", monospace; color: var(--soft); opacity: .8; white-space: nowrap; }
+
+/* Pictures her extensions make (core/extensions.py), and approval cards' lines. */
+.pic { margin: 6px 0 2px; }
+.pic img { display: block; max-width: 100%; max-height: 360px; border: 1px solid rgba(255,120,130,.35); cursor: zoom-in; }
+.pic figcaption { font: 10.5px "Fira Code", monospace; color: var(--soft); opacity: .6; margin-top: 3px; }
+.msg.ask { white-space: pre-wrap; }

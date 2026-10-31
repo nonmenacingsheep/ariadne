@@ -116,13 +116,15 @@ async def run(args: argparse.Namespace) -> None:
     voice = ears = None
     if not args.quiet:
         voice = _make_voice(server)
+    from .extensions import Extensions, ExtensionTools
+    extensions = Extensions(server.publish)
     memory = MemoryToolset()
     memory.warm()           # the model and the old transcript, loaded off the main thread
     conversation = Conversation(server.publish, lambda: server.snapshots,
                                 model_name=args.model or settings.get("models", "conversation_model"),
                                 personality=args.personality or settings.get("general", "personality"),
                                 on_sentence=voice.say if voice else None,
-                                adapters=adapters, toolsets=[GeneralTools(), memory],
+                                adapters=adapters, toolsets=[GeneralTools(), memory, ExtensionTools(extensions)],
                                 on_turn=memory.on_turn)
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)
@@ -145,6 +147,13 @@ async def run(args: argparse.Namespace) -> None:
         if msg.get("t") == "cc_do":
             _spawn_flow(live_claude.on_desk(msg))
             return None
+        # His Allow / Deny on an extension's approval card; and a desk that
+        # (re)connects gets any cards still waiting.
+        if msg.get("t") == "answer" and str(msg.get("id", "")).startswith("ext:"):
+            _spawn_flow(extensions.answer(str(msg["id"]), str(msg.get("choice", ""))))
+            return None
+        if msg.get("t") == "hello":
+            _spawn_flow(extensions.ask_pending())
         if msg.get("t") == "update_do":
             _spawn_flow(updater.on_desk(msg))
             return None
@@ -195,6 +204,7 @@ async def run(args: argparse.Namespace) -> None:
             log.exception("adapter %s failed to start", adapter.name)
     await engine.start()
     updater.start()
+    extensions.start()
     for part in (voice, ears):
         if part:
             await part.start()
@@ -207,6 +217,7 @@ async def run(args: argparse.Namespace) -> None:
         await engine.stop()
         await live_claude.end()
         updater.stop()
+        await extensions.stop()
         inbox_task.cancel()
         avatar_task.cancel()
         await conversation.stop()

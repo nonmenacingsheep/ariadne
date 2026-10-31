@@ -183,6 +183,18 @@ function workDone() {
   card.querySelector(".work-label").textContent = `${n} STEP${n === 1 ? "" : "S"}`;
   card.querySelectorAll(".step.now").forEach(e => e.classList.remove("now"));
 }
+// A picture one of her extensions made: in her current turn, click to open.
+function showPicture(msg) {
+  const w = W.chat, turn = speaker("aries");
+  const fig = document.createElement("figure"); fig.className = "pic";
+  const img = document.createElement("img"); img.src = "file://" + encodeURI(msg.path); img.alt = msg.caption || "";
+  img.addEventListener("load", () => { w.msgs.scrollTop = w.msgs.scrollHeight; });
+  img.addEventListener("click", () => post({ t: "send", msg: { t: "press", widget: "dolphin", control: "launch", value: msg.path } }));
+  const cap = document.createElement("figcaption"); cap.textContent = msg.caption || "";
+  fig.append(img, cap); turn.box.appendChild(fig);
+  w.msgs.scrollTop = w.msgs.scrollHeight;
+}
+
 function chat(msg) {
   const w = W.chat;
   const turn = speaker(msg.role === "you" ? "you" : "aries");
@@ -749,6 +761,7 @@ window.desk = {
       case "settings": Settings.message(msg); Claude.hello(); post({ t: "send", msg: { t: "update_do", op: "hello" } }); break;     // sent on every (re)connect
       case "cc": Claude.message(msg); break;
       case "update": showUpdate(msg); break;
+      case "shown": if (W.chat) showPicture(msg); break;
       case "attached": if (W.chat) addChip(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;
       case "ears":

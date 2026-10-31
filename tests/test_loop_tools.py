@@ -265,6 +265,28 @@ class NoPlayByPlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(c.history[-1]["content"].startswith("On it. Done: B is playing.\n⟦ran: spotify next"))
 
 
+class HushTests(unittest.IsolatedAsyncioTestCase):
+    """'Aries, skip': the rest of the reply still streaming isn't spoken; the next reply is."""
+    make, her = ToolLoopTests.make, ToolLoopTests.her
+
+    async def test_skip_silences_the_rest_of_this_reply_only(self):
+        spoken = []
+        c = self.make([["One. Two. Three."], ["Next reply."]], on_sentence=spoken.append)
+
+        def on_sentence(s):
+            spoken.append(s)
+            if s.startswith("One"):
+                c.hush()                      # he said skip while she was on the first sentence
+        c.on_sentence = on_sentence
+        c.submit("x")
+        await c.idle()
+        self.assertEqual(spoken, ["One."])
+        self.assertEqual("".join(m["delta"] for m in self.her()), "One. Two. Three.")   # still shown
+        c.submit("y")
+        await c.idle()
+        self.assertEqual(spoken[-1], "Next reply.")
+
+
 class RecordTests(unittest.TestCase):
     """What she ran stays in her history, so she never disowns real work."""
 

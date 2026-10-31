@@ -44,9 +44,14 @@ def _make_ears(server, voice, conversation):
 
     def heard(text: str) -> None:
         voice.cancel()          # you talking over her stops her
+        conversation.hush()     # including the rest of a reply that's still streaming
         conversation.submit(text)
 
-    return Ears(voice=voice, on_heard=heard,
+    def interrupt() -> None:
+        voice.cancel()          # what's playing and queued stops now
+        conversation.hush()     # and the rest of the reply still streaming isn't spoken
+
+    return Ears(voice=voice, on_heard=heard, on_interrupt=interrupt,
                 on_listening=lambda up: asyncio.ensure_future(server.publish(protocol.ears(up))))
 
 

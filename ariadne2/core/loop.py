@@ -132,6 +132,8 @@ class Conversation:
         # Boot stamp in ids: a restarted core must not reuse ids a desk still holds.
         self._boot = format(int(time.time()), "x")
         self._n = itertools.count(1)
+        self._speaking_turn = 0         # the turn whose sentences are going to her voice
+        self._hushed_turn = -1          # a turn he told her to skip: no more of it is spoken
         self._queue: asyncio.Queue = asyncio.Queue()    # (text, his_words, attachments)
         self._worker: asyncio.Task | None = None
 
@@ -196,6 +198,7 @@ class Conversation:
 
     async def _turn(self, text: str, his_words: bool = True, files=()) -> None:
         n = next(self._n)
+        self._speaking_turn = n
         started = time.time()
         you_id, her_id = f"{self._boot}-{n}-you", f"{self._boot}-{n}-aries"
         if not text:                       # attachments with no words: nothing he said backs this turn
@@ -440,8 +443,14 @@ class Conversation:
         await self.publish(protocol.chat(her_id, "aries", line, done=True))
         self._trim()
 
+    def hush(self) -> None:
+        """He said skip: the rest of this reply isn't spoken (it still shows).
+        Cancelling the voice only clears what's queued; the reply is usually
+        still streaming, and each sentence it finished used to be spoken."""
+        self._hushed_turn = self._speaking_turn
+
     async def _sentence(self, text: str) -> None:
-        if not self.on_sentence:
+        if not self.on_sentence or self._hushed_turn == self._speaking_turn:
             return
         try:
             result = self.on_sentence(text)

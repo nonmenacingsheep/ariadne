@@ -57,6 +57,8 @@ const FileMenu = (() => {
       item("Rename…", b => ask(b, f.name, name => press("rename", { path: f.path, name }))),
       item("Compress", () => { press("compress", { path: f.path }); close(); }));
     if (f.kind === "archive") box.append(item("Extract here", () => { press("extract", { path: f.path }); close(); }));
+    // A Live2D model download (archive or folder): her body (core/body_models.py).
+    if (f.kind === "archive" || f.folder) box.append(item("Use as her body", () => { press("avatar_import", { path: f.path }); close(); }, "aries"));
     box.append(sep(), item("Copy path", () => { press("copy_path", { path: f.path }); close(); }),
       item("Properties", () => press("properties", { path: f.path })), sep());
     box.append(item("Ask Aries about it", () => {

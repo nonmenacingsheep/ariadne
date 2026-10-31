@@ -140,6 +140,8 @@ async def run(args: argparse.Namespace) -> None:
     live_claude = LiveClaude(server.publish)
     from .updater import Updater
     updater = Updater(server.publish, settings=settings)
+    from .body_models import BodyModels
+    body_models = BodyModels(server.publish, settings)
     settings.hooks[("general", "check_now")] = lambda _v: asyncio.ensure_future(updater.check())
     # Spotify's Web API login, from Settings > Models (adapters/spotify_login.py).
     from ..adapters import spotify_login
@@ -170,6 +172,12 @@ async def run(args: argparse.Namespace) -> None:
             return None
         if msg.get("t") == "hello":
             _spawn_flow(extensions.ask_pending())
+        # Files menu > Use as her body: import that download and wear it.
+        if msg.get("t") == "press" and msg.get("widget") == "dolphin" and msg.get("control") == "avatar_import":
+            path = (msg.get("value") or {}).get("path") if isinstance(msg.get("value"), dict) else msg.get("value")
+            if path:
+                _spawn_flow(body_models.add(str(path), wear=True))
+            return None
         if msg.get("t") == "update_do":
             _spawn_flow(updater.on_desk(msg))
             return None
@@ -221,6 +229,7 @@ async def run(args: argparse.Namespace) -> None:
     await engine.start()
     updater.start()
     extensions.start()
+    body_models.start()
     for part in (voice, ears):
         if part:
             await part.start()
@@ -234,6 +243,7 @@ async def run(args: argparse.Namespace) -> None:
         await live_claude.end()
         updater.stop()
         await extensions.stop()
+        body_models.stop()
         inbox_task.cancel()
         avatar_task.cancel()
         await conversation.stop()

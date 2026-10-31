@@ -15,25 +15,25 @@ const pet = (() => {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const now = () => performance.now() / 1000;
 
-  // Emotion marks (Cartesia's names) onto this rig's expression switches.
-  // Each look is a set of parameter targets, eased in and out.
-  const LOOKS = {
+  // Her moods. These use the usual Cubism parameter names, so they work on
+  // most models; each model's about.json adds the rest ("looks": a mood ->
+  // the name of one of its expressions, or -> parameter targets of its own),
+  // made by importer.py from its expressions' names. Eased in and out.
+  const BASE_LOOKS = {
     smile:   { ParamEyeLSmile: 0.8, ParamEyeRSmile: 0.8, ParamMouthForm: 1 },
-    stars:   { ParamSwitch5: 1, ParamMouthForm: 1 },
-    hearts:  { ParamSwitch8: 1, ParamSwitch2: 0.7, ParamMouthForm: 1 },
-    blush:   { ParamSwitch2: 1, ParamMouthForm: 0.4 },
-    angry:   { ParamSwitch4: 1, ParamBrowRForm: -1, ParamBrowLForm: -1, ParamMouthForm: -1 },
-    tears:   { ParamSwitch7: 1, ParamSwitch9: 1, ParamMouthForm: -0.8, ParamBrowLY: -0.5, ParamBrowRY: -0.5 },
-    eyeroll: { ParamSwitch6: 1, ParamMouthForm: -0.3 },
-    gloom:   { ParamSwitch1: 1, ParamSwitch21: 1, ParamMouthForm: -0.6 },
     wide:    { ParamBrowLY: 0.8, ParamBrowRY: 0.8, ParamEyeLOpen: 1.15, ParamEyeROpen: 1.15 },
     sleepy:  { ParamEyeLOpen: 0.45, ParamEyeROpen: 0.45, ParamBrowLY: -0.3, ParamBrowRY: -0.3 },
-    dizzy:   { ParamSwitch6: 1, ParamMouthForm: -0.4 },
+    dizzy:   { ParamMouthForm: -0.4 },
     asleep:  { ParamEyeLOpen: 0, ParamEyeROpen: 0, ParamMouthForm: 0.3 },
     soft:    { ParamBrowLY: -0.4, ParamBrowRY: -0.4, ParamMouthForm: 0.35, ParamEyeLSmile: 0.3, ParamEyeRSmile: 0.3 },
     smirk:   { ParamEyeLSmile: 0.45, ParamEyeRSmile: 0.45, ParamMouthForm: 0.6, ParamBrowRY: 0.5, ParamBrowLY: -0.2 },
     thoughtful: { ParamEyeLOpen: 0.8, ParamEyeROpen: 0.8, ParamBrowLY: 0.35, ParamBrowRY: 0.1, ParamMouthForm: -0.15 },
+    angry:   { ParamBrowRForm: -1, ParamBrowLForm: -1, ParamMouthForm: -1 },
+    tears:   { ParamMouthForm: -0.8, ParamBrowLY: -0.5, ParamBrowRY: -0.5 },
   };
+  // A mood this model can't show falls back to one it can.
+  const FALLBACK = { stars: "smile", hearts: "smile", blush: "smile", eyeroll: "smirk", gloom: "sleepy" };
+  let LOOKS = { ...BASE_LOOKS }, EXPR = {}, exprOn = "";
   const EMOTION_LOOK = {
     happy: "smile", content: "smile", peaceful: "smile", serene: "smile", calm: "smile", grateful: "blush",
     confident: "smile", proud: "smile", trust: "smile", nostalgic: "smile", determined: "smile",
@@ -89,6 +89,14 @@ const pet = (() => {
         addEventListener("pointerup", up);
         app.ticker.add(() => frame(Math.min(app.ticker.deltaMS / 1000, 0.1)));
       }
+      LOOKS = { ...BASE_LOOKS }; EXPR = {}; exprOn = "";
+      try {
+        const about = await (await fetch(new URL("about.json", uri))).json();
+        for (const [look, v] of Object.entries(about.looks || {})) {
+          if (typeof v === "string") EXPR[look] = v;                 // one of its expressions, by name
+          else if (v && typeof v === "object") LOOKS[look] = v;      // its own parameter targets
+        }
+      } catch (e) { /* no about.json: the base looks only */ }
       const m = await PIXI.live2d.Live2DModel.from(uri, { autoInteract: false, autoUpdate: false });
       if (uri !== loadingUri) { m.destroy(); return; }
       model = m;
@@ -283,10 +291,23 @@ const pet = (() => {
   }
 
   // ---------------------------------------------------------------- her face
-  function feel(look, seconds) { if (LOOKS[look]) { face.look = look; face.until = now() + seconds; } }
+  function feel(look, seconds) {
+    if (!LOOKS[look] && !EXPR[look]) look = FALLBACK[look];
+    if (look && (LOOKS[look] || EXPR[look])) { face.look = look; face.until = now() + seconds; }
+  }
+  // An expression-mapped mood is the model's own expression, set and cleared
+  // as the mood comes and goes (the parameter looks ease in drive()).
+  function expression() {
+    const want = EXPR[face.look] || "";
+    if (want === exprOn || !model) return;
+    exprOn = want;
+    const em = model.internalModel.motionManager.expressionManager;
+    try { if (want) model.expression(want); else if (em) em.resetExpression(); } catch (e) { log("expression " + want + ": " + e); }
+  }
   function drive() {
     const core = model.internalModel.coreModel, t = now(), dt = Math.min(app.ticker.deltaMS / 1000, 0.1);
     if (face.look && t > face.until) face.look = "";
+    expression();
     const want = LOOKS[face.look] || {};
     const keys = new Set([...Object.keys(face.w), ...Object.keys(want)]);
     for (const id of keys) {

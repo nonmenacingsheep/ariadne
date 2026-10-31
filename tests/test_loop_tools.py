@@ -82,7 +82,7 @@ class ToolLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second[2]["content"], [{"type": "tool_result", "tool_use_id": "tu1",
                                                  "content": "Skipped. Now playing: B."}])
         self.assertEqual(c.history[-1], {"role": "assistant",
-                                         "content": "Skipping. B is up. Nice.\n⟦ran: spotify_next⟧"})
+                                         "content": "Skipping. B is up. Nice.\n⟦ran: spotify_next → Skipped. Now playing: B.⟧"})
         self.assertEqual(len(c.history), 2)             # tool traffic isn't kept
 
     async def test_tools_offered_every_round_and_words_join_with_space(self):
@@ -246,6 +246,23 @@ class ModelStreamTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoPlayByPlayTests(unittest.IsolatedAsyncioTestCase):
+    """What she's doing, then what happened: words between later tool calls are dropped."""
+    make, her = ToolLoopTests.make, ToolLoopTests.her
+
+    async def test_only_the_opening_and_the_final_word_are_shown_and_spoken(self):
+        spoken = []
+        c = self.make([["On it.", use("spotify", "t1", action="next")],
+                       ["Found it, still loading, one more check.", use("spotify", "t2", action="next")],
+                       ["Done: B is playing."]], on_sentence=spoken.append)
+        c.submit("x")
+        await c.idle()
+        self.assertEqual("".join(m["delta"] for m in self.her()), "On it. Done: B is playing.")
+        self.assertNotIn("still loading", " ".join(spoken))
+        self.assertIn("Done: B is playing.", " ".join(spoken))
+        self.assertTrue(c.history[-1]["content"].startswith("On it. Done: B is playing.\n⟦ran: spotify next"))
 
 
 class RecordTests(unittest.TestCase):

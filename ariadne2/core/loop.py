@@ -72,13 +72,27 @@ def brief(name: str, args) -> str:
     return f'{head} "{key}"' if key else head
 
 
+def outcome(result: dict) -> str:
+    """The gist of what a tool gave back, for the record: its first real line."""
+    content = result.get("content")
+    if isinstance(content, list):
+        if any(isinstance(b, dict) and b.get("type") == "image" for b in content):
+            return "a picture"
+        content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+    for line in str(content or "").splitlines():
+        line = " ".join(line.split())
+        if line and not line.startswith(("[Quoted from", "=== ", "[")) and line != "```":
+            return line[:69] + "…" if len(line) > 70 else line
+    return "nothing"
+
+
 def record(reply: str, did: list[str]) -> str:
     text = RECORD.sub("", reply or "").strip()
     if not did:
         return text or "(no answer)"
     note = "; ".join(did)
-    if len(note) > 600:
-        note = note[:599] + "…"
+    if len(note) > 1500:
+        note = note[:1499] + "…"
     return (text + "\n" if text else "") + f"⟦ran: {note}⟧"
 
 class Conversation:
@@ -222,17 +236,17 @@ class Conversation:
                         continue
                     if not item:
                         continue
-                    if not round_text and reply and not reply[-1].isspace():
-                        item = " " + item          # words after a tool call join the same bubble
-                    if not reply:
-                        await self.publish(protocol.core_line(""))   # first word is here
                     round_text += item
-                    reply += item
-                    shown = screen.feed(item)      # ((happy)) etc. are for her voice and face only
-                    if shown:
-                        await self.publish(protocol.chat(her_id, "aries", shown))
-                    for sentence in splitter.feed(item):
-                        await self._sentence(sentence)
+                    if rnd == 0:                   # her opening words stream as they come
+                        reply += item
+                        await self._say_out(item, reply == item, her_id, screen, splitter)
+                # Later rounds: words written between tool calls are a play-by-play
+                # he asked not to get. Only the final round's words (no more calls)
+                # are shown and spoken: what she's doing, then what happened.
+                if rnd > 0 and round_text and (not calls or offered is None):
+                    text = (" " if reply and not reply[-1].isspace() else "") + round_text
+                    reply += text
+                    await self._say_out(text, reply == text, her_id, screen, splitter)
                 if not calls or offered is None:
                     break
                 for sentence in splitter.flush():       # speak it before the tool runs
@@ -242,7 +256,8 @@ class Conversation:
                 results = [await self._tool(c) for c in calls]
                 messages.append({"role": "user", "content": results})
                 used += [c.name for c in calls]
-                did += [brief(c.name, c.input) + (" (failed)" if r.get("is_error") else "")
+                did += [brief(c.name, c.input) + (f" (failed: {outcome(r)})" if r.get("is_error")
+                                                  else f" → {outcome(r)}")
                         for c, r in zip(calls, results)]
                 await self.publish(protocol.core_line(THINKING))
         except asyncio.CancelledError:
@@ -280,6 +295,16 @@ class Conversation:
                     hook(text)
                 except Exception:
                     log.exception("toolset turn hook failed")
+
+    async def _say_out(self, item: str, first: bool, her_id: str, screen, splitter) -> None:
+        """Words into the chat bubble and her voice."""
+        if first:
+            await self.publish(protocol.core_line(""))   # first word is here
+        shown = screen.feed(item)          # ((happy)) etc. are for her voice and face only
+        if shown:
+            await self.publish(protocol.chat(her_id, "aries", shown))
+        for sentence in splitter.feed(item):
+            await self._sentence(sentence)
 
     def _finished(self, text: str, reply: str, started: float, his_words: bool) -> None:
         """His words and her reply, dated, to whoever keeps the record. Not for turns he didn't speak."""

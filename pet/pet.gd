@@ -386,7 +386,8 @@ func _tell(delta: float) -> void:
 			mood = k
 	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
 		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
-		"dancing": state == "dance", "asleep": state == "sleep", "ts": Time.get_unix_time_from_system()}
+		"dancing": state == "dance", "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
+		"own": ["smile", "angry", "tears", "wide", "smirk"], "looks": LOOK_FACE.keys()}
 	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(data))

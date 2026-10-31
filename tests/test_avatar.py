@@ -48,6 +48,18 @@ class AvatarTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("on top of the spotify widget", out)
         self.assertIn("right of the screen", out)
 
+    async def test_status_lists_the_faces_it_can_pull(self):
+        self.body(own=["stars", "hearts", "blood"], looks=["stars", "hearts", "blood", "smile", "wide"])
+        out = await self.a.run("status", {})
+        self.assertIn("its own stars, hearts, blood; generic smile, wide", out)
+
+    async def test_a_body_turned_off_says_how_to_turn_it_on(self):
+        self.a.settings = mock.Mock()
+        self.a.settings.get.return_value = False
+        self.assertIn("desktop.body", await self.a.run("status", {}))
+        with self.assertRaisesRegex(AdapterError, "desktop.body"):
+            await self.a.run("feel", {"look": "smile"})
+
     async def test_no_body_running(self):
         self.assertIn("isn't on screen", await self.a.run("status", {}))
         self.body(ts=time.time() - 60)                        # stale: the body stopped

@@ -67,3 +67,33 @@ class SettingsToolTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WidgetTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        import json
+        from unittest import mock
+        self.tmp = Path(tempfile.mkdtemp())
+        cfg = self.tmp / ".config" / "ariadne2"; cfg.mkdir(parents=True)
+        (cfg / "hidden.json").write_text(json.dumps(["claude", "tasks"]))
+        p = mock.patch.object(Path, "home", return_value=self.tmp); p.start(); self.addCleanup(p.stop)
+        self.sent = []
+
+        async def publish(m):
+            from ariadne2 import protocol
+            protocol.decode(protocol.encode(m)); self.sent.append(m)
+        st = S.Settings(path=self.tmp / "s.json", personality_names=lambda: ["aries"])
+        self.t = SettingsTools(st, publish)
+
+    async def test_hide_and_show_widgets(self):
+        out = await self.t.call("settings", {"action": "list", "section": "widgets"}, "x")
+        self.assertIn("in the drawer claude, tasks", out)
+        self.assertIn("Put system in the drawer", await self.t.call("settings", {"action": "hide", "key": "system"}, "hide it"))
+        self.assertEqual(self.sent[-1], {"t": "desk_do", "op": "hide", "widget": "system"})
+        self.assertIn("already in the drawer", await self.t.call("settings", {"action": "hide", "key": "tasks"}, "x"))
+        await self.t.call("settings", {"action": "show", "key": "claude"}, "show claude")
+        self.assertEqual(self.sent[-1]["op"], "show")
+        with self.assertRaises(AdapterError):
+            await self.t.call("settings", {"action": "hide", "key": "core"}, "x")
+        with self.assertRaises(AdapterError):                       # not without his words
+            await self.t.call("settings", {"action": "hide", "key": "spotify"}, None)

@@ -406,8 +406,12 @@ const pet = (() => {
     toldAt = t;
     const on = me.mode === "fall" || me.mode === "held" ? "air"
       : me.on && me.on !== "floor" ? me.on.name || "a widget" : me.mode === "pinned" && me.y < H - 2 ? "air" : "floor";
+    // The faces this model can really pull: its own expressions and tuned looks
+    // first, then the generic ones every model gets.
+    const own = [...new Set([...Object.keys(EXPR), ...Object.keys(LOOKS).filter(k => LOOKS[k] !== BASE_LOOKS[k])])];
+    const looks = [...own, ...Object.keys(BASE_LOOKS).filter(k => !own.includes(k) && k !== "asleep")];
     post({ t: "state", x: Math.round(me.x), y: Math.round(me.y), w: W, h: H, mode: me.mode, on,
-           look: face.look, dancing: !!dancing(), asleep: face.look === "asleep" });
+           look: face.look, dancing: !!dancing(), asleep: face.look === "asleep", own, looks });
   }
 
   // ---------------------------------------------------------------- dancing

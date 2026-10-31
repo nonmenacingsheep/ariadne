@@ -264,6 +264,16 @@ class NoPlayByPlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Done: B is playing.", " ".join(spoken))
         self.assertTrue(c.history[-1]["content"].startswith("On it. Done: B is playing.\n⟦ran: spotify next"))
 
+    async def test_his_words_are_kept_as_his(self):
+        turns = []
+        c = self.make([["On it.", use("spotify", "t1", action="next")], ["Done: B is playing."]],
+                      on_turn=lambda text, reply, when: turns.append((text, reply)))
+        c.submit("skip this song")
+        await c.idle()
+        self.assertEqual(turns[0][0], "skip this song")          # not her final words
+        self.assertTrue(turns[0][1].startswith("On it. Done: B is playing."))
+        self.assertEqual(c.history[-2], {"role": "user", "content": "skip this song"})
+
 
 class HushTests(unittest.IsolatedAsyncioTestCase):
     """'Aries, skip': the rest of the reply still streaming isn't spoken; the next reply is."""

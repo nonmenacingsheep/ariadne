@@ -247,9 +247,11 @@ class Conversation:
                 # he asked not to get. Only the final round's words (no more calls)
                 # are shown and spoken: what she's doing, then what happened.
                 if rnd > 0 and round_text and (not calls or offered is None):
-                    text = (" " if reply and not reply[-1].isspace() else "") + round_text
-                    reply += text
-                    await self._say_out(text, reply == text, her_id, screen, splitter)
+                    # (Not `text`: that's his message, which the transcript and her
+                    # memory keep; overwriting it filed her last words as his.)
+                    final = (" " if reply and not reply[-1].isspace() else "") + round_text
+                    reply += final
+                    await self._say_out(final, reply == final, her_id, screen, splitter)
                 if not calls or offered is None:
                     break
                 for sentence in splitter.flush():       # speak it before the tool runs

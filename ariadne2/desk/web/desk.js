@@ -439,6 +439,18 @@ function moveToLineup(n, btn) {
   fly(from, W.core.ports.querySelector(`[data-p="${n}"]`));
 }
 
+// Her settings tool: hide a widget (into the drawer) or show one (back in the lineup),
+// as his own clicks do.
+function deskDo(msg) {
+  const n = msg.widget;
+  if (!n || n === "core") return;
+  if (msg.op === "hide" && W[n] && !hidden.has(n)) moveToDrawer(n);
+  else if (msg.op === "show" && (hidden.has(n) || !W[n])) {
+    if (!drawerOpen) fillDrawer();
+    moveToLineup(n, drawer.querySelector(`[data-p="${n}"]`) || W.core.root);
+  }
+}
+
 function moveToDrawer(n) {
   const port = W.core.ports.querySelector(`[data-p="${n}"]`);
   const from = port ? port.getBoundingClientRect() : null;
@@ -786,6 +798,7 @@ window.desk = {
       case "settings": Settings.message(msg); Claude.hello(); post({ t: "send", msg: { t: "update_do", op: "hello" } }); break;     // sent on every (re)connect
       case "cc": Claude.message(msg); break;
       case "update": showUpdate(msg); break;
+      case "desk_do": deskDo(msg); break;
       case "shown": if (W.chat) showPicture(msg); break;
       case "attached": if (W.chat) addChip(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;

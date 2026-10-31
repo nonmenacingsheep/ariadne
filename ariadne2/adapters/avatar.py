@@ -97,18 +97,34 @@ class AvatarAdapter(Adapter):
             doing += ", asleep"
         body = f"{d.get('model') or 'your'} ({'Live2D' if d.get('kind') == 'live2d' else '3D'})"
         face = f", face: {d['look']}" if d.get("look") else ""
-        return f"Your body, {body}: {doing}, {where}, {side} of the screen (x {round(x)} of {round(w)} px){face}."
+        faces = ""
+        if d.get("looks"):
+            own = [x for x in d.get("own") or [] if x in d["looks"]]
+            rest = [x for x in d["looks"] if x not in own]
+            faces = (f" Faces it can pull (feel): its own {', '.join(own)}" if own else " Faces it can pull (feel):") \
+                + (f"; generic {', '.join(rest)}" if rest else "") + "."
+        return f"Your body, {body}: {doing}, {where}, {side} of the screen (x {round(x)} of {round(w)} px){face}.{faces}"
 
     async def _status(self) -> str:
         d = await asyncio.to_thread(self.read)
         if d is None:
-            return "Your body isn't on screen right now (none is running, or he turned it off)."
+            return self._absent()
         return self.describe(d)
+
+    def _absent(self) -> str:
+        try:
+            off = self.settings is not None and not self.settings.get("desktop", "body")
+        except Exception:
+            off = False
+        if off:
+            return ("Your body is turned off (his setting desktop.body), so it can't move or pull faces. "
+                    "If he asks, turn it on with the settings tool: set desktop.body on.")
+        return "Your body isn't on screen right now (it isn't running)."
 
     # ---- moving ----
     async def _cmd(self, cmd: str, **fields) -> None:
         if await asyncio.to_thread(self.read) is None:
-            raise AdapterError("your body isn't on screen right now, so it can't do that")
+            raise AdapterError(self._absent())
         await self.publish({"t": "body", "cmd": cmd, **fields})
 
     async def _after(self, said: str) -> str:

@@ -19,15 +19,17 @@ TOOL = {
         "Ariadne's own settings, the ones in the settings panel and the Avatar widget: list them (all, or "
         "one section: general, models, voice, desktop, avatar), get one, or set one. Change one only when "
         "he asks. API keys can't be read or set here; he enters those in Settings > Models himself. "
-        "Buttons (check for updates, connect Spotify...) are set to true to press them. Common ones, "
+        "Buttons (check for updates, connect Spotify...) are set to true to press them. hide / show put "
+        "a desk widget into the drawer or back out (key: chat, spotify, steam, browser, dolphin, claude, "
+        "system, flows, tasks, avatar). Common ones, "
         "to set straight away: voice.speed (0.6-1.5), voice.volume (0-100), voice.sounds_master (sound "
         "effects on/off), general.wake_word (listen for your name on/off), general.wake_phrase, "
         "models.conversation_model (your brain), avatar.model (your body), avatar.size (200-840), "
         "avatar.pinned, avatar.dance_to_music, desktop.body (body shown or not)."),
     "input_schema": {"type": "object", "properties": {
-        "action": {"type": "string", "enum": ["list", "get", "set"]},
+        "action": {"type": "string", "enum": ["list", "get", "set", "hide", "show"]},
         "section": {"type": "string", "enum": list(settings_mod.SECTIONS)},
-        "key": {"type": "string", "description": "the setting's key, as list shows it"},
+        "key": {"type": "string", "description": "the setting's key, as list shows it; for hide/show, the widget"},
         "value": {"description": "for set: the new value (on/off, a number, one of the choices, text)"},
     }, "required": ["action"]},
 }
@@ -93,6 +95,19 @@ def _coerce(spec: dict, value):
     return value if isinstance(value, str) else str(value)
 
 
+def widget_states() -> tuple[list[str], list[str]]:
+    """(shown, in the drawer), from the desk's own files."""
+    import json
+    from pathlib import Path
+    from .. import protocol
+    try:
+        hidden = set(json.loads((Path.home() / ".config" / "ariadne2" / "hidden.json").read_text()))
+    except (OSError, ValueError):
+        hidden = set()
+    names = [w for w in protocol.WIDGETS if w != "core"]
+    return [w for w in names if w not in hidden], [w for w in names if w in hidden]
+
+
 class SettingsTools:
     def __init__(self, settings, publish) -> None:
         self.settings = settings
@@ -121,6 +136,8 @@ class SettingsTools:
 
     async def _run(self, a: dict, his_words):
         action = a.get("action")
+        if action in ("hide", "show"):
+            return await self._widget(action, str(a.get("key") or a.get("section") or ""), his_words)
         snap = self.settings.snapshot()
         if action == "list":
             section = a.get("section")
@@ -133,6 +150,10 @@ class SettingsTools:
                 else:
                     v = " = " + _shown(spec, snap.get(spec["section"], {}).get(spec["key"]))
                 rows.append(f"{spec['section']}.{spec['key']} ({spec['label']}){v}  [{_range(spec)}]")
+            if not section or section == "widgets":
+                shown, hidden = widget_states()
+                rows.append(f"widgets: shown {', '.join(shown) or 'none'}; in the drawer {', '.join(hidden) or 'none'}"
+                            "  [hide / show]")
             return "\n".join(rows) or "No settings there."
         spec = self._spec(a.get("section"), a.get("key"))
         if action == "get":
@@ -152,4 +173,20 @@ class SettingsTools:
                 return f"Pressed {spec['label']}."
             now = self.settings.snapshot()[spec["section"]][spec["key"]]
             return f"{spec['label']} is now {_shown(spec, now)}."
-        raise ToolError("action is list, get or set")
+        raise ToolError("action is list, get, set, hide or show")
+
+    async def _widget(self, op: str, name: str, his_words) -> str:
+        from .. import protocol
+        need_him(his_words, "rearranging his desk")
+        name = name.strip().lower()
+        if name == "core":
+            raise ToolError("her core stays on the desk")
+        if name not in protocol.WIDGETS:
+            raise ToolError(f"no widget {name!r}; there's {', '.join(w for w in protocol.WIDGETS if w != 'core')}")
+        shown, hidden = widget_states()
+        if op == "hide" and name in hidden:
+            return f"{name} is already in the drawer."
+        if op == "show" and name in shown:
+            return f"{name} is already on the desk."
+        await self.publish({"t": "desk_do", "op": op, "widget": name})
+        return f"{'Put' if op == 'hide' else 'Brought'} {name} {'in the drawer' if op == 'hide' else 'back onto the desk'}."

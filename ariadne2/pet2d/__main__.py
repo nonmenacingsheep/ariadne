@@ -164,7 +164,7 @@ class PetWindow(Gtk.Window):
                 about = json.loads((MODELS / self.model / "about.json").read_text())
             except (OSError, ValueError):
                 about = {}
-            data = {k: msg.get(k) for k in ("x", "y", "w", "h", "mode", "on", "look", "dancing", "asleep")}
+            data = {k: msg.get(k) for k in ("x", "y", "w", "h", "mode", "on", "look", "dancing", "asleep", "own", "looks")}
             data.update(kind="live2d", model=about.get("name") or self.model, ts=time.time())
             try:
                 BODY_FILE.parent.mkdir(parents=True, exist_ok=True)

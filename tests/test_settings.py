@@ -96,7 +96,7 @@ class SchemaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             s = make(tmp)
             for e in self.schema:
-                if e.get("readonly") or e.get("action"):
+                if e.get("readonly") or e.get("action") or e.get("secret"):
                     continue
                 self.assertEqual(s.validate(e["section"], e["key"], e["default"]), e["default"],
                                  f"{e['section']}.{e['key']}")
@@ -527,3 +527,58 @@ class ServerTests(Tmp, unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ApiKeyTests(unittest.TestCase):
+    """Keys go to 0600 files and never into settings.json or the desk's message."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        self.tmp = Path(tempfile.mkdtemp())
+        self.data = self.tmp / "data"
+        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "CARTESIA_API_KEY")}
+        env["XDG_DATA_HOME"] = str(self.data)
+        self.addCleanup(mock.patch.dict(os.environ, env, clear=True).stop)
+        mock.patch.dict(os.environ, env, clear=True).start()
+        self.st = S.Settings(path=self.tmp / "settings.json", personality_names=lambda: ["aries"])
+
+    def test_saved_to_a_private_file_and_never_echoed(self):
+        import json
+        key = "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-wxyz"
+        status = self.st.set("models", "anthropic_key", key)
+        self.assertEqual(status, "set:…wxyz")
+        path = self.data / "ariadne2" / "api_key"
+        self.assertEqual(path.read_text().strip(), key)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        msg = json.dumps(self.st.message(), ensure_ascii=False)
+        self.assertNotIn(key, msg)
+        self.assertIn("set:…wxyz", msg)
+        self.st.set("general", "wake_word", False)                  # any save of the settings file
+        self.assertNotIn(key, (self.tmp / "settings.json").read_text())
+        from ariadne2.core import models
+        self.assertEqual(models.find_key("anthropic"), key)          # what her brain reads
+
+    def test_remove_and_bad_values(self):
+        self.st.set("models", "cartesia_key", "sk_car_abcdefgh1234")
+        self.assertEqual(self.st.set("models", "cartesia_key", ""), "")
+        self.assertFalse((self.data / "ariadne2" / "cartesia_key").exists())
+        with self.assertRaises(S.SettingsError):
+            self.st.set("models", "deepseek_key", "not a key; rm -rf")
+
+    def test_environment_wins_and_says_so(self):
+        import os
+        os.environ["DEEPSEEK_API_KEY"] = "sk-envkey12345678"
+        self.assertEqual(self.st.snapshot()["models"]["deepseek_key"], "env")
+
+
+class SmallScreenTests(unittest.TestCase):
+    def test_first_layout_fits_a_small_monitor(self):
+        from ariadne2.desk import layout
+        for area in ((0, 0, 1920, 1050), (0, 0, 1366, 728), (0, 32, 2560, 1408)):
+            fitted = layout.fit(dict(layout.DEFAULT), area, scale=True)
+            ax, ay, aw, ah = area
+            for name, (x, y, w, h) in fitted.items():
+                self.assertTrue(ax <= x and ay <= y and x + w <= ax + aw and y + h <= ay + ah, (area, name, (x, y, w, h)))

@@ -15,7 +15,7 @@ PHASES = ("started", "progress", "done", "failed")
 ROLES = ("aries", "you")
 FLOW_PHASES = ("fired", "node", "done", "failed")
 FLOW_CONTROLS = ("toggle", "run", "approve", "delete")      # presses on the flows widget; value = flow id
-SETTING_TYPES = ("bool", "choice", "number", "text", "key")
+SETTING_TYPES = ("bool", "choice", "number", "text", "key", "secret")
 SETTING_ENTRY = ("section", "key", "label", "type", "default", "help")     # every schema entry has these
 FLOW_ROW = ("id", "name", "summary", "enabled", "approved", "made_by", "uses_ai", "manual",
             "last_fired", "last_result", "note")

@@ -93,6 +93,56 @@ def bodies() -> list[tuple[str, str]]:
     return out
 
 
+# API keys, entered in the Models section. Never stored in settings.json and never
+# sent to the desk: the key goes to a 0600 file (the one models.py and
+# cartesia.py read), and the desk only ever sees whether it's set (and its last 4).
+API_KEYS = {   # setting key: (file, environment variable, label, help)
+    "anthropic_key": ("api_key", "ANTHROPIC_API_KEY", "Anthropic API key",
+                      "Her brain, from console.anthropic.com."),
+    "deepseek_key": ("deepseek_key", "DEEPSEEK_API_KEY", "DeepSeek API key",
+                     "Optional, for DeepSeek models."),
+    "cartesia_key": ("cartesia_key", "CARTESIA_API_KEY", "Cartesia API key",
+                     "Her voice, from play.cartesia.ai."),
+}
+KEY_CHARS = re.compile(r"^[A-Za-z0-9_\-.:+/=]{8,300}$")
+
+
+def _key_path(key: str) -> Path:
+    from . import models
+    return models.data_dir() / API_KEYS[key][0]
+
+
+def key_status(key: str) -> str:
+    """What the desk may know about a key: "env", "set:…abcd", or ""."""
+    _file, env, _label, _help = API_KEYS[key]
+    if os.environ.get(env, "").strip():
+        return "env"
+    try:
+        text = _key_path(key).read_text("utf-8").strip()
+    except OSError:
+        return ""
+    return f"set:…{text[-4:]}" if text else ""
+
+
+def save_api_key(key: str, value: str) -> str:
+    """Write (or, for "", remove) a key file; returns the new status."""
+    path = _key_path(key)
+    if value:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(value + "\n")
+    else:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+    from . import models                      # the next call builds its client with the new key
+    models._clients.clear()
+    return key_status(key)
+
+
 def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     names = personality_names or [prompt.DEFAULT_PERSONALITY]
     s: list[dict] = []
@@ -113,6 +163,10 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     s.append(_entry("models", "eyes_model", "Window-control model", "choice", "claude-sonnet-5-5",
                     "Looks at a window and picks where to click when an app has no other way in.",
                     options=_choices(EYES_MODELS)))
+    for key, (_f, env, label, help_) in API_KEYS.items():
+        s.append(_entry("models", key, label, "secret", "",
+                        f"{help_} Kept in a private file; ${env} overrides it.",
+                        secret=True))
     # ---- voice ----
     s.append(_entry("voice", "voice", "Voice", "text", "skylar",
                     "A Cartesia voice id, or a name she knows: skylar."))
@@ -258,7 +312,7 @@ class Settings:
     def defaults() -> dict:
         out: dict = {sec: {} for sec in SECTIONS}
         for e in build_schema():
-            if not e.get("action"):
+            if not e.get("action") and not e.get("secret"):
                 out[e["section"]][e["key"]] = e["default"]
         return out
 
@@ -282,7 +336,7 @@ class Settings:
                 continue
             for key, value in items.items():
                 spec = schema.get((section, key))
-                if spec is None or spec.get("action") or spec.get("readonly"):
+                if spec is None or spec.get("action") or spec.get("readonly") or spec.get("secret"):
                     continue
                 try:
                     self.values[section][key] = self._check(spec, value)
@@ -359,6 +413,8 @@ class Settings:
         for e in self.schema():
             if e.get("readonly") or e.get("action"):
                 out[e["section"]][e["key"]] = e["default"]
+            elif e.get("secret"):
+                out[e["section"]][e["key"]] = key_status(e["key"])
         return out
 
     def message(self) -> dict:
@@ -369,6 +425,16 @@ class Settings:
     def set(self, section: str, key: str, value):
         """Validate, store, save, apply. Returns the value now in force. Raises SettingsError."""
         spec = self._spec(section, key)
+        if spec.get("secret"):
+            if not isinstance(value, str):
+                raise SettingsError(f"{spec['label']} needs text")
+            value = value.strip()
+            if value and not KEY_CHARS.match(value):
+                raise SettingsError(f"{spec['label']} doesn't look like an API key")
+            status = save_api_key(key, value)
+            self._apply(section, key, status)        # never the key itself
+            self._notify(section, key, status)
+            return status
         if spec.get("action"):
             if value is not True:
                 raise SettingsError(f"{spec['label']} is a button")

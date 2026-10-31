@@ -632,3 +632,7 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
   box-shadow: 0 0 12px rgba(0,229,255,.45); animation: updpulse 1.6s ease-in-out infinite alternate; }
 .upd[hidden] { display: none; }
 @keyframes updpulse { to { box-shadow: 0 0 2px rgba(0,229,255,.2); } }
+
+.sp-secret { display: flex; gap: 6px; align-items: center; }
+.sp-secret .sp-input { width: 170px; font-family: "Fira Code", monospace; }
+.sp-secret .sp-x { padding: 3px 8px; }

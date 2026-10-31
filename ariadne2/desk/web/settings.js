@@ -65,6 +65,24 @@ const Settings = (() => {
       r.onchange = () => set(s.section, s.key, Number(r.value));
       wrap.append(r, out); return wrap;
     }
+    if (s.type === "secret") {
+      // An API key: typed in, sent once, never shown again. The core only tells
+      // the page whether it's set ("set:…abcd", "env" or "").
+      const wrap = document.createElement("div"); wrap.className = "sp-secret";
+      const i = document.createElement("input"); i.type = "password"; i.className = "sp-input"; i.spellcheck = false;
+      i.autocomplete = "off";
+      i.placeholder = v === "env" ? "set in your environment" : String(v || "").startsWith("set:") ? `saved ••••${String(v).slice(5).replace("…", "")}` : "paste a key, then Enter";
+      const send = () => { const k = i.value.trim(); i.value = ""; if (k) set(s.section, s.key, k); };
+      i.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); send(); i.blur(); } };
+      i.onblur = send;
+      wrap.append(i);
+      if (String(v || "").startsWith("set:")) {
+        const x = document.createElement("button"); x.className = "fe-btn sp-x"; x.textContent = "Remove";
+        twoClick(x, "Sure?", () => set(s.section, s.key, ""));
+        wrap.append(x);
+      }
+      return wrap;
+    }
     if (s.type === "key") { const k = document.createElement("span"); k.className = "sp-key"; k.textContent = v || ""; return k; }
     if (s.type === "button" || s.type === "action") {
       const b = document.createElement("button"); b.className = "fe-btn"; b.textContent = s.button || s.label;

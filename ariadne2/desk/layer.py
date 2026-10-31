@@ -127,9 +127,10 @@ class Layer(Gtk.Window):
 
     # -- screen area, raise / drop -----------------------------------------
     def set_area(self, area: tuple) -> None:
-        # Ultrawide only: an area much narrower than it came from the wrong
-        # monitor, and fitting to it would squeeze every widget.
-        if area[2] < layout.SCREEN[0] * .8 or area[3] < 300 or area == self.area:
+        # KWin measures the chosen monitor itself (kwin_layer.js), so any sane
+        # size is real. (This once refused anything narrower than an
+        # ultrawide, which left a smaller screen's widgets off it, unclickable.)
+        if area[2] < 640 or area[3] < 400 or area == self.area:
             log.warning("ignoring screen area %s", area)
             return
         self.area = area

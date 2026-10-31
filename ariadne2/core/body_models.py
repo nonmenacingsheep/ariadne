@@ -133,7 +133,10 @@ class BodyModels:
             return
 
         def fetch() -> bytes:
-            with urllib.request.urlopen(CORE_URL, timeout=60) as r:
+            # Live2D's server refuses Python's default User-Agent (403); curl's
+            # and browsers' get through, so say who's asking.
+            req = urllib.request.Request(CORE_URL, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Ariadne/2"})
+            with urllib.request.urlopen(req, timeout=60) as r:
                 return r.read(5_000_000)
         try:
             data = await asyncio.to_thread(fetch)

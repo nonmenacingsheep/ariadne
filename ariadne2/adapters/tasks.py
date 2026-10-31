@@ -573,6 +573,11 @@ class TasksAdapter(Adapter):
         self._main: asyncio.Task | None = None
         self.controls = {"close": "close", "focus": "focus"}
         self.verbs = [
+            Verb("open", "Start an app from his menu by name (\"Spotify\", \"Steam\", \"Firefox\", \"Discord\"): "
+                 "it opens on his desktop as if he'd clicked it. Use it whenever something he wants needs an "
+                 "app that isn't running.",
+                 {"properties": {"app": {"type": "string", "description": "the app's name"}},
+                  "required": ["app"]}, self._open),
             Verb("report", "A short read of what's using the machine: the top apps by CPU (default 5, up to 25) "
                  "with their CPU, memory and GPU memory, and the biggest memory user. Read-only.",
                  {"properties": {"n": {"type": "integer", "description": "how many apps to list (1-25)"}}},
@@ -588,6 +593,10 @@ class TasksAdapter(Adapter):
                  {"properties": {"app": {"type": "string", "description": "the app's name"}},
                   "required": ["app"]}, self._close, control="close"),
         ]
+
+    async def _open(self, app: str) -> str:
+        from .launch import open_app
+        return await open_app(app)
 
     def press_args(self, control: str, value) -> dict:
         return {"app": str(value or "")}

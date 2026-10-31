@@ -426,7 +426,22 @@ class SpotifyAdapter(WebCalls, Adapter):
         who = ", ".join(a.get("name", "") for a in item.get("artists", []))
         return f"{item.get('name', '?')} — {who}" if who else item.get("name", "?")
 
+    async def _ensure_running(self) -> None:
+        """Spotify closed: open it (as he would from the menu) and wait for it to show up."""
+        if self._state["status"] != "not running":
+            return
+        from . import launch
+        await launch.open_app("Spotify")
+        for _ in range(30):
+            await asyncio.sleep(1.0)
+            await self.refresh(force=True)
+            if self._state["status"] != "not running":
+                await asyncio.sleep(2.0)          # its Connect device registers a moment after the window
+                return
+        raise AdapterError("I opened Spotify but it didn't come up within 30 seconds")
+
     async def _play(self, query: str | None = None, kind: str | None = None) -> str:
+        await self._ensure_running()
         kind = (kind or "track").lower()
         if kind not in KINDS:
             raise AdapterError(f"kind must be one of {', '.join(KINDS)}")
@@ -455,6 +470,7 @@ class SpotifyAdapter(WebCalls, Adapter):
         return f"Queued {self._describe(item)}."
 
     async def _playlist(self, name: str) -> str:
+        await self._ensure_running()
         want = (name or "").strip().lower()
         if not want:
             raise AdapterError("say which playlist")

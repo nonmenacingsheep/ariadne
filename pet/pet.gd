@@ -35,10 +35,30 @@ const FACE := {   # VRoid face shapes
 	"a": "Fcl_MTH_A", "i": "Fcl_MTH_I", "u": "Fcl_MTH_U", "e": "Fcl_MTH_E", "o": "Fcl_MTH_O",
 }
 # Her voice's emotion marks (Cartesia's names) onto her face.
+# She has only five faces (joy, sorrow, angry, surprised, fun), so each of the
+# voice's ~60 emotion tags goes to the nearest of them.
 const EMOTION_FACE := {
-	"happy": "joy", "excited": "joy", "content": "fun", "calm": "fun", "sarcastic": "fun",
-	"sad": "sorrow", "angry": "angry", "surprised": "surprised", "curious": "surprised",
+	"happy": "joy", "excited": "joy", "enthusiastic": "joy", "elated": "joy", "euphoric": "joy",
+	"triumphant": "joy", "grateful": "joy", "affectionate": "joy", "proud": "joy", "confident": "joy",
+	"flirtatious": "fun", "content": "fun", "peaceful": "fun", "serene": "fun", "calm": "fun",
+	"sarcastic": "fun", "ironic": "fun", "mysterious": "fun", "nostalgic": "fun", "trust": "fun",
+	"determined": "fun", "sympathetic": "fun",
+	"amazed": "surprised", "surprised": "surprised", "curious": "surprised", "anticipation": "surprised",
+	"confused": "surprised", "alarmed": "surprised", "panicked": "surprised", "scared": "surprised",
+	"anxious": "surprised", "threatened": "surprised", "hesitant": "surprised", "insecure": "surprised",
+	"angry": "angry", "mad": "angry", "outraged": "angry", "frustrated": "angry", "agitated": "angry",
+	"disgusted": "angry", "contempt": "angry", "envious": "angry", "skeptical": "angry",
+	"sad": "sorrow", "dejected": "sorrow", "melancholic": "sorrow", "disappointed": "sorrow",
+	"hurt": "sorrow", "guilty": "sorrow", "rejected": "sorrow", "apologetic": "sorrow", "wistful": "sorrow",
+	"resigned": "sorrow", "tired": "sorrow", "bored": "sorrow", "distant": "sorrow", "contemplative": "sorrow",
 }
+# Her avatar tool's looks (adapters/avatar.py) onto the same five.
+const LOOK_FACE := {
+	"smile": "joy", "stars": "joy", "hearts": "joy", "blush": "fun", "soft": "fun", "smirk": "fun",
+	"angry": "angry", "tears": "sorrow", "gloom": "sorrow", "sleepy": "sorrow", "thoughtful": "sorrow",
+	"eyeroll": "angry", "wide": "surprised", "dizzy": "surprised",
+}
+const BODY_FILE := "/.local/share/ariadne2/pet/body.json"
 
 var tcp := StreamPeerTCP.new()
 var inbox := ""
@@ -79,6 +99,8 @@ var look := Vector2.ZERO
 var look_target := Vector2.ZERO
 var look_until := 0.0
 var spotify_playing := false
+var on_name := "floor"                     # the widget she's standing on, for her avatar tool
+var told_in := 1.0
 var widget_x := {}                         # widget -> centre x (m), from the layout
 
 # Speech: sentences queued with their length; vowels stepped through in time.
@@ -197,15 +219,16 @@ func _read_layout() -> void:
 		var x1 := float(r[0] + r[2]) / PPM
 		widget_x[name] = (x0 + x1) / 2.0
 		if name != "core":
-			floors.append([(screen.y - float(r[1])) / PPM, x0 + 0.15, x1 - 0.15])
+			floors.append([(screen.y - float(r[1])) / PPM, x0 + 0.15, x1 - 0.15, str(name)])
 
 
 func _land() -> void:
 	# The highest surface at or below her feet that she's over.
-	var best := [0.0, 0.0, screen.x / PPM]
+	var best := [0.0, 0.0, screen.x / PPM, "floor"]
 	for fl in floors:
 		if pos.x >= fl[1] and pos.x <= fl[2] and fl[0] <= pos.y + 0.05 and fl[0] >= best[0]:
 			best = fl
+	on_name = str(best[3]) if best.size() > 3 else "floor"
 	floor_y = best[0]
 	floor_span = Vector2(best[1], best[2])
 
@@ -282,6 +305,8 @@ func _on_message(msg: Dictionary) -> void:
 		"flow":
 			if msg.get("phase", "") == "fired":
 				_watch(str(msg.get("widget", "")), 2.0)
+		"body":
+			_command(msg)
 		"chat":
 			_stir()
 			if msg.get("role", "") == "you" and msg.get("done", false):
@@ -289,6 +314,82 @@ func _on_message(msg: Dictionary) -> void:
 		"state":
 			if msg.get("widget", "") == "spotify" and msg.get("data") is Dictionary:
 				spotify_playing = msg["data"].get("status", "") == "playing"
+
+
+# Her avatar tool (adapters/avatar.py): go somewhere, dance, stop, a face, sleep, wake.
+func _command(msg: Dictionary) -> void:
+	_stir()
+	match str(msg.get("cmd", "")):
+		"go":
+			var tx := pos.x
+			var ty := 0.0
+			var widget := str(msg.get("widget", ""))
+			if widget != "":
+				for fl in floors:
+					if fl.size() > 3 and fl[3] == widget:
+						ty = fl[0]
+						tx = clampf(pos.x, fl[1] + 0.2, fl[2] - 0.2)
+				if ty == 0.0:
+					return
+			elif msg.has("side"):
+				var w := screen.x / PPM
+				tx = {"left": w * 0.15, "right": w * 0.85, "center": w * 0.5}.get(str(msg["side"]), pos.x)
+			elif msg.has("x"):
+				tx = float(msg["x"]) / PPM
+			tx = clampf(tx, 0.4, screen.x / PPM - 0.4)
+			if widget == "" and floor_y < 0.01 and state != "fall":
+				target_x = tx                          # walking along the floor
+				_set_state("wander", 30.0)
+				_play("Walk", 0.3, 0.75)
+			else:
+				_jump(tx, ty)
+		"dance":
+			_set_state("dance", float(msg.get("seconds", 20)))
+			_play("Dance", 0.4, 0.9)
+		"stop":
+			_set_state("idle", 2.0)
+			_play("Idle", 0.3)
+		"feel":
+			_feel(LOOK_FACE.get(str(msg.get("look", "")), "joy"), 0.8, float(msg.get("seconds", 4)))
+		"sleep":
+			_set_state("sleep", 1e9)
+			_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)
+		"wake":
+			if state == "sleep":
+				_set_state("idle", 2.0)
+				_play("Idle", 0.5)
+
+
+# A jump that peaks a little above both ends and lands on (tx, ty): onto a
+# widget's top, or down to the floor. The fall code does the landing.
+func _jump(tx: float, ty: float) -> void:
+	var peak := maxf(pos.y, ty) + 0.45
+	var up := sqrt(2.0 * GRAVITY * maxf(0.2, peak - pos.y))
+	var t_up := up / GRAVITY
+	var t_down := sqrt(2.0 * maxf(0.05, peak - ty) / GRAVITY)
+	vel = Vector2((tx - pos.x) / (t_up + t_down), up)
+	spin = 0.0
+	_set_state("fall", 99.0)
+	_play("Jump", 0.15)
+
+
+# What her body is doing, for her (~/.local/share/ariadne2/pet/body.json), once a second.
+func _tell(delta: float) -> void:
+	told_in -= delta
+	if told_in > 0.0 or snapshot_path != "":
+		return
+	told_in = 1.0
+	var on := on_name if state not in ["fall", "held"] else "air"
+	var mood := ""
+	for k in mood_target:
+		if mood_target[k] > 0.3 and t < mood_until:
+			mood = k
+	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
+		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
+		"dancing": state == "dance", "asleep": state == "sleep", "ts": Time.get_unix_time_from_system()}
+	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(data))
 
 
 func _stir() -> void:
@@ -500,6 +601,7 @@ func _process(delta: float) -> void:
 	_face_frame(delta)
 	_place_body()
 	_update_click_area()
+	_tell(delta)
 	var busy: bool = state in ["wander", "fall", "held", "react", "dance", "knocked", "fetch", "throw", "eat", "pickup"] or (life != null and life.ball_live) or speaking or t < mood_until or (slab and slab.visible)
 	Engine.max_fps = FPS_BUSY if busy else FPS_IDLE
 

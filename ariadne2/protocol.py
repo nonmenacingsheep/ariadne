@@ -52,7 +52,8 @@ _REQUIRED = {
     "cc_do": ("op",),
     "update": ("status",),       # core/updater.py: what the update check found
     "update_do": ("op",),
-    "shown": ("path",),          # a picture one of her extensions made, for the chat (core/extensions.py)
+    "shown": ("path",),
+    "body": ("cmd",),            # her commands to her body (adapters/avatar.py); the bodies only listen          # a picture one of her extensions made, for the chat (core/extensions.py)
 }
 MAX_ATTACHMENTS = 8
 

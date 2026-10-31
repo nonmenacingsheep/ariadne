@@ -41,6 +41,7 @@ WEB = Path(__file__).with_name("web")
 MODELS = WEB / "models"
 CONFIG = Path.home() / ".config" / "ariadne2"
 SCREEN = (3440, 1440)
+BODY_FILE = Path.home() / ".local" / "share" / "ariadne2" / "pet" / "body.json"
 PIN_FILE = Path.home() / ".local" / "share" / "ariadne2" / "pet" / "pin2d.json"
 CSS = "window.ariadne2-pet2d, window.ariadne2-pet2d > * { background: transparent; }"
 
@@ -157,6 +158,21 @@ class PetWindow(Gtk.Window):
                 PIN_FILE.write_text(json.dumps({"x": float(msg["x"]), "y": float(msg["y"])}))
             except (OSError, KeyError, TypeError, ValueError):
                 pass
+        elif msg.get("t") == "state" and self.model:
+            # What her body is doing, for her avatar tool (adapters/avatar.py).
+            try:
+                about = json.loads((MODELS / self.model / "about.json").read_text())
+            except (OSError, ValueError):
+                about = {}
+            data = {k: msg.get(k) for k in ("x", "y", "w", "h", "mode", "on", "look", "dancing", "asleep")}
+            data.update(kind="live2d", model=about.get("name") or self.model, ts=time.time())
+            try:
+                BODY_FILE.parent.mkdir(parents=True, exist_ok=True)
+                tmp = BODY_FILE.with_suffix(".tmp")
+                tmp.write_text(json.dumps(data, ensure_ascii=False))
+                tmp.replace(BODY_FILE)
+            except OSError:
+                pass
         elif msg.get("t") == "log":
             log.warning("page: %s", msg.get("msg"))
 
@@ -199,7 +215,11 @@ class PetWindow(Gtk.Window):
         layout, self.layout_mtime = self._read("layout.json", self.layout_mtime)
         if isinstance(layout, dict):
             hidden, _ = self._read("hidden.json", 0.0)
-            self._js("layout", layout, hidden if isinstance(hidden, list) else [])
+            # layout.json is {"version": 1, "widgets": {name: [x, y, w, h]}}; the
+            # page wants the widgets (handed the whole file, she found no widget
+            # to stand on and only ever used the floor).
+            widgets = layout.get("widgets") if isinstance(layout.get("widgets"), dict) else layout
+            self._js("layout", widgets, hidden if isinstance(hidden, list) else [])
         return True
 
     def _apply(self) -> None:
@@ -250,7 +270,7 @@ class PetWindow(Gtk.Window):
                                 msg = json.loads(line)
                             except ValueError:
                                 continue
-                            if isinstance(msg, dict) and msg.get("t") in ("voice", "speak", "ears", "action", "chat", "state"):
+                            if isinstance(msg, dict) and msg.get("t") in ("voice", "speak", "ears", "action", "chat", "state", "body"):
                                 GLib.idle_add(self._forward, msg)
             except OSError:
                 pass

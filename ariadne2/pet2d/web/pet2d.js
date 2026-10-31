@@ -153,7 +153,7 @@ const pet = (() => {
   function layout(rects, hidden) {
     const skip = new Set(hidden || []);
     surfaces = Object.entries(rects || {}).filter(([n, r]) => !skip.has(n) && Array.isArray(r) && r.length === 4)
-      .map(([, [x, y, w]]) => ({ x0: x + 20, x1: x + w - 20, y })).filter(s => s.x1 - s.x0 > 80 && s.y > 120);
+      .map(([name, [x, y, w]]) => ({ name, x0: x + 20, x1: x + w - 20, y })).filter(s => s.name !== "core" && s.x1 - s.x0 > 80 && s.y > 120);
     if (me.mode !== "pinned" && me.on && me.on !== "floor" && !surfaces.some(s => Math.abs(s.y - me.y) < 2 && me.x >= s.x0 && me.x <= s.x1)) {
       me.on = null; me.mode = "fall";         // the widget she stood on moved away
     }
@@ -170,6 +170,7 @@ const pet = (() => {
     model.update(dt * 1000);              // on this ticker, so the frame cap holds for the rig too
     const t = now();
     tick(t);
+    tell(t);
     if (me.mode === "held" || me.mode === "pinned") {
       // follows the pointer (move()); velocity is measured there
     } else if (me.mode === "fall") {
@@ -291,8 +292,24 @@ const pet = (() => {
   }
 
   // ---------------------------------------------------------------- her face
+  // A model with only a few expressions still shows every mood: each mood
+  // tries its nearest relatives among the model's own expressions (or looks
+  // tuned for it in about.json) before a generic parameter look.
+  const KIN = {
+    hearts: ["hearts", "blush", "stars", "smile"], stars: ["stars", "hearts", "smile"],
+    blush: ["blush", "hearts", "soft", "smile"], smile: ["smile", "stars"], soft: ["soft", "blush", "smile"],
+    smirk: ["smirk", "eyeroll", "smile"], eyeroll: ["eyeroll", "smirk", "gloom"],
+    gloom: ["gloom", "tears", "sleepy"], tears: ["tears", "gloom", "sleepy"], angry: ["angry", "gloom", "eyeroll"],
+    dizzy: ["dizzy", "eyeroll", "wide"], wide: ["wide", "stars"], thoughtful: ["thoughtful", "sleepy"],
+    sleepy: ["sleepy"], asleep: ["asleep"],
+  };
+  function resolve(look) {
+    const kin = KIN[look] || [look];
+    return kin.find(k => EXPR[k] || (LOOKS[k] && LOOKS[k] !== BASE_LOOKS[k]))       // the model's own
+      || kin.find(k => LOOKS[k]) || FALLBACK[look];
+  }
   function feel(look, seconds) {
-    if (!LOOKS[look] && !EXPR[look]) look = FALLBACK[look];
+    look = resolve(look);
     if (look && (LOOKS[look] || EXPR[look])) { face.look = look; face.until = now() + seconds; }
   }
   // An expression-mapped mood is the model's own expression, set and cleared
@@ -347,9 +364,57 @@ const pet = (() => {
     else if (Math.random() < dt * 0.25) model.focus(Math.random() * cw, Math.random() * ch * 0.6);
   }
 
+  // ---------------------------------------------------------------- her commands
+  // From her avatar tool (adapters/avatar.py): go somewhere, dance, stop, a face, sleep, wake.
+  function command(m) {
+    stir();
+    if (m.cmd === "go") {
+      let tx = me.x, ty = H, s = null;
+      if (m.widget) {
+        s = surfaces.find(x => x.name === m.widget);
+        if (!s) return log("no surface for " + m.widget);
+        tx = clamp(me.x, s.x0 + 20, s.x1 - 20); ty = s.y;
+        if (tx === me.x && (me.x < s.x0 || me.x > s.x1)) tx = (s.x0 + s.x1) / 2;
+      } else if (m.side) {
+        tx = m.side === "left" ? W * 0.15 : m.side === "right" ? W * 0.85 : m.side === "center" ? W / 2 : me.x;
+      } else if (typeof m.x === "number") tx = m.x;
+      tx = clamp(tx, dispW * 0.8, W - dispW * 0.8);
+      danceUntil = 0;
+      if (opt.pinned) { me.x = tx; me.y = ty; pin(); return; }        // pinned: the pin moves
+      const onFloor = !me.on || me.on === "floor";
+      if (!s && onFloor && me.mode !== "fall") { me.target = tx; me.mode = "walk"; me.until = now() + 30; return; }
+      hop(tx, ty);
+    } else if (m.cmd === "dance") {
+      danceUntil = now() + (Number(m.seconds) || 20);
+      if (me.mode === "walk") stand();
+    } else if (m.cmd === "stop") {
+      danceUntil = 0;
+      if (me.mode === "walk") stand();
+    } else if (m.cmd === "feel") {
+      feel(String(m.look || ""), Number(m.seconds) || 4);
+    } else if (m.cmd === "sleep") {
+      danceUntil = 0; face.look = "asleep"; face.until = 1e12;
+    } else if (m.cmd === "wake") {
+      if (face.look === "asleep") { face.look = ""; face.until = 0; feel("wide", 1); }
+    }
+  }
+
+  // What her body is up to, for her (written by the host to pet/body.json).
+  let toldAt = 0;
+  function tell(t) {
+    if (t - toldAt < 0.8 || !model) return;
+    toldAt = t;
+    const on = me.mode === "fall" || me.mode === "held" ? "air"
+      : me.on && me.on !== "floor" ? me.on.name || "a widget" : me.mode === "pinned" && me.y < H - 2 ? "air" : "floor";
+    post({ t: "state", x: Math.round(me.x), y: Math.round(me.y), w: W, h: H, mode: me.mode, on,
+           look: face.look, dancing: !!dancing(), asleep: face.look === "asleep" });
+  }
+
   // ---------------------------------------------------------------- dancing
+  let danceUntil = 0;                      // her own "dance" command, music or not
   function dancing() {
-    return opt.dance_to_music && music && model && (me.mode === "stand" || me.mode === "pinned")
+    const asked = now() < danceUntil;
+    return (asked || (opt.dance_to_music && music)) && model && (me.mode === "stand" || me.mode === "pinned")
       && face.look !== "asleep" && !held;
   }
   function onBeat(period, strength) {
@@ -417,6 +482,7 @@ const pet = (() => {
         else if (m.phase === "failed") feel("gloom", 2.2);
         break;
       case "chat": stir(); break;
+      case "body": command(m); break;
       case "state":
         if (m.widget === "spotify" && m.data) {
           const was = music;

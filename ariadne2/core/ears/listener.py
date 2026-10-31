@@ -23,6 +23,12 @@ from .session import IDLE, OPEN, OVER, PTT
 
 log = logging.getLogger("ariadne2.ears")
 
+# Talking over her: her voice through the speakers keeps the room from going
+# quiet, so the utterance wouldn't end (and "skip" wouldn't land) until she
+# paused between sentences. So the words so far are peeked at this often, and
+# a skip or her name cuts her off at once; the whole utterance still follows.
+PEEK_EVERY_MS = 480
+PEEKS_MAX = 6
 PTT_TAIL_S = 0.25                # keep recording a moment after the key is released
 PTT_MAX_S = 60.0                 # a stuck key must not record for ever
 SHORT_UTTERANCE_S = 2.0          # at or under this, check for "send"/"nevermind" first
@@ -45,6 +51,7 @@ class Listener:
         self._process = None
         self._pending: queue.Queue = queue.Queue()
         self._ptt_down = False
+        self._peeking = False                   # one peek in flight at a time
         self._ptt_release_at = 0.0
         self._wake_ok: tuple[float, bool] = (-1e9, True)
         self.restarts = 0
@@ -171,6 +178,7 @@ class Listener:
     def _pump(self) -> None:
         """Read frames and cut them into utterances. Never blocks on a transcription."""
         seg = mic.Segmenter()
+        peek_at = PEEK_EVERY_MS
         ptt_frames: list[bytes] = []
         ptt_started = 0.0
         d = self.dialogue
@@ -213,7 +221,13 @@ class Listener:
                 busy = d.mode == OPEN and d.is_busy()
                 self._submit(utterance.pcm, OVER if utterance.interrupting or busy else d.mode)
             elif not seg.speaking:
+                peek_at = PEEK_EVERY_MS
                 d.tick()            # nothing is said or about to be: the safe moment to decide a sentence ended
+            elif seg.interrupting and her_voice and not self._peeking and seg.speech_ms >= peek_at \
+                    and peek_at <= PEEK_EVERY_MS * PEEKS_MAX:
+                peek_at += PEEK_EVERY_MS
+                self._peeking = True
+                self._pending.put((b"".join(seg.buffer), "peek"))
             d.expire()
 
     # -------------------------------------------------------------- the worker
@@ -235,6 +249,15 @@ class Listener:
                 continue
             if item is None:
                 return
+            if item[1] == "peek":
+                try:
+                    text, _sure = self._transcribe(item[0], OVER)
+                    self.dialogue.peek(text)
+                except Exception as exc:
+                    log.warning("ears: couldn't peek: %s", exc)
+                finally:
+                    self._peeking = False
+                continue
             try:
                 self.heard += 1
                 text, sure = self._transcribe(*item)

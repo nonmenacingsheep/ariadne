@@ -256,7 +256,7 @@ class Conversation:
             # Acted without a word: no bubble, but history must still alternate.
             self.history.append({"role": "assistant", "content": record("", did)})
             self._trim()
-            self._finished(text, "", started, his_words)
+            self._finished(text, record("", did), started, his_words)
             return
         if not reply:
             # An empty stream still has to close the bubble the user is waiting on.
@@ -267,7 +267,9 @@ class Conversation:
             await self._sentence(sentence)
         self.history.append({"role": "assistant", "content": record(reply, did)})
         self._trim()
-        self._finished(text, reply, started, his_words)
+        # The long-term transcript keeps the record too, so a recalled turn
+        # shows what she really ran in it, across restarts.
+        self._finished(text, record(reply, did), started, his_words)
 
     def _note_turn(self, text: str | None) -> None:
         """Tell the toolsets what this turn is about, before their context is asked for."""

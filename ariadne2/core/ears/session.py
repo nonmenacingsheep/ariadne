@@ -161,6 +161,18 @@ class Dialogue:
             self.draft.append(command)
             self._drafted_at = self._active_at = self.clock()
 
+    def peek(self, text: str) -> None:
+        """Words so far while he talks over her: a skip or her name cuts her
+        off now. Nothing is drafted; the finished utterance does that."""
+        text = (text or "").strip()
+        if not text or not self.is_speaking():
+            return
+        with self._lock:
+            if self.names.is_skip(text) and (self.names.addressed(text) or not self.media_playing()):
+                self._interrupt(f"heard {text!r} over her voice (early)")
+            elif self.names.heard_name(text) is not None:
+                self._interrupt(f"heard her name over her voice (early): {text!r}")
+
     def _flush(self) -> None:
         message = " ".join(self.draft).strip()
         self.draft = []

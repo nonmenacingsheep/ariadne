@@ -118,6 +118,14 @@ function extrusion(name) {
 }
 
 function setState(name, data) {
+  // Her hands at work (Claude Code runs she started): the bars either side of
+  // ARIES go blue. Here, not in the Claude widget, so it shows even when that
+  // widget is tucked away in the drawer.
+  if (name === "claude" && W.core) {
+    const hands = ((data && data.sessions) || []).filter(x => x.mine && x.state === "working").length;
+    W.core.root.classList.toggle("hands", hands > 0);
+    W.core.root.title = hands ? `${hands} of her hands working` : "";
+  }
   const w = W[name];
   if (!w || name === "core" || name === "chat") return;
   // An app widget takes over once its adapter sends real state. The core's

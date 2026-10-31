@@ -250,6 +250,25 @@ class BargeIn(Base):
         self.assertEqual(self.tr.calls, [])
 
 
+    async def test_skip_cuts_her_off_before_he_stops_talking(self):
+        # Her voice keeps the room loud, so the utterance runs on; the peek
+        # catches "skip" half a second in instead of at her next pause.
+        voice = mock.Mock(speaking=True)
+        self.build([10] * 20 + speech(6000), texts=["skip"] * 20, voice=voice)
+        await self.go()
+        self.assertTrue(await until(lambda: voice.cancel.called))
+        self.assertLess(self.mic.reads, 20 + 6000 // 32)        # long before the utterance ended
+        self.assertEqual(self.heard, [])                          # a skip sends nothing
+
+    async def test_a_peek_of_her_own_words_does_nothing(self):
+        voice = mock.Mock(speaking=True)
+        self.build([10] * 20 + speech(3000), texts=["sure, opening that"] * 20, voice=voice)
+        await self.go()
+        self.assertTrue(await until(lambda: len(self.tr.calls) >= 2))
+        await asyncio.sleep(0.1)
+        self.assertFalse(voice.cancel.called)
+
+
 class Degradation(Base):
     async def test_no_transcriber_package_logs_once_and_does_nothing(self):
         self.build(transcriber=Transcriber())

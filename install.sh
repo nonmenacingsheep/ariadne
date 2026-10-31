@@ -102,6 +102,22 @@ if command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
   fi
 fi
 
+# ------------------------------------------------------ speech models
+bold "Speech models (Whisper)"
+# The ones her ears will use on this machine: tiny.en for "hey Aries", plus
+# large-v3-turbo with a working GPU or base.en on the CPU. Fetched now so the
+# first thing said to her isn't spent downloading (they land in ~/.cache/huggingface).
+.venv/bin/python - <<'PY2' && ok "ready" || warn "couldn't fetch them now; they'll download the first time she listens"
+from ariadne2.core.ears import transcribe
+from faster_whisper.utils import download_model
+t = transcribe.Transcriber()
+names = dict.fromkeys([transcribe.WAKE_MODEL, t.command_model(), t.control_model()])
+where = "GPU" if t.device()[0] == "cuda" else "CPU"
+for name in names:
+    print(f"   fetching {name} ({where})", flush=True)
+    download_model(name)
+PY2
+
 # --------------------------------------------------------- memory model
 bold "Memory search model (MiniLM, 23 MB)"
 EMBED=$STATE/embed

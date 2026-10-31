@@ -34,7 +34,9 @@ The installer is safe to run again. It:
 1. checks the system packages (and offers to install missing ones),
 2. makes a Python environment in `.venv` and installs `requirements.txt`
    (plus the CUDA libraries if you have an NVIDIA GPU and want them),
-3. downloads the small model her memory search uses (MiniLM, 23 MB),
+3. downloads the speech models her ears will use (Whisper: `tiny.en`, plus
+   `large-v3-turbo` on an NVIDIA GPU or `base.en` on the CPU) and the small
+   model her memory search uses (MiniLM, 23 MB),
 4. asks for your API keys and stores them in `~/.local/share/ariadne2/`, readable only by you,
 5. optionally sets up her body: a VRoid `.vrm` for the 3D one, or a Live2D
    model (this downloads Live2D's Cubism Core, which is under

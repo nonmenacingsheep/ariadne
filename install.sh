@@ -155,9 +155,18 @@ save_key deepseek_key "DeepSeek API key (optional)" DEEPSEEK_API_KEY
 bold "Her body (optional)"
 CORE=ariadne2/pet2d/web/vendor/live2dcubismcore.min.js
 if [ -f "$CORE" ]; then
-  ok "Live2D Cubism Core already there"
-elif [ $YES = 0 ] && ask "Use a Live2D model as her body? This downloads Live2D's Cubism Core (free for individuals, under Live2D's licence: https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html). Accept and download?" n; then
-  curl -fsSL -o "$CORE" https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js && ok "Cubism Core downloaded" || warn "download failed"
+  ok "Live2D support (Cubism Core) already there"
+else
+  # Live2D bodies need Live2D's Cubism Core, which can't ship here. It's free
+  # for individuals under Live2D's licence; saying yes (the default) accepts it.
+  echo "   Live2D bodies need Live2D's Cubism Core, free under Live2D's licence:"
+  echo "   https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html"
+  if ask "Accept that licence and download it?" y; then
+    curl -fsSL -o "$CORE" https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js \
+      && ok "Live2D support downloaded" || warn "download failed; get it later in the Avatar widget > Live2D support"
+  else
+    warn "no Live2D support; get it later in the Avatar widget > Live2D support > Download"
+  fi
 fi
 if [ -f "$CORE" ] && [ $YES = 0 ]; then
   read -r -p "   Path to a Live2D model folder (with a .model3.json) to add, or Enter to skip: " l2d

@@ -71,13 +71,16 @@ def biggest_monitor() -> tuple[int, int]:
     return best
 
 
+CORE = WEB / "vendor" / "live2dcubismcore.min.js"
+
+
 def wanted_model(settings: dict) -> str | None:
     """The Live2D model to show, or None while the 3D body (or no body) is chosen."""
     av = settings.get("avatar") if isinstance(settings.get("avatar"), dict) else {}
     desk = settings.get("desktop") if isinstance(settings.get("desktop"), dict) else {}
     name = str(av.get("model") or "aries")
-    if not desk.get("body", True) or name == "aries":
-        return None
+    if not desk.get("body", True) or name == "aries" or not CORE.exists():
+        return None            # no Cubism Core yet: nothing could draw it (the core says so in the chat)
     return name if name in live2d_models() else None
 
 
@@ -178,6 +181,15 @@ class PetWindow(Gtk.Window):
             return None, mtime
 
     def _poll_files(self) -> bool:
+        # Cubism Core arrived (Avatar > Live2D support > Download): the page
+        # loaded without it, so load it again, then the chosen model.
+        if CORE.exists() != getattr(self, "_had_core", CORE.exists()):
+            self._had_core = True
+            self.ready = False
+            self.model = None
+            self.view.reload()
+            return True
+        self._had_core = CORE.exists()
         data, self.settings_mtime = self._read("settings.json", self.settings_mtime)
         if isinstance(data, dict):
             self.settings = data

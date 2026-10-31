@@ -88,7 +88,8 @@ def bodies() -> list[tuple[str, str]]:
                     name = json.loads((d / "about.json").read_text()).get("name") or d.name
                 except (OSError, ValueError):
                     name = d.name
-                out.append((d.name, f"{name} (Live2D)"))
+                core = LIVE2D_MODELS.parent / "vendor" / "live2dcubismcore.min.js"
+                out.append((d.name, f"{name} (Live2D)" if core.exists() else f"{name} (Live2D: needs Live2D support)"))
     except OSError:
         pass
     return out
@@ -207,6 +208,9 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     # ---- avatar (the pet) ----
     s.append(_entry("avatar", "model", "Model", "choice", "aries",
                     "Which body she wears on the desktop.", options=_choices(bodies())))
+    s.append(_entry("avatar", "live2d_core", "Live2D support", "bool", False,
+                    "Live2D's Cubism Core, free under Live2D's licence (live2d.com/eula). Downloading accepts it.",
+                    action=True, button="Download"))
     for key, label, what in (("energy_drain", "Energy drain", "how fast she tires"),
                              ("fun_drain", "Boredom", "how fast she gets bored"),
                              ("affection_drain", "Affection drain", "how fast she misses you"),
@@ -490,7 +494,7 @@ class Settings:
 
 # Momentary or one-off: running them every start would be wrong (a reset, a write to autostart).
 NOT_AT_START = {("desktop", "reset_layout"), ("desktop", "autostart"), ("general", "check_now"),
-                ("models", "spotify_connect"), ("models", "spotify_disconnect")}
+                ("models", "spotify_connect"), ("models", "spotify_disconnect"), ("avatar", "live2d_core")}
 
 
 # ---- per-key checks for text settings ----

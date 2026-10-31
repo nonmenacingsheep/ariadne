@@ -44,7 +44,7 @@ The installer is safe to run again. It:
    and isn't included here),
 6. adds **Ariadne** to your app menu.
 
-`./install.sh --yes` takes the defaults without asking (no keys, no Live2D);
+`./install.sh --yes` takes the defaults without asking (no keys; it does accept Live2D's licence and download Cubism Core);
 keys can also come from `ANTHROPIC_API_KEY`, `CARTESIA_API_KEY` and `DEEPSEEK_API_KEY`.
 
 ## Use

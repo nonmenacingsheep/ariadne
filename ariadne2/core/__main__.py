@@ -147,6 +147,8 @@ async def run(args: argparse.Namespace) -> None:
     updater = Updater(server.publish, settings=settings)
     from .body_models import BodyModels
     body_models = BodyModels(server.publish, settings)
+    settings.status_providers[("avatar", "live2d_core")] = body_models.core_status
+    settings.hooks[("avatar", "live2d_core")] = lambda _v: asyncio.ensure_future(body_models.get_core())
     settings.hooks[("general", "check_now")] = lambda _v: asyncio.ensure_future(updater.check())
     # Spotify's Web API login, from Settings > Models (adapters/spotify_login.py).
     from ..adapters import spotify_login

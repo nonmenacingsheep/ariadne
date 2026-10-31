@@ -140,5 +140,33 @@ class NoBodyTests(DropFolderTests):
         self.assertEqual((self.set, self.sent), ([], []))
 
 
+class Live2DSupportTests(DropFolderTests):
+    async def test_download_puts_the_core_in_place(self):
+        core = self.tmp / "vendor" / "live2dcubismcore.min.js"
+
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return b"/**\n * Live2D Cubism Core\n */ var Live2DCubismCore;"
+        with mock.patch.object(self.B, "CORE", core), mock.patch("urllib.request.urlopen", return_value=Reply()):
+            self.assertEqual(self.bm.core_status(), "Not installed")
+            await self.bm.get_core()
+            self.assertEqual(self.bm.core_status(), "Installed")
+        self.assertIn(b"Cubism Core", core.read_bytes())
+        self.assertIn("installed", [m for m in self.sent if m["t"] == "chat"][-1]["delta"])
+
+    async def test_a_live2d_body_without_the_core_says_what_is_missing(self):
+        (self.tmp / "models" / "jane").mkdir(parents=True)
+        self.bm.settings.get.side_effect = lambda s, k: {"model": "jane", "body": True}[k]
+        with mock.patch.object(self.B, "CORE", self.tmp / "nope.js"):
+            await self.bm.check_body()
+        self.assertEqual([m["delta"] for m in self.sent if m["t"] == "chat"], [self.B.NEEDS_CORE])
+
+    async def test_adding_a_model_without_the_core_says_so(self):
+        with mock.patch.object(self.B, "CORE", self.tmp / "nope.js"):
+            await self.bm.add(vts_model(self.tmp))
+        self.assertIn("Live2D support", [m for m in self.sent if m["t"] == "chat"][-1]["delta"])
+
+
 if __name__ == "__main__":
     unittest.main()

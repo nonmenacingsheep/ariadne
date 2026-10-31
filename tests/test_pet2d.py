@@ -10,8 +10,12 @@ from ariadne2.core import settings as s
 
 class BodiesTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp())
-        (self.root / "jian").mkdir()
+        base = Path(tempfile.mkdtemp())
+        self.root = base / "models"
+        (base / "vendor").mkdir()
+        self.core = base / "vendor" / "live2dcubismcore.min.js"
+        self.core.write_text("// Live2D Cubism Core")
+        (self.root / "jian").mkdir(parents=True)
         (self.root / "jian" / "jian.model3.json").write_text("{}")
         (self.root / "jian" / "about.json").write_text(json.dumps({"name": "简"}))
         (self.root / "empty").mkdir()                       # no model3.json: not a body
@@ -22,6 +26,11 @@ class BodiesTests(unittest.TestCase):
             entry = next(e for e in s.build_schema() if e["section"] == "avatar" and e["key"] == "model")
             self.assertEqual(entry["default"], "aries")
             self.assertEqual([o["value"] for o in entry["options"]], ["aries", "jian"])
+
+    def test_without_live2d_support_the_list_says_so(self):
+        self.core.unlink()
+        with mock.patch.object(s, "LIVE2D_MODELS", self.root):
+            self.assertEqual(s.bodies()[1], ("jian", "简 (Live2D: needs Live2D support)"))
 
     def test_choosing_a_model_is_validated_against_the_list(self):
         with mock.patch.object(s, "LIVE2D_MODELS", self.root):

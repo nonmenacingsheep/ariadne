@@ -22,6 +22,10 @@ log = logging.getLogger("ariadne2.body_models")
 
 EVERY = 30.0
 REPO = Path(__file__).resolve().parents[2]
+CORE = REPO / "ariadne2" / "pet2d" / "web" / "vendor" / "live2dcubismcore.min.js"
+CORE_URL = "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"
+NEEDS_CORE = ("Live2D models need Live2D's Cubism Core to show. Get it in the Avatar widget > "
+              "Live2D support > Download (free, under Live2D's licence).")
 NO_BODY = ("I don't have a body on screen yet. For a Live2D one, put a model download in ~/Aries Models "
            "(or right-click it in Files > Use as her body). For the 3D one, a VRoid .vrm goes at "
            "pet/models/aries.vrm and needs Godot 4 (install.sh can fetch it).")
@@ -79,7 +83,8 @@ class BodyModels:
                 except Exception as e:
                     log.warning("couldn't switch to %s: %s", slug, e)
             await self.publish(self.settings.message())        # the Model list now has it
-            await self._say(said + (" She's wearing it now." if wear else " Pick it in Avatar > Model."))
+            await self._say(said + (" She's wearing it now." if wear else " Pick it in Avatar > Model.")
+                            + ("" if CORE.exists() else " " + NEEDS_CORE))
             return slug
 
     async def scan(self) -> None:
@@ -117,6 +122,33 @@ class BodyModels:
                  or Path("/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64").exists())
         return (REPO / "pet" / "models" / "aries.vrm").exists() and bool(godot)
 
+    def core_status(self) -> str:
+        return "Installed" if CORE.exists() else "Not installed"
+
+    async def get_core(self) -> None:
+        """His click on Download: fetch Cubism Core from Live2D (the click accepts its licence)."""
+        import urllib.request
+        if CORE.exists():
+            await self._say("Live2D support is already installed.")
+            return
+
+        def fetch() -> bytes:
+            with urllib.request.urlopen(CORE_URL, timeout=60) as r:
+                return r.read(5_000_000)
+        try:
+            data = await asyncio.to_thread(fetch)
+            if b"Live2D Cubism Core" not in data[:2000]:
+                raise ValueError("that wasn't the Cubism Core file")
+            CORE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = CORE.with_suffix(".part")
+            tmp.write_bytes(data)
+            tmp.replace(CORE)
+        except Exception as e:
+            await self._say(f"Couldn't download Live2D support: {e}")
+            return
+        await self.publish(self.settings.message())
+        await self._say("Live2D support is installed. Live2D bodies show now (pick one in Avatar > Model).")
+
     def _live2d_ready(self) -> list[str]:
         if not (REPO / "ariadne2" / "pet2d" / "web" / "vendor" / "live2dcubismcore.min.js").exists():
             return []
@@ -136,6 +168,9 @@ class BodyModels:
             return
         live2d = await asyncio.to_thread(self._live2d_ready)
         if av == "aries" and self._three_d_ready() or av in live2d:
+            return
+        if av != "aries" and not CORE.exists() and (importer.MODELS / av).is_dir():
+            await self._say(NEEDS_CORE)            # a Live2D body is chosen; the library is what's missing
             return
         if live2d:
             self.settings.set("avatar", "model", live2d[0])

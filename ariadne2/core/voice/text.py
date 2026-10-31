@@ -39,6 +39,47 @@ def strip_marks(text: str) -> tuple[str, float, str]:
     return clean, rate, emotion
 
 
+class BareMarks:
+    """She sometimes writes a voice mark bare: "amazed Wait, what?" for
+    "((amazed)) Wait, what?". Then nothing reached her voice or her face, and
+    the voice read "amazed" aloud. At the start of each sentence, a known
+    emotion word followed by a capitalised word is taken as the mark it was
+    meant to be. Text arrives in pieces, so a sentence's first word is held
+    until it's whole."""
+
+    HOLD = 24
+
+    def __init__(self) -> None:
+        self.buf = ""
+        self.at_start = True
+
+    def feed(self, text: str) -> str:
+        out = []
+        for ch in text or "":
+            if self.at_start:
+                self.buf += ch
+                m = re.match(r"(\s*)([a-z]+)(\s+)(\S)", self.buf)
+                if m:
+                    word, nxt = m.group(2), m.group(4)
+                    if word in EMOTIONS and nxt.isupper():
+                        out.append(f"{m.group(1)}(({word})) {nxt}")
+                    else:
+                        out.append(self.buf)
+                    self.buf, self.at_start = "", False
+                elif len(self.buf) > self.HOLD or not re.fullmatch(r"\s*[a-z]*\s*", self.buf):
+                    out.append(self.buf)          # not a bare mark: a bracket, a capital, too long
+                    self.buf, self.at_start = "", False
+                continue
+            out.append(ch)
+            if ch in ".!?\n":
+                self.at_start = True
+        return "".join(out)
+
+    def flush(self) -> str:
+        rest, self.buf, self.at_start = self.buf, "", True
+        return rest
+
+
 class MarkStream:
     """Takes the marks out of text as it arrives, for the screen.
 
@@ -50,19 +91,42 @@ class MarkStream:
 
     MAX_HOLD = 18                        # len("((contemplative))")
 
+    _MARK_SPACE = re.compile(r"\(\(([a-z/]+)\)\)( ?)", re.I)
+
     def __init__(self) -> None:
         self._held = ""
+        self._eat = False                # a mark ended the last piece: its space may start this one
+        self._prev = ""                  # the last character already shown
 
     def feed(self, chunk: str) -> str:
         out = self._held + (chunk or "")
-        out = ANY_MARK.sub(lambda m: "" if m.group(1).lower() in MARK_WORDS else m.group(0), out)
+        if self._eat and out.startswith(" "):
+            out = out[1:]
+        self._eat = False
+        ended = []
+
+        def cut(m):
+            if m.group(1).lower() not in MARK_WORDS:
+                return m.group(0)
+            # The space after goes too only when the mark stands alone (at the
+            # start, or after a space); "x((/skip)) done" keeps its gap.
+            before = out[m.start() - 1] if m.start() else self._prev
+            alone = not before or before.isspace()
+            if alone and m.end() == len(out) and not m.group(2):
+                ended.append(True)
+            return "" if alone else m.group(2)
+        out = self._MARK_SPACE.sub(cut, out)
+        self._eat = bool(ended)
         keep = 0
         for n in range(1, min(self.MAX_HOLD, len(out)) + 1):
             tail = out[-n:].lower()
             if any(("((" + w + "))").startswith(tail) for w in MARK_WORDS):
                 keep = n
         self._held = out[len(out) - keep:] if keep else ""
-        return out[:len(out) - keep] if keep else out
+        shown = out[:len(out) - keep] if keep else out
+        if shown:
+            self._prev = shown[-1]
+        return shown
 
     def flush(self) -> str:
         """A partial mark that never completed is ordinary text after all."""

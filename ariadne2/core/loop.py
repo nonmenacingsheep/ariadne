@@ -15,7 +15,7 @@ from .. import protocol
 from ..adapters import dolphin_files as df
 from . import attachments as attach_mod
 from . import models, prompt
-from .voice.text import MarkStream
+from .voice.text import BareMarks, MarkStream
 from .flows import tools as flow_tools
 
 log = logging.getLogger("ariadne2.core.loop")
@@ -209,6 +209,7 @@ class Conversation:
         self.history.append({"role": "user", "content": text + marker})
         self._his_words = text if his_words else None   # what consent verbs are checked against
         screen = MarkStream()
+        bare = BareMarks()                  # "amazed Wait" -> "((amazed)) Wait", before anything sees it
         self._note_turn(text)
         system = self._system()
         tools = self._tools()
@@ -239,10 +240,19 @@ class Conversation:
                         continue
                     if not item:
                         continue
+                    item = bare.feed(item)
+                    if not item:
+                        continue
                     round_text += item
                     if rnd == 0:                   # her opening words stream as they come
                         reply += item
                         await self._say_out(item, reply == item, her_id, screen, splitter)
+                held = bare.flush()                # a round ending on a held word: it's just a word
+                if held:
+                    round_text += held
+                    if rnd == 0:
+                        reply += held
+                        await self._say_out(held, reply == held, her_id, screen, splitter)
                 # Later rounds: words written between tool calls are a play-by-play
                 # he asked not to get. Only the final round's words (no more calls)
                 # are shown and spoken: what she's doing, then what happened.

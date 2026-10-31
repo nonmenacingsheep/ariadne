@@ -297,6 +297,26 @@ class HushTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(spoken[-1], "Next reply.")
 
 
+class BareMarkTests(unittest.IsolatedAsyncioTestCase):
+    """'amazed Wait, what?' reaches her voice and face as the mark it meant to be."""
+    make, her = ToolLoopTests.make, ToolLoopTests.her
+
+    async def test_a_bare_emotion_word_becomes_a_mark(self):
+        spoken = []
+        c = self.make([["amaz", "ed Wait, what? sympathetic Oh no."]], on_sentence=spoken.append)
+        c.submit("x")
+        await c.idle()
+        self.assertEqual("".join(m["delta"] for m in self.her()), "Wait, what? Oh no.")   # nothing bare, no stray spaces
+        self.assertEqual(spoken, ["((amazed)) Wait, what?", "((sympathetic)) Oh no."])      # the voice gets the marks
+        self.assertTrue(c.history[-1]["content"].startswith("((amazed)) Wait, what?"))
+
+    def test_ordinary_sentences_are_left_alone(self):
+        from ariadne2.core.voice.text import BareMarks
+        for text in ("content is king. Okay.", "Proud of you.", "((happy)) Hi.", "hey there"):
+            b = BareMarks()
+            self.assertEqual(b.feed(text) + b.flush(), text)
+
+
 class RecordTests(unittest.TestCase):
     """What she ran stays in her history, so she never disowns real work."""
 

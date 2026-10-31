@@ -43,7 +43,7 @@ class Marks(unittest.TestCase):
     def test_stream_holds_split_marks(self):
         s = MarkStream()
         shown = "".join(s.feed(c) for c in ["((apolo", "getic)) sorry. ", "((fast)) anyway"]) + s.flush()
-        self.assertEqual(shown, " sorry.  anyway")
+        self.assertEqual(shown, "sorry. anyway")
 
     def test_stream_leaves_plain_text(self):
         s = MarkStream()

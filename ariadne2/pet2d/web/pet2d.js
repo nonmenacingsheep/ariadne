@@ -304,9 +304,9 @@ const pet = (() => {
     sleepy: ["sleepy"], asleep: ["asleep"], blood: ["blood"],
   };
   function resolve(look) {
+    // The mood itself if this model can show it at all; else its nearest kin.
     const kin = KIN[look] || [look];
-    return kin.find(k => EXPR[k] || (LOOKS[k] && LOOKS[k] !== BASE_LOOKS[k]))       // the model's own
-      || kin.find(k => LOOKS[k]) || FALLBACK[look];
+    return kin.find(k => EXPR[k] || LOOKS[k]) || FALLBACK[look];
   }
   function feel(look, seconds) {
     look = resolve(look);

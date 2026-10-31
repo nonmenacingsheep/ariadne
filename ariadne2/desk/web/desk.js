@@ -641,6 +641,7 @@ function watchRects(el) {
 // An update from GitHub: a chip on her core. Found (auto-install off): click
 // to install; installed: click to restart into it.
 function showUpdate(m) {
+  Settings.updateStatus(m);
   const b = W.core && W.core.root.querySelector(".upd");
   if (!b) return;
   const op = m.restart ? "restart" : m.status === "available" ? "install" : "";

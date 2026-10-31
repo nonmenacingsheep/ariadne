@@ -192,7 +192,7 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
                     "Lifts the desk over your windows. Rebind it in System Settings, Shortcuts.",
                     readonly=True))
     s.append(_entry("desktop", "reset_layout", "Reset the layout", "bool", False,
-                    "Put every widget back where it starts.", action=True))
+                    "Put every widget back where it starts.", action=True, confirm=True))
     s.append(_entry("desktop", "body", "Her body", "bool", True,
                     "Show her walking about on the desktop."))
     s.append(_entry("desktop", "quiet_fullscreen", "Quiet while fullscreen", "bool", True,

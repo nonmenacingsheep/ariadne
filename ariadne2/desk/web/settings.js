@@ -47,6 +47,16 @@ const Settings = (() => {
   }
   function control(s) {
     const v = value(s.section, s.key) ?? s.default;
+    if (s.action || s.type === "button" || s.type === "action") {
+      // A button, not a switch. Ones that undo his work (a layout reset) take two clicks.
+      const b = document.createElement("button"); b.className = "fe-btn"; b.textContent = s.button || (s.key === "check_now" ? "Check" : "Do it");
+      if (s.confirm) twoClick(b, "Sure?", () => set(s.section, s.key, true));
+      else b.onclick = e => { e.stopPropagation(); set(s.section, s.key, true); if (s.key === "check_now") updateStatus({ status: "checking" }); };
+      if (s.key !== "check_now") return b;
+      const wrap = document.createElement("div"); wrap.className = "sp-secret";
+      const note = document.createElement("span"); note.className = "sp-note"; note.textContent = updateNote;
+      wrap.append(note, b); return wrap;
+    }
     if (s.type === "bool") {
       const b = document.createElement("button"); b.className = `fl-switch${v ? " on" : ""}`;
       b.onclick = () => { b.classList.toggle("on"); set(s.section, s.key, b.classList.contains("on")); };
@@ -85,15 +95,25 @@ const Settings = (() => {
       return wrap;
     }
     if (s.type === "key") { const k = document.createElement("span"); k.className = "sp-key"; k.textContent = v || ""; return k; }
-    if (s.type === "button" || s.type === "action") {
-      const b = document.createElement("button"); b.className = "fe-btn"; b.textContent = s.button || s.label;
-      twoClick(b, "Sure?", () => set(s.section, s.key, true)); return b;
-    }
     const i = document.createElement("input"); i.className = "sp-input"; i.value = v ?? ""; i.spellcheck = false;
     const commit = () => { if (i.value !== String(v ?? "")) set(s.section, s.key, i.value); };
     i.onkeydown = e => { if (e.key === "Enter") i.blur(); };
     i.onblur = commit;
     return i;
+  }
+
+  // What the last update check found (core/updater.py), beside its button.
+  let updateNote = "";
+  const UPDATE_WORDS = { "checking": "Checking…", "up to date": "Up to date", "updated": "Updated: restart to use it",
+    "local changes": "Not updated: this copy has local edits", "diverged": "Not updated: this copy has its own commits",
+    "offline": "Couldn't reach GitHub", "no remote": "Not installed from GitHub", "failed": "The update failed",
+    "not on a branch": "Not on a branch", "error": "Couldn't check" };
+  function updateStatus(m) {
+    if (!m || !m.status || m.status === "unchecked") return;
+    let t = m.status === "available" ? `${m.behind} update${m.behind === 1 ? "" : "s"} available` : UPDATE_WORDS[m.status] || m.status;
+    if (m.checked) t += " · " + new Date(m.checked * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    updateNote = t;
+    if (panel) panel.querySelectorAll(".sp-note").forEach(n => { n.textContent = t; });
   }
 
   // The panel opens to the left of her core, like the drawer opens below it.
@@ -116,7 +136,7 @@ const Settings = (() => {
   }
   const isOpen = () => open;
   const rect = () => panel.getBoundingClientRect();
-  return { init, message, toggle, place, isOpen, rect, rows, value, onChange: fn => listeners.add(fn) };
+  return { init, message, toggle, place, isOpen, rect, rows, value, updateStatus, onChange: fn => listeners.add(fn) };
 })();
 
 /* ---------------- Avatar ---------------- */

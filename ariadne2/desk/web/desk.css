@@ -636,3 +636,4 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .sp-secret { display: flex; gap: 6px; align-items: center; }
 .sp-secret .sp-input { width: 170px; font-family: "Fira Code", monospace; }
 .sp-secret .sp-x { padding: 3px 8px; }
+.sp-note { font: 11px "Fira Code", monospace; color: var(--soft); opacity: .8; white-space: nowrap; }

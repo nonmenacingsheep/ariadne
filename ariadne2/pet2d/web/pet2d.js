@@ -474,7 +474,8 @@ const pet = (() => {
       case "speak": {
         stir();
         const look = EMOTION_LOOK[m.emotion];
-        if (look) feel(look, (Number(m.seconds) || 1) + 0.6);
+        if (look) feel(look, Math.max(2.5, (Number(m.seconds) || 1) + 0.6));   // long enough to see
+        post({ t: "face", look: face.look, emotion: m.emotion });     // logged by the host, with the time
         else if (m.emotion === "neutral" && face.look !== "asleep") { face.look = ""; face.until = 0; }
         break;
       }

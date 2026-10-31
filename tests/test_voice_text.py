@@ -37,8 +37,11 @@ class Marks(unittest.TestCase):
     def test_first_emotion_wins(self):
         self.assertEqual(strip_marks("((calm)) a ((excited)) b")[2], "calm")
 
-    def test_unknown_double_bracket_is_text(self):
-        self.assertEqual(strip_marks("((grumpy)) hm"), ("((grumpy)) hm", 1.0, ""))
+    def test_an_unknown_mark_is_never_read_aloud(self):
+        self.assertEqual(strip_marks("((grumpy)) hm"), (" hm", 1.0, ""))
+
+    def test_a_group_heading_used_as_a_mark_means_its_plainest_member(self):
+        self.assertEqual(strip_marks("((uneasy)) Honestly."), (" Honestly.", 1.0, "anxious"))
 
     def test_stream_holds_split_marks(self):
         s = MarkStream()

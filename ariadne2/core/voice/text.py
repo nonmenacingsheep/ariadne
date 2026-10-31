@@ -23,6 +23,12 @@ MARK_WORDS = frozenset({"fast", "slow", "normal", "skip", "/skip"} | set(EMOTION
 _DELIVERY = frozenset(RATES) | {"skip", "/skip"}
 
 
+# Her manual groups the emotions under headings (bright, warm, ...); a heading
+# used as a mark means its plainest member.
+GROUP_MARKS = {"bright": "happy", "warm": "affectionate", "wondering": "curious", "edged": "sarcastic",
+               "hot": "angry", "low": "sad", "uneasy": "anxious"}
+
+
 def strip_marks(text: str) -> tuple[str, float, str]:
     """The words without her marks, the rate asked for, and the emotion
     asked for ("" when none). The first of each in a chunk wins."""
@@ -34,8 +40,10 @@ def strip_marks(text: str) -> tuple[str, float, str]:
                 rate = RATES[name]
         elif name in MARK_WORDS and name not in _DELIVERY and not emotion:
             emotion = name
-    clean = ANY_MARK.sub(lambda m: "" if m.group(1).lower() in MARK_WORDS else m.group(0),
-                         text or "")
+        elif name in GROUP_MARKS and not emotion:
+            emotion = GROUP_MARKS[name]
+    # Any ((word)) is hers, never something to read aloud: an unknown one is dropped.
+    clean = ANY_MARK.sub("", text or "")
     return clean, rate, emotion
 
 
@@ -106,7 +114,7 @@ class MarkStream:
         ended = []
 
         def cut(m):
-            if m.group(1).lower() not in MARK_WORDS:
+            if m.group(1).lower() not in MARK_WORDS and m.group(1).lower() not in GROUP_MARKS:
                 return m.group(0)
             # The space after goes too only when the mark stands alone (at the
             # start, or after a space); "x((/skip)) done" keeps its gap.

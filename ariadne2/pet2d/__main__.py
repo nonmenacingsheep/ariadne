@@ -99,6 +99,8 @@ class PetWindow(Gtk.Window):
         self.settings_mtime = 0.0
         self.layout_mtime = 0.0
         self.music = False                         # Spotify is playing
+        self._voice_latest = None                  # the newest voice level, waiting to go to the page
+        self._voice_pending = False
         self.beats = BeatListener(lambda period, strength: GLib.idle_add(self._beat, period, strength))
 
         ctx = WebKit.WebContext.get_default()     # the host GPU driver, as the desk does
@@ -175,6 +177,8 @@ class PetWindow(Gtk.Window):
                 pass
         elif msg.get("t") == "log":
             log.warning("page: %s", msg.get("msg"))
+        elif msg.get("t") == "face":
+            log.info("face %r on the body (for %r)", msg.get("look"), msg.get("emotion"))
 
     def _update_input(self) -> None:
         surface = self.get_surface()
@@ -270,11 +274,33 @@ class PetWindow(Gtk.Window):
                                 msg = json.loads(line)
                             except ValueError:
                                 continue
-                            if isinstance(msg, dict) and msg.get("t") in ("voice", "speak", "ears", "action", "chat", "state", "body"):
-                                GLib.idle_add(self._forward, msg)
+                            if not isinstance(msg, dict):
+                                continue
+                            if msg.get("t") == "voice":
+                                # ~12 a second while she talks (lip sync). Queued one by one
+                                # at idle priority behind the drawing, they backed up and her
+                                # faces (the speak messages behind them) came seconds late or
+                                # not at all. Only the newest level matters: keep that one.
+                                self._voice_latest = msg
+                                if not self._voice_pending:
+                                    self._voice_pending = True
+                                    GLib.idle_add(self._flush_voice, priority=GLib.PRIORITY_HIGH)
+                            elif msg.get("t") == "chat" and not msg.get("done"):
+                                continue        # every streamed fragment of her text: the body only needs the end
+                            elif msg.get("t") in ("speak", "ears", "action", "chat", "state", "body"):
+                                if msg.get("t") == "speak":
+                                    log.info("speak %r arrived", msg.get("emotion"))
+                                GLib.idle_add(self._forward, msg, priority=GLib.PRIORITY_HIGH)
             except OSError:
                 pass
             time.sleep(2)
+
+    def _flush_voice(self) -> bool:
+        self._voice_pending = False
+        msg, self._voice_latest = self._voice_latest, None
+        if msg is not None:
+            self._forward(msg)
+        return False
 
     def _forward(self, msg: dict) -> bool:
         if msg.get("t") == "state":

@@ -48,9 +48,9 @@ class TTSError(Exception):
 
 
 def data_dir() -> pathlib.Path:
-    """Where 1.x kept its state; the key lives here, so 2.0 reads it in place."""
-    base = os.environ.get("XDG_DATA_HOME") or (pathlib.Path.home() / ".local" / "share")
-    return pathlib.Path(base) / "ariadne"
+    """1.x's folder when it exists (its key is read in place), else 2.0's own."""
+    base = pathlib.Path(os.environ.get("XDG_DATA_HOME") or (pathlib.Path.home() / ".local" / "share"))
+    return base / "ariadne" if (base / "ariadne").is_dir() else base / "ariadne2"
 
 
 def key_path() -> pathlib.Path:

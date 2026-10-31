@@ -98,13 +98,32 @@ class Updater:
                 return await self._say(status="local changes", behind=behind, commits=commits)
             if not install:
                 return await self._say(status="available", behind=behind, commits=commits)
+            code, before = await git(root, "rev-parse", "HEAD")
             code, out = await git(root, "merge", "--ff-only", "--quiet", upstream)
             if code:
                 log.warning("update failed: %s", out[:300])
                 return await self._say(status="failed", behind=behind, commits=commits)
+            await self._packages(before)
             self.restart_needed = True
             log.info("updated %d commit(s) from %s", behind, upstream)
             return await self._say(status="updated", behind=behind, commits=commits)
+
+    async def _packages(self, before: str) -> None:
+        """An update that changed requirements.txt installs them into the
+        install.sh environment (.venv), if there is one."""
+        code, changed = await self.git(self.root, "diff", "--name-only", before, "HEAD")
+        pip = self.root / ".venv" / "bin" / "python"
+        if code or "requirements.txt" not in changed.split() or not pip.exists():
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                str(pip), "-m", "pip", "install", "-q", "-r", str(self.root / "requirements.txt"),
+                stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+            _, err = await asyncio.wait_for(proc.communicate(), 900)
+            if proc.returncode:
+                log.warning("update: pip failed: %s", err.decode(errors="replace")[-300:])
+        except (OSError, asyncio.TimeoutError) as e:
+            log.warning("update: couldn't install packages: %s", e)
 
     def restart(self) -> None:
         """Start Ariadne again; bin/ariadne2 stops this instance first."""

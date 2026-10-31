@@ -8,7 +8,7 @@
 
 var TITLE = "ariadne2-desk";
 var PET = "ariadne2-pet";               // her body (pet/), which lives on the desk with her
-var OUTPUT = "DP-2";
+var OUTPUT = "";                         // kwin.py fills this from ARIADNE2_OUTPUT; empty = the biggest screen
 var SERVICE = "io.ariadne2.desk";
 var PATH = "/io/ariadne2/desk";
 var IFACE = "io.ariadne2.Layer";
@@ -75,10 +75,13 @@ function settleSoon(w) {
 }
 
 function output() {
-    var outs = workspace.screens;
-    for (var i = 0; i < outs.length; i++)
-        if (outs[i].name === OUTPUT) return outs[i];
-    return outs.length ? outs[0] : null;
+    var outs = workspace.screens, best = null;
+    for (var i = 0; i < outs.length; i++) {
+        if (OUTPUT && outs[i].name === OUTPUT) return outs[i];
+        var g = outs[i].geometry;
+        if (!best || g.width * g.height > best.geometry.width * best.geometry.height) best = outs[i];
+    }
+    return best;
 }
 
 function tell(up) { callDBus(SERVICE, PATH, IFACE, "Raised", up); }

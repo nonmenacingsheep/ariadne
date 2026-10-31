@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/.." || exit 1
 
 stop_running() {
-  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"; pkill -TERM -f "Godot_v4.*--path pet"; pkill -TERM -f "m ariadne2[.]pet2d"
+  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"; pkill -TERM -f "[Gg]odot.*--path pet"; pkill -TERM -f "m ariadne2[.]pet2d"
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "m ariadne2.core" >/dev/null || return 0
     sleep 0.3
@@ -42,26 +42,33 @@ fi
 # The core needs faster-whisper, numpy, anthropic and the CUDA libraries for
 # her ears and voice. 1.x's environment already has all of them, so borrow it
 # until 2.0 replaces 1.x and gets its own; ARIADNE2_PYTHON overrides.
-PY=${ARIADNE2_PYTHON:-$HOME/Claude Projects/ariadne/.venv-3.12/bin/python}
-[ -x "$PY" ] || PY=python3
+# The core's Python: ARIADNE2_PYTHON, else the .venv install.sh made, else
+# (on the machine it was built on) 1.x's environment, else the system's.
+PY=${ARIADNE2_PYTHON:-}
+for p in "$PWD/.venv/bin/python" "$HOME/Claude Projects/ariadne/.venv-3.12/bin/python"; do
+  [ -z "$PY" ] && [ -x "$p" ] && PY=$p
+done
+[ -n "$PY" ] || PY=python3
 "$PY" -m ariadne2.core "$@" &
 core=$!
 trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 # Her body (pet/, Godot on the GPU), if its model is there. Started through
 # godot-gate.sh like every Godot run here (it links the host GPU libraries and
 # waits for the machine to be quiet enough). ARIADNE2_NO_PET=1 skips it.
-GODOT=/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64
-if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -x "$GODOT" ]; then
-  ( sleep 2; exec "$HOME/.local/bin/godot-gate.sh" "$GODOT" --path pet --display-driver x11 ) >/dev/null 2>&1 &
+GODOT=${ARIADNE2_GODOT:-/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64}
+[ -x "$GODOT" ] || GODOT=$(command -v godot4 || command -v godot || true)
+GATE=$HOME/.local/bin/godot-gate.sh; [ -x "$GATE" ] || GATE=
+if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -n "$GODOT" ] && [ -x "$GODOT" ]; then
+  ( sleep 2; exec $GATE "$GODOT" --path pet --display-driver x11 ) >/dev/null 2>&1 &
   pet=$!
-  trap 'kill $core $pet 2>/dev/null; pkill -f "Godot_v4.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
+  trap 'kill $core $pet 2>/dev/null; pkill -f "[Gg]odot.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 fi
 # Her Live2D body (ariadne2/pet2d): idles hidden unless the Avatar "Model" names
 # a Live2D model. Through XWayland like the desk, for the click-through region.
 if [ -z "$ARIADNE2_NO_PET" ] && [ -f ariadne2/pet2d/web/vendor/live2dcubismcore.min.js ]; then
   ( sleep 2; GDK_BACKEND=x11 exec python3 -m ariadne2.pet2d ) 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" >&2) &
   pet2d=$!
-  trap 'kill $core $pet $pet2d 2>/dev/null; pkill -f "Godot_v4.*--path pet" 2>/dev/null; pkill -f "[a]riadne2.pet2d" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
+  trap 'kill $core $pet $pet2d 2>/dev/null; pkill -f "[Gg]odot.*--path pet" 2>/dev/null; pkill -f "[a]riadne2.pet2d" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 fi
 # Through XWayland: as a native Wayland window the desk sometimes kept the
 # size KWin first gave it on the smaller monitor and refused to grow, cutting

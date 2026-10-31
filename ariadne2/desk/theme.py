@@ -14,7 +14,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
 LAYER_TITLE = "ariadne2-desk"     # the KWin script finds the layer by this
-OUTPUT = "DP-2"                    # the ultrawide
+# The monitor: kwin_layer.js takes the biggest, or ARIADNE2_OUTPUT.
 
 RED = (1.0, 0x2A / 255, 0x3D / 255)          # #ff2a3d structure, live state
 RED_HOT = (1.0, 0x4D / 255, 0x5E / 255)      # #ff4d5e something active

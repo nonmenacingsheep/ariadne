@@ -72,9 +72,10 @@ def provider_for(model: str) -> str:
 
 
 def data_dir() -> Path:
-    # 1.x's own folder, so its saved keys keep working here.
-    base = os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")
-    return Path(base) / "ariadne"
+    """Where keys live: 1.x's folder when it exists (so its saved keys keep
+    working), else 2.0's own (a fresh install)."""
+    base = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+    return base / "ariadne" if (base / "ariadne").is_dir() else base / "ariadne2"
 
 
 def find_key(provider: str) -> str | None:

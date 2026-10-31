@@ -84,7 +84,15 @@ def unload(plugin: str = PLUGIN) -> None:
 
 
 def load_layer_script() -> bool:
-    return _load(SCRIPT, PLUGIN)
+    """The layer script, told which monitor to live on: ARIADNE2_OUTPUT (a KWin
+    output name such as DP-2), or empty for the biggest screen."""
+    want = "".join(c for c in os.environ.get("ARIADNE2_OUTPUT", "") if c.isalnum() or c in "-_.")
+    js = SCRIPT.read_text("utf-8").replace('var OUTPUT = "";', f'var OUTPUT = "{want}";', 1)
+    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "ariadne2"
+    cache.mkdir(parents=True, exist_ok=True)
+    path = cache / "kwin_layer.js"
+    path.write_text(js, "utf-8")
+    return _load(path, PLUGIN)
 
 
 def run_once(js: str, plugin: str = "ariadne2-once") -> bool:

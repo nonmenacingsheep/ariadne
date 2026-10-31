@@ -61,6 +61,15 @@ class UpdaterTests(unittest.IsolatedAsyncioTestCase):
         st = await Updater(self.publish, root=self.app).check(install=True)       # the chip's Install
         self.assertEqual(st["status"], "updated")
 
+    async def test_his_own_file_where_the_update_adds_one_is_kept_aside(self):
+        (self.dev / "body.vrm").write_text("aries")
+        git(self.dev, "add", "body.vrm"); git(self.dev, "commit", "-m", "ship a body"); git(self.dev, "push", "origin", "main")
+        (self.app / "body.vrm").write_text("his own")             # untracked in his copy
+        st = await Updater(self.publish, root=self.app).check(install=True)
+        self.assertEqual(st["status"], "updated")
+        self.assertEqual((self.app / "body.vrm").read_text(), "aries")
+        self.assertEqual((self.app / "body.vrm.local-backup").read_text(), "his own")
+
     async def test_local_edits_are_never_touched(self):
         self.push("remote change")
         (self.app / "a.txt").write_text("my edit\n")

@@ -106,6 +106,16 @@ class Updater:
                 return await self._say(status="available", behind=behind, commits=commits)
             code, before = await git(root, "rev-parse", "HEAD")
             code, out = await git(root, "merge", "--ff-only", "--quiet", upstream)
+            if code and "untracked working tree files would be overwritten" in out:
+                # A file of his own sits where the update now ships one (a .vrm he
+                # put at pet/models/aries.vrm before it was included): keep his as
+                # <name>.local-backup and take the update.
+                for line in out.splitlines():
+                    rel = line.strip()
+                    if rel and (root / rel).is_file() and not rel.startswith(("error", "Please", "Aborting")):
+                        (root / rel).rename(root / (rel + ".local-backup"))
+                        log.info("update: kept his %s as %s.local-backup", rel, rel)
+                code, out = await git(root, "merge", "--ff-only", "--quiet", upstream)
             if code:
                 log.warning("update failed: %s", out[:300])
                 return await self._say(status="failed", behind=behind, commits=commits)

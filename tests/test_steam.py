@@ -17,6 +17,7 @@ NOW = 1_800_000_000
 
 def manifest(appid, name, flags=4, done=0, total=0, staged=0, to_stage=0, last=0):
     return (f'"AppState"\n{{\n\t"appid"\t\t"{appid}"\n\t"name"\t\t"{name}"\n'
+            f'\t"installdir"\t\t"{name}"\n'
             f'\t"StateFlags"\t\t"{flags}"\n\t"LastPlayed"\t\t"{last}"\n\t"SizeOnDisk"\t\t"1000"\n'
             f'\t"BytesToDownload"\t\t"{total}"\n\t"BytesDownloaded"\t\t"{done}"\n'
             f'\t"BytesToStage"\t\t"{to_stage}"\n\t"BytesStaged"\t\t"{staged}"\n'
@@ -423,12 +424,23 @@ class VerbTests(Base):
         self.assertIn("confirm with him first", a.verb("close").description)
         self.assertIn("unsaved", a.verb("close").description)
 
-    async def test_uninstall_asks_steam_which_asks_him(self):
+    async def test_uninstall_removes_it_without_a_dialog_and_keeps_saves(self):
         a = self.make()
-        self.assertIn("Asked Steam to uninstall Enshrouded", await a.run("uninstall", {"game": "enshrouded"}))
-        self.assertEqual(self.opened, ["steam://uninstall/1203620"])
+        apps = self.tree.apps
+        game = apps / "common" / "Enshrouded"
+        (game / "bin").mkdir(parents=True)
+        (game / "bin" / "game.exe").write_bytes(b"x" * 2000)
+        saves = apps / "compatdata" / "1203620" / "pfx"
+        saves.mkdir(parents=True)
+        other = apps / "common" / "Other"
+        other.mkdir(parents=True)
+        out = await a.run("uninstall", {"game": "enshrouded"})
+        self.assertIn("Uninstalled Enshrouded", out)
+        self.assertEqual(self.opened, [])                            # no Steam dialog
+        self.assertFalse(game.exists())
+        self.assertFalse((apps / "appmanifest_1203620.acf").exists())
+        self.assertTrue(saves.is_dir() and other.is_dir())
         self.assertIn("isn't installed", await a.run("uninstall", {"game": "roadcraft"}))
-        self.assertEqual(len(self.opened), 1)
         with self.assertRaises(AdapterError):
             await a.run("uninstall", {"game": " "})
 

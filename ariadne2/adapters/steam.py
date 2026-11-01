@@ -97,6 +97,35 @@ def _send(pid: int, sig: int) -> None:
         raise AdapterError(f"I'm not allowed to signal that game ({e.strerror})")
 
 
+def remove_install(m: dict) -> int:
+    """Delete one game's install (see _uninstall). Returns the bytes freed."""
+    import shutil
+    manifest = m.get("manifest") or ""
+    lib = os.path.dirname(manifest)
+    folder = m.get("installdir") or ""
+    if not manifest or os.path.basename(lib) != "steamapps" or not folder or "/" in folder or folder in (".", ".."):
+        raise AdapterError("I can't tell where that game is installed, so I left it alone")
+    common = os.path.realpath(os.path.join(lib, "common"))
+    target = os.path.realpath(os.path.join(common, folder))
+    if os.path.dirname(target) != common:
+        raise AdapterError("that game's folder points outside its library, so I left it alone")
+    size = 0
+    for d, _, files in os.walk(target):
+        for f in files:
+            try:
+                size += os.lstat(os.path.join(d, f)).st_size
+            except OSError:
+                pass
+    os.remove(manifest)                         # first: Steam stops counting it installed
+    shutil.rmtree(target, ignore_errors=True)
+    appid = str(m.get("appid") or "")
+    for cache in ("downloading", "shadercache"):
+        p = os.path.join(lib, cache, appid)
+        if appid and os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p, ignore_errors=True)
+    return size
+
+
 class SteamAdapter(Adapter):
     name = "steam"
     events = ("game_started", "game_closed", "download_done")
@@ -137,9 +166,10 @@ class SteamAdapter(Adapter):
                  {"type": "object", "properties": {"game": {"type": "string"}}}, self._close, "close"),
             Verb("install", "Install a game he owns that isn't installed (by name, or appid). Steam "
                  "shows its own install dialog for him to confirm.", game, self._install, "install"),
-            Verb("uninstall", "Uninstall an installed game (by name, or appid) to free space. Steam shows "
-                 "its own confirmation for him to click, so nothing goes until he does. Only when he asked "
-                 "for it; say which game you're asking about.", game, self._uninstall, "uninstall"),
+            Verb("uninstall", "Uninstall an installed game (by name, or appid) right away: its files are "
+                 "deleted and the space is free at once (Proton saves are kept). Only when he asked this turn "
+                 "for games to go, by name or by a rule like 'ones I haven't played in a while'.",
+                 game, self._uninstall, "uninstall", consent="him"),
             Verb("library", "Look up his Steam library as text: with a query, matching games (installed "
                  "or just owned) with appid, hours played and last played; without, the installed "
                  "games, most recently played first.",
@@ -362,7 +392,11 @@ class SteamAdapter(Adapter):
         return f"Closed {pick['name']}."
 
     async def _uninstall(self, game: str) -> str:
-        """Steam's own uninstall dialog (steam://uninstall): he confirms it there."""
+        """Removes the game as Steam's uninstall does, without its dialog: the
+        appmanifest (Steam then counts it uninstalled) and the install folder,
+        plus its download and shader caches. compatdata (a Proton game's
+        prefix, where many keep their saves) stays. Only inside that library's
+        steamapps, and only the folder the manifest names."""
         scan = await self._fresh()
         q = str(game or "").strip()
         if not q:
@@ -376,9 +410,10 @@ class SteamAdapter(Adapter):
         running = (scan.get("playing") or {}).get("appid") if isinstance(scan.get("playing"), dict) else None
         if running == appid:
             raise AdapterError(f"{name} is running; close it first")
-        await self._open(f"steam://uninstall/{appid}")
+        gone = await asyncio.to_thread(remove_install, m)
         self._poke()
-        return f"Asked Steam to uninstall {name}. Steam shows a dialog he has to confirm."
+        await self.refresh()
+        return f"Uninstalled {name}" + (f", {gone / 1e9:.0f} GB freed." if gone else ".")
 
     async def _install(self, game: str) -> str:
         scan = await self._fresh()

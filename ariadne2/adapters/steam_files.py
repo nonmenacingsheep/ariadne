@@ -228,7 +228,8 @@ class SteamFiles:
                        "bytes_done": _int(m.get("bytesdownloaded")),
                        "bytes_total": _int(m.get("bytestodownload")),
                        "staged": _int(m.get("bytesstaged")), "to_stage": _int(m.get("bytestostage")),
-                       "mtime": os.path.getmtime(path)}
+                       "mtime": os.path.getmtime(path), "manifest": path,
+                       "installdir": str(m.get("installdir") or "")}
                 old = out.get(appid)
                 if old is None or (row["installed"] and not old["installed"]):
                     out[appid] = row        # a stale copy on a vanished drive must not win

@@ -151,6 +151,7 @@ class Conversation:
         self.flows = flows                # the flow engine: her flow tools, and what flows start from
         self.on_text = on_text            # called with each text he submits (You say starts)
         self.on_turn = on_turn            # on_turn(his_text, her_reply, when): after each turn of his words
+        self.on_tool = None               # on_tool(name, args): after each tool she runs (core/downloads.py)
         self.attach_guard = attach_guard or df.Guard()   # which files he may attach: the files widget's rules
         self.history: list[dict] = []
         # Boot stamp in ids: a restarted core must not reuse ids a desk still holds.
@@ -433,6 +434,11 @@ class Conversation:
         except Exception:
             log.exception("tool %s crashed", call.name)
             result.update(content="that tool broke on my side.", is_error=True)
+        if self.on_tool and not result.get("is_error"):
+            try:
+                self.on_tool(call.name, call.input)
+            except Exception:
+                log.exception("on_tool hook failed")
         return result
 
     async def flow_turn(self, flow_name: str, sentence: str, values: dict | None = None,

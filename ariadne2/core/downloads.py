@@ -1,8 +1,11 @@
-"""Every download on the machine, for the desk's download bars.
+"""The downloads she starts, for the desk's download bars.
 
-Three sources, merged every couple of seconds and sent as one `downloads`
-message (desk.js shows them under her name while she's quiet, and as rows in
-the chat where her steps go):
+Only hers: a download counts when it first shows up within ACTED_S of a tool
+she ran (a page opened, a click, a command), or within STEAM_S of a Steam
+install she asked for (Steam waits on his click in its dialog first). One he
+starts while she's idle never shows. Three places are watched, merged every
+couple of seconds and sent as one `downloads` message (desk.js shows them
+under her name while she's quiet, and as rows in the chat where her steps go):
 
 - Steam: the Steam adapter's own download rows (progress, rate).
 - Chromium-family browsers (Chrome, Chromium, Opera, Brave, Edge, Vivaldi,
@@ -34,6 +37,8 @@ log = logging.getLogger("ariadne2.downloads")
 EVERY = 2.0
 HISTORY_EVERY = 4.0                  # the browsers' databases are read less often
 PARTIAL = (".crdownload", ".part", ".partial", ".download", ".opdownload")
+ACTED_S = 90.0                       # a new download this soon after one of her tools is hers
+STEAM_S = 900.0                      # a Steam download this soon after her install verb is hers
 GROWING_FOR = 8.0                    # a plain file counts as downloading while it grew this recently
 RATE_WINDOW = 20.0
 _BROWSERS = ("google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium", "opera", "opera-gx",
@@ -121,6 +126,31 @@ class DownloadWatch:
         self._profiles: list[Path] = []
         self._last: list | None = None
         self._task: asyncio.Task | None = None
+        self._acted = -1e9                   # when she last ran a tool
+        self._steam_asked = -1e9             # when she last asked Steam to install
+        self._hers: dict[str, bool] = {}     # download id -> hers, decided when first seen
+
+    def note_tool(self, name: str, args) -> None:
+        """Conversation.on_tool: she just ran something that may start a download."""
+        now = self.clock()
+        self._acted = now
+        action = args.get("action") if isinstance(args, dict) else None
+        if name == "steam_install" or (name == "steam" and action == "install"):
+            self._steam_asked = now
+
+    def _mine(self, items: list[dict]) -> list[dict]:
+        now, out = self.clock(), []
+        for i in items:
+            if i["id"] not in self._hers:
+                window = STEAM_S if i["source"] == "steam" else ACTED_S
+                since = (self._steam_asked if i["source"] == "steam" else self._acted)
+                self._hers[i["id"]] = now - since <= window
+            if self._hers[i["id"]]:
+                out.append(i)
+        live = {i["id"] for i in items}
+        for k in [k for k in self._hers if k not in live]:
+            del self._hers[k]                # gone: a later download with the same id is judged afresh
+        return out
 
     # ---- reading ----
 
@@ -191,7 +221,7 @@ class DownloadWatch:
                  "state": d.get("state") or "downloading"} for d in rows]
 
     def collect(self) -> list[dict]:
-        return self.steam_items() + self.files()
+        return self._mine(self.steam_items() + self.files())
 
     def finished(self, item: dict) -> bool:
         """Whether a download that just left the list completed (else it was stopped)."""

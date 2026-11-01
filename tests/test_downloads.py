@@ -23,6 +23,7 @@ class Watch(unittest.TestCase):
         self.dl.mkdir()
         self.t = [100.0]
         self.w = DownloadWatch(None, steam=FakeSteam(), home=self.home, clock=lambda: self.t[0])
+        self.w.note_tool("steam", {"action": "install", "game": "cyberpunk"})     # she started them
 
     def ids(self):
         return {i["id"].split("/")[-1] if i["id"].startswith("file:") else i["id"]: i for i in self.w.collect()}
@@ -53,6 +54,7 @@ class Watch(unittest.TestCase):
         self.assertNotIn("big.iso", first)                              # not seen growing yet
 
         self.t[0] += 2
+        self.w.note_tool("shell", {"command": "curl -O big.iso"})
         grow.write_bytes(b"x" * 500)
         self.assertIn("big.iso", self.ids())                            # curl, wget, any app
         self.t[0] += 30
@@ -64,6 +66,7 @@ class Watch(unittest.TestCase):
         async def publish(m):
             sent.append(protocol.decode(protocol.encode(m)))
         w = DownloadWatch(publish, steam=None, home=self.home, clock=lambda: self.t[0])
+        w.note_tool("browser", {"action": "open"})
         part = self.dl / "a.part"
         part.write_bytes(b"x")
         asyncio.run(w.tick())
@@ -73,12 +76,25 @@ class Watch(unittest.TestCase):
         self.assertEqual([len(m["items"]) for m in sent], [1, 0])
         self.assertEqual(sent[1]["ended"], [{"id": "file:" + str(part), "name": "a", "ok": False}])   # no a, so stopped
 
+    def test_only_downloads_she_started(self):
+        w = DownloadWatch(None, steam=FakeSteam(), home=self.home, clock=lambda: self.t[0])
+        (self.dl / "his.part").write_bytes(b"x")
+        self.assertEqual(w.collect(), [])                       # she did nothing: his, not shown
+        self.t[0] += 200
+        w.note_tool("browser", {"action": "open", "url": "https://example.com/x.zip"})
+        (self.dl / "hers.part").write_bytes(b"x")
+        self.assertEqual([i["name"] for i in w.collect()], ["hers"])   # the earlier one stays his
+        self.t[0] += 200
+        (self.dl / "later.part").write_bytes(b"x")
+        self.assertEqual([i["name"] for i in w.collect()], ["hers"])   # long after her action: his
+
     def test_a_finished_download_says_so(self):
         sent = []
 
         async def publish(m):
             sent.append(m)
         w = DownloadWatch(publish, steam=None, home=self.home, clock=lambda: self.t[0])
+        w.note_tool("browser", {"action": "open"})
         part = self.dl / "song.flac.part"
         part.write_bytes(b"x")
         asyncio.run(w.tick())

@@ -152,6 +152,7 @@ async def run(args: argparse.Namespace) -> None:
     body_models = BodyModels(server.publish, settings)
     from .downloads import DownloadWatch
     download_watch = DownloadWatch(server.publish, steam=adapters.get("steam"))
+    conversation.on_tool = download_watch.note_tool
     if "avatar" in adapters:
         adapters["avatar"].settings = settings      # pin / unpin are his Avatar settings
     settings.status_providers[("avatar", "live2d_core")] = body_models.core_status

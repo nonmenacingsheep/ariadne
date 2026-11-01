@@ -30,12 +30,13 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("WebKit", "6.0")
-from gi.repository import Gdk, GLib, Gtk, WebKit  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk, WebKit  # noqa: E402
 
 from .beats import BeatListener  # noqa: E402
 
 log = logging.getLogger("ariadne2.pet2d")
 
+GAZE_PLUGIN = "ariadne2-pet2d-gaze"
 TITLE = "ariadne2-pet-l2d"            # KWin's script matches the "ariadne2-pet" prefix
 PORT = 47120
 WEB = Path(__file__).with_name("web")
@@ -102,6 +103,7 @@ class PetWindow(Gtk.Window):
         self.music = False                         # Spotify is playing
         self._inbox: list = []                     # from the core, waiting for the next 50 ms delivery
         self._inbox_lock = threading.Lock()
+        self.cursor: tuple[int, int] | None = None   # from KWin (kwin_gaze.js), sent with the next delivery
         GLib.timeout_add(50, self._deliver)
         self.beats = BeatListener(lambda period, strength: GLib.idle_add(self._beat, period, strength))
 
@@ -321,6 +323,9 @@ class PetWindow(Gtk.Window):
         self._batch = []
         for msg in batch:
             self._forward(msg)
+        if self.cursor and self.model:
+            self._batch.append({"t": "cursor", "x": self.cursor[0], "y": self.cursor[1]})
+        self.cursor = None
         if self._batch:
             self._js("messages", self._batch)
         return True
@@ -353,6 +358,31 @@ class PetApp(Gtk.Application):
                                                       Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             self.win = PetWindow(self)
             self.hold()            # stays alive while hidden (the 3D body chosen)
+            self._gaze()
+
+    # The pointer anywhere on screen, from KWin: her window only hears it over her.
+    GAZE_XML = """<node><interface name='io.ariadne2.Gaze'>
+      <method name='Cursor'><arg type='i' name='x' direction='in'/><arg type='i' name='y' direction='in'/></method>
+    </interface></node>"""
+
+    def _gaze(self) -> None:
+        try:
+            from ..desk import kwin
+            node = Gio.DBusNodeInfo.new_for_xml(self.GAZE_XML)
+            self.get_dbus_connection().register_object("/io/ariadne2/pet2d", node.interfaces[0],
+                                                       self._gaze_call, None, None)
+            if not kwin._load(Path(__file__).with_name("kwin_gaze.js"), GAZE_PLUGIN):
+                log.info("no KWin: she follows the pointer only over her")
+        except Exception as e:                     # no session bus, no KWin: over her only
+            log.info("no pointer feed (%s); she follows it only over her", e)
+
+    def _gaze_call(self, _conn, _sender, _path, _iface, method, params, invocation):
+        if method == "Cursor" and self.win is not None:
+            if self.win.cursor is None and not getattr(self, "_fed", False):
+                self._fed = True
+                log.info("the pointer feed from KWin is on")
+            self.win.cursor = params.unpack()
+        invocation.return_value(None)
 
 
 def main() -> int:
@@ -360,7 +390,14 @@ def main() -> int:
     app = PetApp()
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, app.quit)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, app.quit)
-    return app.run([])
+    try:
+        return app.run([])
+    finally:
+        try:
+            from ..desk import kwin
+            kwin.unload(GAZE_PLUGIN)         # the feed would call a body that's gone
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

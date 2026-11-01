@@ -15,6 +15,7 @@ global.requestAnimationFrame = () => 0;
 const p = globalThis.__pet;
 for (const k of ["load", "message", "settings", "layout", "feel", "beat"]) if (typeof p[k] !== "function") throw new Error("no pet." + k);
 p.message({ t: "speak", emotion: "excited", seconds: 2 });   // before a model: must not throw
+p.message({ t: "cursor", x: 10, y: 20 });
 console.log("ok");
 """
 

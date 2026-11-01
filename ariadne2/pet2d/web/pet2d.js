@@ -65,6 +65,8 @@ const pet = (() => {
   const face = { look: "", until: 0, w: {}, mouth: 0, speaking: false, level: 0, gaze: { x: 0, y: 0 } };
   let held = null, pokes = [], hitKey = "";
   let dispW = 0, dispH = 0, cw = 0, ch = 0;
+  const HEAD = 0.13;                    // where a full-body model's eyes are, as a share of its height
+  let head = HEAD;
   let pinPos = null;                       // where she was pinned (saved by the host)
   // The beat clock: real beats from the music (beats.py) re-anchor it; between
   // and without them it keeps time on its own.
@@ -93,13 +95,14 @@ const pet = (() => {
         addEventListener("pointerup", up);
         app.ticker.add(() => frame(Math.min(app.ticker.deltaMS / 1000, 0.1)));
       }
-      LOOKS = { ...BASE_LOOKS }; EXPR = {}; exprOn = "";
+      LOOKS = { ...BASE_LOOKS }; EXPR = {}; exprOn = ""; head = HEAD;
       try {
         const about = await (await fetch(new URL("about.json", uri))).json();
         for (const [look, v] of Object.entries(about.looks || {})) {
           if (typeof v === "string") EXPR[look] = v;                 // one of its expressions, by name
           else if (v && typeof v === "object") LOOKS[look] = v;      // its own parameter targets
         }
+        if (about.head > 0 && about.head < 1) head = about.head;    // its face's height, from the top
       } catch (e) { /* no about.json: the base looks only */ }
       const m = await PIXI.live2d.Live2DModel.from(uri, { autoInteract: false, autoUpdate: false });
       if (uri !== loadingUri) { m.destroy(); return; }
@@ -262,8 +265,7 @@ const pet = (() => {
   }
   function move(e) {
     if (!model) return;
-    const r = canvas.getBoundingClientRect();
-    face.gaze = { x: e.clientX - r.left, y: e.clientY - r.top, until: now() + 1.5 };
+    face.gaze = { x: e.clientX, y: e.clientY, until: now() + 2 };
     if (!held) return;
     const t = now(), dt = Math.max(0.008, t - held.t);
     held.moved += Math.abs(e.clientX - held.x) + Math.abs(e.clientY - held.y);
@@ -366,9 +368,19 @@ const pet = (() => {
     // Slow: the rig hangs her tail off this parameter, so a quick breath whips it about.
     core.setParameterValueById("ParamBreath", (Math.sin(t * (face.look === "asleep" ? 0.6 : 1.0)) + 1) / 2);
     // Where she looks: the pointer when it's near her, else idly around.
-    if (face.gaze.until && t < face.gaze.until) model.focus(face.gaze.x, face.gaze.y);
-    else if (me.mode === "walk") model.focus(Math.sign(me.target - me.x) > 0 ? cw : 0, ch * 0.2);
-    else if (Math.random() < dt * 0.25) model.focus(Math.random() * cw, Math.random() * ch * 0.6);
+    const headY = me.y - dispH * (1 - head);
+    if (face.gaze.until && t < face.gaze.until) lookAt(face.gaze.x, face.gaze.y);
+    else if (me.mode === "walk") lookAt(me.x + Math.sign(me.target - me.x) * dispW * 2, headY);
+    else if (Math.random() < dt * 0.25) lookAt(me.x + (Math.random() - 0.5) * dispW * 3, headY - (Math.random() - 0.3) * dispH * 0.5);
+  }
+
+  // A point on the page, looked at from her head. (model.focus aims from the
+  // middle of the model, her knees on a full-body one, and by direction only,
+  // so a pointer level with her face read as straight up or down.)
+  function lookAt(px, py) {
+    const hx = me.x, hy = me.y - dispH * (1 - head);
+    model.internalModel.focusController.focus(Math.tanh((px - hx) / (dispW * 1.2)),
+                                              Math.tanh((hy - py) / (dispH * 0.45)));
   }
 
   // ---------------------------------------------------------------- her commands
@@ -486,7 +498,8 @@ const pet = (() => {
         post({ t: "face", look: face.look, emotion: m.emotion });     // logged by the host, with the time
         break;
       }
-      case "ears": if (m.listening) { stir(); feel("wide", 1.0); face.gaze = { x: cw / 2, y: ch * 0.15, until: now() + 2 }; } break;
+      case "ears": if (m.listening) { stir(); feel("wide", 1.0); face.gaze = { x: me.x, y: me.y - dispH * (1 - head), until: now() + 2 }; } break;
+      case "cursor": if (!held) face.gaze = { x: Number(m.x), y: Number(m.y), until: now() + 2 }; break;
       case "action":
         if (!opt.react_to_work) break;
         stir();

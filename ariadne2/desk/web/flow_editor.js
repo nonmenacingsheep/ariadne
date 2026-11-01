@@ -50,7 +50,11 @@ const FlowEditor = (() => {
   }
 
   // ----- opening and closing -----
-  function openFlow(id) { send({ t: "flow_open", id: id || null }); show(); }
+  // The flow he clicked: its answer always loads, even over another flow still
+  // in the editor (which the guard below would otherwise keep, so every click
+  // showed whichever flow was loaded first).
+  let wanted;
+  function openFlow(id) { wanted = id || null; send({ t: "flow_open", id: wanted }); show(); }
   function show() { open = true; root.classList.add("open"); }
   function close() { open = false; root.classList.remove("open"); hidePalette(); send({ t: "__closed" }); }
   const isOpen = () => open;
@@ -61,8 +65,12 @@ const FlowEditor = (() => {
     if (msg.t === "flow_graph") {
       // Her edits arrive live: show them if this flow is open, or if nothing is.
       const theirs = msg.by === "aries";
-      if (!open && !theirs) return;
-      if (open && graph && graph.id && msg.id && msg.id !== graph.id && !theirs) return;
+      const asked = wanted !== undefined && !msg.by && (msg.id || null) === wanted;
+      if (asked) wanted = undefined;
+      else {
+        if (!open && !theirs) return;
+        if (open && graph && graph.id && msg.id && msg.id !== graph.id && !theirs) return;
+      }
       const before = graph && graph.id === msg.id ? new Set(graph.nodes.map(n => n.id)) : new Set();
       load(msg.graph || { nodes: [], links: [] }, msg.id);
       if (theirs) { show(); arrive(before); status.textContent = `${msg.summary || ""} — built by her`; }

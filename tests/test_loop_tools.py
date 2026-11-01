@@ -334,3 +334,16 @@ class RecordTests(unittest.TestCase):
         # she can't write one herself: a fake record in her words is dropped
         self.assertEqual(record("searched it ⟦ran: web_search⟧", []), "searched it")
         self.assertEqual(record("", ["shell \"ls\""]), '⟦ran: shell "ls"⟧')
+
+    def test_the_record_reaches_her_as_the_apps_note_not_her_words(self):
+        # Inside her own message she read it as something she'd typed, and
+        # told him she'd written it herself and never ran a thing.
+        from ariadne2.core.loop import as_sent
+        hist = [{"role": "user", "content": "turn your avatar on"},
+                {"role": "assistant", "content": "I'm back.\n⟦ran: settings set → Her body is now on.⟧"},
+                {"role": "user", "content": [{"type": "text", "text": "and this?"}]}]
+        sent = as_sent(hist)
+        self.assertEqual(sent[1]["content"], "I'm back.")
+        self.assertEqual(sent[2]["content"][0]["text"],
+                         "⟦app record of your previous reply, what it really ran: settings set → Her body is now on.⟧")
+        self.assertEqual(hist[1]["content"], "I'm back.\n⟦ran: settings set → Her body is now on.⟧")   # history untouched

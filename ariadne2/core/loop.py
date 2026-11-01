@@ -86,6 +86,30 @@ def outcome(result: dict) -> str:
     return "nothing"
 
 
+def as_sent(history: list[dict]) -> list[dict]:
+    """History as the model gets it: each reply's record moved out of her words
+    and onto the top of his next message, as the app's note. Left inside her
+    own message it read as something she had typed, and she'd tell him she'd
+    written the record herself and never ran a thing."""
+    out, note = [], ""
+    for msg in history:
+        content = msg["content"]
+        if msg["role"] == "assistant" and isinstance(content, str):
+            found = RECORD.findall(content)
+            if found:
+                note = found[-1].strip()[len("⟦ran: "):-1]
+                content = RECORD.sub("", content).strip() or "(no words, only actions)"
+        elif msg["role"] == "user" and note:
+            head = f"⟦app record of your previous reply, what it really ran: {note}⟧"
+            if isinstance(content, str):
+                content = head + "\n" + content
+            else:
+                content = [{"type": "text", "text": head}] + list(content)
+            note = ""
+        out.append({"role": msg["role"], "content": content})
+    return out
+
+
 def record(reply: str, did: list[str]) -> str:
     text = RECORD.sub("", reply or "").strip()
     if not did:
@@ -215,10 +239,11 @@ class Conversation:
         tools = self._tools()
         rounds = self._rounds()
         # Tool calls and results live only inside the turn; history keeps her words.
-        messages = list(self.history)
+        history = list(self.history)
         if files:                          # the files themselves are shown this turn only
             content = await asyncio.to_thread(attach_mod.user_content, text, files, self.attach_guard)
-            messages[-1] = {"role": "user", "content": content}
+            history[-1] = {"role": "user", "content": content}
+        messages = as_sent(history)
         splitter = SentenceSplitter()
         reply = ""
         used: list[str] = []
@@ -354,7 +379,19 @@ class Conversation:
         """The prompt, plus whatever a toolset says about itself (an open project, say)."""
         system = prompt.build(self.personality, self.snapshots())
         extra = [c for c in (getattr(ts, "context", lambda: "")() for ts in self.toolsets) if c]
+        flows = self._flow_names()
+        if flows:
+            extra.insert(0, flows)
         return system + ("\n\n" + "\n\n".join(extra) if extra else "")
+
+    def _flow_names(self) -> str:
+        """His flows by name, so "run the Olympus one" means something without a list call."""
+        try:
+            rows = self.flows.rows() if self.flows is not None else []
+        except Exception:
+            return ""
+        names = [f'{r["name"]} ({"on" if r["enabled"] else "off"})' for r in rows[:30]]
+        return ("Flows (flow_manage runs them): " + "; ".join(names)) if names else ""
 
     def _rounds(self) -> int:
         more = [r for r in (getattr(ts, "rounds", lambda: None)() for ts in self.toolsets) if r]

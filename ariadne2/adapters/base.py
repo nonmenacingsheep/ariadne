@@ -40,6 +40,7 @@ class Verb:
     # his own words this turn ask for it and name who it's for; see consent.py.
     # "spend": the verb spends his Claude usage (starts a run). It only runs when
     # his own words this turn ask for Claude, or a hand, to do it.
+    # "him": anything he said this turn (no flow or dropped file can trigger it).
     consent: str | None = None
     # The verb returns text that came from outside (a web page): in a flow it
     # taints the path, like an outside-content start does (core/flows/graph.py).

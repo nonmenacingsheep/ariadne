@@ -130,4 +130,6 @@ async def call_tool(adapters: dict[str, Adapter], name: str, args: dict | None,
             raise AdapterError(consent.refusal(person))
     elif v.consent == "spend" and not consent.allows_spend(his_words):
         raise AdapterError(consent.spend_refusal())
+    elif v.consent == "him" and not (his_words or "").strip():
+        raise AdapterError(f"Not done: {v.name.replace('_', ' ')} needs him to ask in his own words this turn.")
     return await adapter.run(v.name, args)

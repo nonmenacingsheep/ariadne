@@ -468,6 +468,22 @@ class Verbs(unittest.IsolatedAsyncioTestCase):
         self.assertIn("confirm", self.a.verb("close").description)
 
 
+class Restart(unittest.IsolatedAsyncioTestCase):
+    async def test_she_restarts_through_her_own_launcher_only_when_he_asks(self):
+        from ariadne2.adapters import AdapterError, call_tool
+        fp = FakeProc()
+        self.addCleanup(fp.tmp.cleanup)
+        spawned = []
+        a = adapter(fp, spawn=spawned.append)
+        with self.assertRaises(AdapterError):              # a flow's turn, a dropped file: no
+            await call_tool({"tasks": a}, "tasks", {"action": "restart_yourself"}, his_words=None)
+        self.assertEqual(spawned, [])
+        out = await call_tool({"tasks": a}, "tasks", {"action": "restart_yourself"}, his_words="restart yourself")
+        self.assertIn("Restarting", out)
+        self.assertTrue(spawned[0][-1].endswith("bin/ariadne2"))
+        self.assertIn("sleep", spawned[0][2])
+
+
 class Wiring(unittest.TestCase):
     def test_registered_everywhere(self):
         self.assertIn("tasks", protocol.WIDGETS)
@@ -476,7 +492,7 @@ class Wiring(unittest.TestCase):
         reg = adapters.load_adapters(None, only=["tasks"])
         self.assertIn("tasks", reg)
         (t,) = adapters.tools(reg)
-        self.assertEqual(set(t["input_schema"]["properties"]["action"]["enum"]), {"open", "report", "focus", "close"})
+        self.assertEqual(set(t["input_schema"]["properties"]["action"]["enum"]), {"open", "report", "focus", "close", "restart_yourself"})
 
     def test_default_rect_overlaps_nothing(self):
         def hit(a, b):

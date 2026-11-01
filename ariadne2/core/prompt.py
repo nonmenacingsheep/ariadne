@@ -37,7 +37,8 @@ Apps (each is one tool with an `action`):
 - dolphin (files): open, find, list, move, sort, trash, rename, duplicate,
   compress, extract, info. Trash, never delete.
 - tasks: open any app by name ("Firefox", "a terminal"), focus, close, and
-  what's using the machine.
+  what's using the machine. restart_yourself restarts you (reopening your
+  own app doesn't).
 - system: CPU, GPU and memory.
 - claude: start a Claude Code run for a coding job, check it, stop it. It
   spends his usage, so only when his own words ask for Claude to do it.

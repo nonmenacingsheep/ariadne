@@ -29,6 +29,8 @@ from .base import Adapter, AdapterError, Verb
 log = logging.getLogger("ariadne2.adapters.tasks")
 
 PERIOD = 2.0
+REPO = Path(__file__).resolve().parents[2]
+RESTART_DELAY = 8                # seconds: her last line gets spoken before everything closes
 WINDOW_EVERY = 3                 # a KWin script per poll is the dearest part, so every 6 s
 GPU_EVERY = 2
 MAX_APPS = 25
@@ -552,8 +554,9 @@ class TasksAdapter(Adapter):
     name = "tasks"
 
     def __init__(self, publish, root: str = "/proc", kwin=None, gpu=None, desktop=None, kill=None,
-                 self_pid: int | None = None, my_uid: int | None = None, mono=None) -> None:
+                 self_pid: int | None = None, my_uid: int | None = None, mono=None, spawn=None) -> None:
         super().__init__(publish)
+        self._spawn = spawn              # tests: catches the restart instead of running it
         self.sampler = ProcSampler(root)
         self._kwin = kwin
         self._gpu = gpu or read_gpu_apps
@@ -592,7 +595,29 @@ class TasksAdapter(Adapter):
                  "session and Ariadne herself.",
                  {"properties": {"app": {"type": "string", "description": "the app's name"}},
                   "required": ["app"]}, self._close, control="close"),
+            Verb("restart_yourself", "Restart yourself, Ariadne: every part closes and comes back in about "
+                 "20 seconds. Only when he asks. It ends whatever you have running (a Claude hand's job, a "
+                 "flow mid-run). Reopening your app with open does NOT restart you.",
+                 {}, self._restart, consent="him"),
         ]
+
+    async def _restart(self) -> str:
+        # Her own launcher, run straight from here, detached: it stops what's
+        # running (her included) and starts it all again. Going through the app
+        # menu (open "Ariadne 2") depended on the host launching it and, on
+        # 1 Nov, silently didn't.
+        import subprocess
+        argv = ["sh", "-c", f'sleep {RESTART_DELAY}; exec "$0"', str(REPO / "bin" / "ariadne2")]
+        if self._spawn is not None:
+            self._spawn(argv)
+        else:
+            base = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "ariadne2"
+            base.mkdir(parents=True, exist_ok=True)
+            with open(base / "launcher.log", "ab") as out:
+                subprocess.Popen(argv, cwd=REPO, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+        log.info("restarting in %ss, as he asked", RESTART_DELAY)
+        return f"Restarting in {RESTART_DELAY} seconds; I'll be back about 20 seconds after that."
 
     async def _open(self, app: str) -> str:
         from .launch import open_app

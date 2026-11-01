@@ -480,8 +480,8 @@ class Restart(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(spawned, [])
         out = await call_tool({"tasks": a}, "tasks", {"action": "restart_yourself"}, his_words="restart yourself")
         self.assertIn("Restarting", out)
-        self.assertTrue(spawned[0][-1].endswith("bin/ariadne2"))
-        self.assertIn("sleep", spawned[0][2])
+        self.assertEqual(len(spawned[0]), 1)
+        self.assertTrue(spawned[0][0].endswith("bin/ariadne2"))
 
 
 class Wiring(unittest.TestCase):

@@ -30,7 +30,6 @@ log = logging.getLogger("ariadne2.adapters.tasks")
 
 PERIOD = 2.0
 REPO = Path(__file__).resolve().parents[2]
-RESTART_DELAY = 8                # seconds: her last line gets spoken before everything closes
 WINDOW_EVERY = 3                 # a KWin script per poll is the dearest part, so every 6 s
 GPU_EVERY = 2
 MAX_APPS = 25
@@ -595,19 +594,17 @@ class TasksAdapter(Adapter):
                  "session and Ariadne herself.",
                  {"properties": {"app": {"type": "string", "description": "the app's name"}},
                   "required": ["app"]}, self._close, control="close"),
-            Verb("restart_yourself", "Restart yourself, Ariadne: every part closes and comes back in about "
-                 "20 seconds. Only when he asks. It ends whatever you have running (a Claude hand's job, a "
-                 "flow mid-run). Reopening your app with open does NOT restart you.",
+            Verb("restart_yourself", "Restart yourself, Ariadne: every part closes at once and comes back in "
+                 "about 20 seconds. Only when he asks. It ends whatever you have running (a Claude hand's job, a "
+                 "flow mid-run).",
                  {}, self._restart, consent="him"),
         ]
 
     async def _restart(self) -> str:
         # Her own launcher, run straight from here, detached: it stops what's
-        # running (her included) and starts it all again. Going through the app
-        # menu (open "Ariadne 2") depended on the host launching it and, on
-        # 1 Nov, silently didn't.
+        # running (her included) and starts it all again, right away.
         import subprocess
-        argv = ["sh", "-c", f'sleep {RESTART_DELAY}; exec "$0"', str(REPO / "bin" / "ariadne2")]
+        argv = [str(REPO / "bin" / "ariadne2")]
         if self._spawn is not None:
             self._spawn(argv)
         else:
@@ -616,8 +613,8 @@ class TasksAdapter(Adapter):
             with open(base / "launcher.log", "ab") as out:
                 subprocess.Popen(argv, cwd=REPO, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
                                  start_new_session=True)
-        log.info("restarting in %ss, as he asked", RESTART_DELAY)
-        return f"Restarting in {RESTART_DELAY} seconds; I'll be back about 20 seconds after that."
+        log.info("restarting, as he asked")
+        return "Restarting now; back in about 20 seconds."
 
     async def _open(self, app: str) -> str:
         from .launch import open_app

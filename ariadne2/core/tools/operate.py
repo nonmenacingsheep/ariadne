@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 
@@ -59,6 +60,15 @@ def _socket() -> str:
     return f"/run/user/{os.getuid()}/.ariadne_ydotool_socket"
 
 
+def _host() -> list[str]:
+    """Inside a toolbox, ydotool comes from the desktop itself (host-spawn): the
+    container has none, or Ubuntu's 0.1.x, whose commands are different, and
+    /dev/uinput is his to write on the host either way."""
+    if os.path.exists("/run/.containerenv") and shutil.which("host-spawn"):
+        return ["host-spawn"]
+    return []
+
+
 def _ydotool(*args: str) -> None:
     argv = ["ydotool", *args]
     if INPUT_HOOK is not None:
@@ -66,21 +76,25 @@ def _ydotool(*args: str) -> None:
         return
     windows.no_screen()
     _ensure_daemon()
-    subprocess.run(argv, env=dict(os.environ, YDOTOOL_SOCKET=_socket()), capture_output=True, timeout=10)
+    # The socket rides on the command line: host-spawn doesn't carry the environment across.
+    subprocess.run([*_host(), "env", f"YDOTOOL_SOCKET={_socket()}", *argv], capture_output=True, timeout=10)
 
 
 def _ensure_daemon() -> None:
     proc = _daemon["proc"]
     if proc is not None and proc.poll() is None and os.path.exists(_socket()):
         return
-    if not os.access("/dev/uinput", os.W_OK):
+    if not _host() and not shutil.which("ydotoold"):
+        raise ToolError("ydotool isn't installed, so there's no way to move the pointer (install.sh "
+                        "installs it; or he can: sudo apt install ydotool / dnf install ydotool)")
+    if not _host() and not os.access("/dev/uinput", os.W_OK):
         raise ToolError("this account can't write to /dev/uinput, so there is no way to move the "
                         "pointer; that needs the ydotool service or a udev rule, which is his to set up")
     try:
         os.unlink(_socket())
     except OSError:
         pass
-    _daemon["proc"] = subprocess.Popen(["ydotoold", "-p", _socket(), "-P", "0600"],
+    _daemon["proc"] = subprocess.Popen([*_host(), "ydotoold", "-p", _socket(), "-P", "0600"],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                        start_new_session=True)
     for _ in range(40):

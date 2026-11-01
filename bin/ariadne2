@@ -70,6 +70,10 @@ if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -n "$GODOT" ] &
   pet=$!
   trap 'kill $core $pet 2>/dev/null; pkill -f "[Gg]odot.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 fi
+# The desk and her Live2D body are WebKit windows through XWayland. On NVIDIA,
+# WebKit's DMA-BUF renderer made both blink now and then (widgets and body
+# together, idle or not); the older path it falls back to doesn't.
+export WEBKIT_DISABLE_DMABUF_RENDERER=${WEBKIT_DISABLE_DMABUF_RENDERER:-1}
 # Her Live2D body (ariadne2/pet2d): idles hidden unless the Avatar "Model" names
 # a Live2D model (and waits for Cubism Core if it isn't downloaded yet).
 # Through XWayland like the desk, for the click-through region.

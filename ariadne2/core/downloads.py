@@ -353,6 +353,10 @@ class DownloadWatch:
             del self._grew[k]
         return items
 
+    def active(self) -> bool:
+        """Whether any download of hers is going (as of the last look)."""
+        return bool(self._last)
+
     def collect(self) -> list[dict]:
         return self._mine(self.steam_items() + self.files() + self.job_items())
 

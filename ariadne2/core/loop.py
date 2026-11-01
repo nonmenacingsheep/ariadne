@@ -196,7 +196,15 @@ class Conversation:
                 log.exception("on_text hook failed")
         # Not his words: something he did (a file dropped on her body), told
         # to her as text. Such a turn can never satisfy a consent check.
-        self._queue.put_nowait((text, his_words, files))
+        self._queue.put_nowait((text, his_words, files, None))
+        if self._worker is None or self._worker.done():
+            self._worker = asyncio.create_task(self._run())
+
+    def wake(self, text: str, consent: str | None = None) -> None:
+        """A check-in of hers firing (core/later.py): a turn with no words from him
+        in it. `consent` is his words from the turn that set it, so what he asked
+        for then can still be done; None for one set where he said nothing."""
+        self._queue.put_nowait((text, False, [], {"consent": consent}))
         if self._worker is None or self._worker.done():
             self._worker = asyncio.create_task(self._run())
 
@@ -211,9 +219,9 @@ class Conversation:
 
     async def _run(self) -> None:
         while True:
-            text, his_words, files = await self._queue.get()
+            text, his_words, files, wake = await self._queue.get()
             try:
-                await self._turn(text, his_words, files)
+                await self._turn(text, his_words, files, wake)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -223,18 +231,22 @@ class Conversation:
 
     # ---- one turn ----
 
-    async def _turn(self, text: str, his_words: bool = True, files=()) -> None:
+    async def _turn(self, text: str, his_words: bool = True, files=(), wake: dict | None = None) -> None:
         n = next(self._n)
         self._speaking_turn = n
         started = time.time()
         you_id, her_id = f"{self._boot}-{n}-you", f"{self._boot}-{n}-aries"
         if not text:                       # attachments with no words: nothing he said backs this turn
             text, his_words = f"(sent {attach_mod.names(files, self.attach_guard)})", False
-        await self.publish(protocol.chat(you_id, "you", text, done=True))
+        if wake is None:                   # a check-in of hers has no bubble of his
+            await self.publish(protocol.chat(you_id, "you", text, done=True))
         await self.publish(protocol.core_line(THINKING))
         marker = f" [attached: {attach_mod.names(files, self.attach_guard)}]" if files else ""
         self.history.append({"role": "user", "content": text + marker})
         self._his_words = text if his_words else None   # what consent verbs are checked against
+        if wake is not None:
+            self._his_words = wake.get("consent")       # his words from the turn that set the check-in
+            his_words = True                           # kept in the transcript, so a restart remembers it
         screen = MarkStream()
         bare = BareMarks()                  # "amazed Wait" -> "((amazed)) Wait", before anything sees it
         self._note_turn(text)

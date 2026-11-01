@@ -126,12 +126,14 @@ async def run(args: argparse.Namespace) -> None:
     extensions = Extensions(server.publish)
     memory = MemoryToolset()
     memory.warm()           # the model and the old transcript, loaded off the main thread
+    from .later import Later
+    later = Later(lambda text, consent: conversation.wake(text, consent))
     conversation = Conversation(server.publish, lambda: server.snapshots,
                                 model_name=args.model or settings.get("models", "conversation_model"),
                                 personality=args.personality or settings.get("general", "personality"),
                                 on_sentence=voice.say if voice else None,
                                 adapters=adapters, toolsets=[GeneralTools(), memory, ExtensionTools(extensions),
-                                          SettingsTools(settings, server.publish)],
+                                          SettingsTools(settings, server.publish), later],
                                 on_turn=memory.on_turn)
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)
@@ -154,6 +156,7 @@ async def run(args: argparse.Namespace) -> None:
     from .downloads import DownloadWatch
     download_watch = DownloadWatch(server.publish, steam=adapters.get("steam"))
     conversation.on_tool = download_watch.note_tool
+    later.downloads = download_watch
     if "avatar" in adapters:
         adapters["avatar"].settings = settings      # pin / unpin are his Avatar settings
     settings.status_providers[("avatar", "live2d_core")] = body_models.core_status
@@ -247,6 +250,7 @@ async def run(args: argparse.Namespace) -> None:
     extensions.start()
     body_models.start()
     download_watch.start()
+    later.start()
     for part in (voice, ears):
         if part:
             await part.start()
@@ -262,6 +266,7 @@ async def run(args: argparse.Namespace) -> None:
         await extensions.stop()
         body_models.stop()
         download_watch.stop()
+        later.stop()
         inbox_task.cancel()
         avatar_task.cancel()
         await conversation.stop()

@@ -26,6 +26,7 @@ var FPS_IDLE := 15
 var allow := {"wander": true, "sit_on_widgets": true, "walk_off_edges": true, "dance_to_music": true,
 	"play_ball": true, "nap": true, "seek_cursor": true, "react_to_work": true, "lip_sync": true}
 var shown := true                          # Desktop: her body
+var hidden_frames := 0                      # frames drawn since she was hidden; rendering stops after a few
 var settings_mtime := 0
 var settings_check := 0.0
 
@@ -593,7 +594,16 @@ func _process(delta: float) -> void:
 		_read_settings()
 	if not shown:
 		Engine.max_fps = 5                  # still reading settings, so she can come back
+		# Draw nothing at all once the empty frame is up: a full-screen
+		# transparent window presenting even 5 times a second flickered the
+		# desk under it now and then (XWayland on NVIDIA).
+		hidden_frames += 1
+		if hidden_frames == 3:
+			RenderingServer.render_loop_enabled = false
 		return
+	if hidden_frames:
+		hidden_frames = 0
+		RenderingServer.render_loop_enabled = true
 	_think(delta)
 	_move(delta)
 	ap.advance(delta)                       # clips first, then her arms, head and face on top

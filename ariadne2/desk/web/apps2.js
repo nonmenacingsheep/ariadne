@@ -101,7 +101,9 @@ const Tasks = (() => {
     const list = w.bd.querySelector(".tk-list"), keep = list.scrollTop;
     list.innerHTML = "";
     for (const a of st.apps || []) {
-      const row = el("div", "tk-row");
+      const row = el("div", "tk-row" + (a.pinned ? " pinned" : ""));
+      row.title = a.pinned ? "Right-click to unpin" : "Right-click to pin to the top";
+      row.oncontextmenu = e => { e.preventDefault(); send({ t: "press", widget: "tasks", control: "pin", value: a.name }); };
       const tile = el("span", "tk-tile", (a.name || "?").charAt(0).toUpperCase());
       tile.style.background = `hsl(${hue(a.name)} 40% 30%)`;
       const nm = el("span", "tk-name", a.name); if (a.windows) nm.title = `${a.windows} window${a.windows > 1 ? "s" : ""}`;

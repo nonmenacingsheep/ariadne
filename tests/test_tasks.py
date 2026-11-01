@@ -112,6 +112,7 @@ def adapter(fp, **kw):
     tmp = tempfile.TemporaryDirectory()
     kw.setdefault("desktop", desktop_dir(tmp.name))
     kw.setdefault("self_pid", 402)
+    kw.setdefault("pins", Path(tmp.name) / "pins.json")     # never his real pins
     kw.setdefault("my_uid", ME)
     kw.setdefault("kwin", lambda js, reply: "[]")
     async def no_gpu():
@@ -466,6 +467,27 @@ class Verbs(unittest.IsolatedAsyncioTestCase):
 
     def test_close_description_says_confirm(self):
         self.assertIn("confirm", self.a.verb("close").description)
+
+
+class Pins(unittest.IsolatedAsyncioTestCase):
+    async def test_right_click_pins_an_app_to_the_top_and_it_stays_pinned(self):
+        fp = FakeProc()
+        self.addCleanup(fp.tmp.cleanup)
+        world(fp)
+        path = Path(fp.tmp.name) / "pins.json"
+        a = adapter(fp, pins=path)
+        await a.refresh()
+        last = a.state()["apps"][-1]["name"]
+        await a.press("pin", last)
+        self.assertEqual(a.state()["apps"][0]["name"], last)
+        self.assertTrue(a.state()["apps"][0]["pinned"])
+        self.assertEqual(json.loads(path.read_text()), [last])
+        self.assertIn("tasks", {m.get("widget") for m in a.published})
+        again = adapter(fp, pins=path)                     # survives a restart
+        await again.refresh()
+        self.assertEqual(again.state()["apps"][0]["name"], last)
+        await a.press("pin", last)                         # and unpins
+        self.assertFalse(any(r.get("pinned") for r in a.state()["apps"]))
 
 
 class Restart(unittest.IsolatedAsyncioTestCase):

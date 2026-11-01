@@ -30,6 +30,11 @@ log = logging.getLogger("ariadne2.adapters.tasks")
 
 PERIOD = 2.0
 REPO = Path(__file__).resolve().parents[2]
+
+
+def pins_path() -> Path:
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+    return base / "ariadne2" / "tasks_pins.json"
 WINDOW_EVERY = 3                 # a KWin script per poll is the dearest part, so every 6 s
 GPU_EVERY = 2
 MAX_APPS = 25
@@ -553,8 +558,14 @@ class TasksAdapter(Adapter):
     name = "tasks"
 
     def __init__(self, publish, root: str = "/proc", kwin=None, gpu=None, desktop=None, kill=None,
-                 self_pid: int | None = None, my_uid: int | None = None, mono=None, spawn=None) -> None:
+                 self_pid: int | None = None, my_uid: int | None = None, mono=None, spawn=None,
+                 pins: Path | None = None) -> None:
         super().__init__(publish)
+        self._pins_path = pins or pins_path()
+        try:
+            self.pins: list[str] = [str(n) for n in json.loads(self._pins_path.read_text())][:50]
+        except (OSError, ValueError, TypeError):
+            self.pins = []
         self._spawn = spawn              # tests: catches the restart instead of running it
         self.sampler = ProcSampler(root)
         self._kwin = kwin
@@ -623,6 +634,22 @@ class TasksAdapter(Adapter):
     def press_args(self, control: str, value) -> dict:
         return {"app": str(value or "")}
 
+    async def press(self, control: str, value=None) -> str | None:
+        if control != "pin":
+            return await super().press(control, value)
+        name = str(value or "").strip()          # his click only: not a verb, so not hers to change
+        if not name:
+            return None
+        self.pins = [n for n in self.pins if n != name] if name in self.pins else (self.pins + [name])[-50:]
+        try:
+            self._pins_path.parent.mkdir(parents=True, exist_ok=True)
+            self._pins_path.write_text(json.dumps(self.pins))
+        except OSError as e:
+            log.warning("couldn't save the pins: %s", e)
+        await self._regroup()
+        await self.publish_state()
+        return None
+
     # ---- lifecycle ----
 
     async def start(self) -> None:
@@ -690,7 +717,14 @@ class TasksAdapter(Adapter):
                          "gpu_mb": None if gpu is None else round(sum(gpu.get(p.pid, 0.0) for p in g.procs), 1),
                          "windows": len(g.win_ids), "icon": g.icon})
         rows.sort(key=lambda r: (-r["cpu"], -r["mem_mb"], r["name"].lower()))
-        return {"status": "ok", "apps": rows[:MAX_APPS], "total": {"cpu": machine, "mem_pct": mem}}
+        # His pins (right-click in the widget): on top in the order he pinned
+        # them, and always listed while running, however quiet.
+        pinned = [r for n in self.pins for r in rows if r["name"] == n]
+        for r in pinned:
+            r["pinned"] = True
+        rest = [r for r in rows if not r.get("pinned")]
+        return {"status": "ok", "apps": pinned + rest[:max(0, MAX_APPS - len(pinned))],
+                "total": {"cpu": machine, "mem_pct": mem}}
 
     # ---- verbs ----
 

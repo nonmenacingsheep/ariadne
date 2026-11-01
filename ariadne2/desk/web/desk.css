@@ -463,6 +463,8 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .tk-list > * { flex: none; }
 .tk-row { position: relative; padding: 2px 0; }
 .tk-row:hover { background: rgba(255,255,255,.04); }
+.tk-row.pinned { box-shadow: inset 2px 0 0 var(--red-hot); }
+.tk-row.pinned .tk-name::after { content: " PIN"; font-size: 9px; letter-spacing: .1em; color: var(--red-hot); opacity: .8; }
 .tk-tile { width: 22px; height: 22px; display: grid; place-items: center; font: 700 11px Rajdhani, sans-serif; color: #fff;
   clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
 .tk-name { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

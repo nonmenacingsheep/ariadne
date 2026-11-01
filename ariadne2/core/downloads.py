@@ -18,6 +18,12 @@ under her name while she's quiet, and as rows in the chat where her steps go):
   growing (curl, wget, an app writing straight to its file). Those have no
   known total, so their bar runs without a percentage.
 
+- Her commands (core/tools/shell.py SESSIONS): the processes in each session
+  she started, wherever they write. A download is a file one of them is
+  writing that keeps growing and looks like one (.incomplete, .part, a
+  Hugging Face blob, ...), or a progress line in the log it writes to (tqdm,
+  pip, wget, git). These are hers by definition.
+
 Read-only: nothing here touches the files it watches.
 """
 from __future__ import annotations
@@ -27,6 +33,7 @@ import glob
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 from collections import deque
@@ -41,6 +48,12 @@ ACTED_S = 90.0                       # a new download this soon after one of her
 STEAM_S = 900.0                      # a Steam download this soon after her install verb is hers
 GROWING_FOR = 8.0                    # a plain file counts as downloading while it grew this recently
 RATE_WINDOW = 20.0
+DL_FILE = re.compile(r"\.(incomplete|part|partial|download|crdownload|opdownload|tmp)$|/blobs/|/pip-", re.I)
+PERCENT = re.compile(r"(\d{1,3}(?:\.\d)?)\s?%")
+DL_WORDS = re.compile(r"download|fetch|receiv|collect|pull|[kKMG]i?B/s", re.I)
+RATE = re.compile(r"([\d.]+)\s?([kKMG])i?B/s")
+UNIT = {"k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9}
+LOG_FRESH = 15.0                     # a progress line counts while its log changed this recently
 _BROWSERS = ("google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium", "opera", "opera-gx",
              "opera-beta", "BraveSoftware/Brave-Browser", "microsoft-edge", "vivaldi")
 
@@ -111,8 +124,76 @@ def browser_downloads(profiles) -> dict[str, dict]:
     return out
 
 
+def _session_of(pid: str, proc: str = "/proc") -> int | None:
+    try:
+        stat = open(f"{proc}/{pid}/stat").read()
+        return int(stat[stat.rindex(")") + 2:].split()[3])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def session_files(sessions, proc: str = "/proc") -> dict[int, dict]:
+    """sid -> {"writing": paths open for writing, "logs": where stdout/stderr go}."""
+    out: dict[int, dict] = {}
+    want = set(sessions)
+    if not want:
+        return out
+    for pid in os.listdir(proc):
+        if not pid.isdigit():
+            continue
+        sid = _session_of(pid, proc)
+        if sid not in want:
+            continue
+        got = out.setdefault(sid, {"writing": set(), "logs": set()})
+        try:
+            fds = os.listdir(f"{proc}/{pid}/fd")
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(f"{proc}/{pid}/fd/{fd}")
+                if not target.startswith("/") or target.startswith(("/dev/", "/proc/")):
+                    continue
+                flags = int(open(f"{proc}/{pid}/fdinfo/{fd}").read().split("flags:")[1].split()[0], 8)
+            except (OSError, ValueError, IndexError):
+                continue
+            if flags & 3 == 0:
+                continue                                # read-only: not being written
+            (got["logs"] if fd in ("1", "2") else got["writing"]).add(target)
+    return out
+
+
+def progress_line(path: str) -> dict | None:
+    """The last download-looking progress line in a log: {desc, pct, rate}."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - 4096))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    for line in reversed(re.split(r"[\r\n]+", tail)):
+        m = PERCENT.search(line)
+        if m and DL_WORDS.search(line):
+            desc = line[: m.start()].strip(" :|[]").split("]")[-1].strip(" :|") or None
+            r = RATE.search(line)
+            return {"desc": desc, "pct": min(100.0, float(m.group(1))),
+                    "rate": float(r.group(1)) * UNIT[r.group(2)] if r else None}
+    return None
+
+
+def nice_name(path: str) -> str:
+    """'…/models--m-a-p--YuE2-3B/blobs/1d55….incomplete' -> 'm-a-p/YuE2-3B'."""
+    m = re.search(r"/(?:models|datasets|spaces)--([^/]+?)--([^/]+)/blobs/", path)
+    if m:
+        return f"{m.group(1)}/{m.group(2)}"
+    name = os.path.basename(path)
+    return re.sub(DL_FILE.pattern.split("|/blobs/")[0], "", name, flags=re.I) or name
+
+
 class DownloadWatch:
-    def __init__(self, publish, steam=None, home: Path | None = None, clock=time.monotonic) -> None:
+    def __init__(self, publish, steam=None, home: Path | None = None, clock=time.monotonic,
+                 sessions=None, proc: str = "/proc") -> None:
         self.publish = publish
         self.steam = steam                   # the Steam adapter, or None
         self.home = home
@@ -129,6 +210,9 @@ class DownloadWatch:
         self._acted = -1e9                   # when she last ran a tool
         self._steam_asked = -1e9             # when she last asked Steam to install
         self._hers: dict[str, bool] = {}     # download id -> hers, decided when first seen
+        self.sessions = sessions             # sid -> label; None = her shell's own (tools/shell.py)
+        self.proc = proc
+        self._grew: dict[str, tuple[int, float]] = {}       # her jobs' files: size, when it last grew
 
     def note_tool(self, name: str, args) -> None:
         """Conversation.on_tool: she just ran something that may start a download."""
@@ -141,6 +225,9 @@ class DownloadWatch:
     def _mine(self, items: list[dict]) -> list[dict]:
         now, out = self.clock(), []
         for i in items:
+            if i["source"] == "job":
+                out.append(i)                    # her own command's: hers by definition
+                continue
             if i["id"] not in self._hers:
                 window = STEAM_S if i["source"] == "steam" else ACTED_S
                 since = (self._steam_asked if i["source"] == "steam" else self._acted)
@@ -220,8 +307,54 @@ class DownloadWatch:
                  "total": d.get("bytes_total") or None, "progress": d.get("progress"), "rate": d.get("rate_bps"),
                  "state": d.get("state") or "downloading"} for d in rows]
 
+    def job_items(self) -> list[dict]:
+        if self.sessions is None:
+            from .tools import shell
+            sessions = dict(shell.SESSIONS)
+        else:
+            sessions = dict(self.sessions)
+        now, items, seen = self.clock(), [], set()
+        for sid, files in session_files(sessions, self.proc).items():
+            growing, done = [], 0
+            for path in files["writing"]:
+                if not DL_FILE.search(path):
+                    continue
+                try:
+                    size = os.stat(path).st_size
+                except OSError:
+                    continue
+                seen.add(path)
+                old = self._grew.get(path)
+                grew = now if old is not None and size > old[0] else (old[1] if old else -1e9)
+                self._grew[path] = (size, grew)
+                if now - grew < GROWING_FOR:
+                    growing.append(path)
+                    done += size
+            line = None
+            for log in files["logs"]:
+                try:
+                    fresh = time.time() - os.stat(log).st_mtime < LOG_FRESH
+                except OSError:
+                    continue
+                p = progress_line(log) if fresh else None
+                if p and p["pct"] < 100:
+                    line = p
+            if not growing and not line:
+                continue
+            name = nice_name(growing[0]) if growing else (line["desc"] or sessions[sid])
+            if line and line["desc"] and growing:
+                name = f"{name} ({line['desc']})"
+            key = f"job:{sid}"
+            items.append({"id": key, "name": name, "source": "job", "done": done or None, "total": None,
+                          "progress": round(line["pct"] / 100, 4) if line else None,
+                          "rate": (line or {}).get("rate") or (self._rate(key, done, now) if done else None),
+                          "state": "downloading", "final": None})
+        for k in [k for k in self._grew if k not in seen]:
+            del self._grew[k]
+        return items
+
     def collect(self) -> list[dict]:
-        return self._mine(self.steam_items() + self.files())
+        return self._mine(self.steam_items() + self.files() + self.job_items())
 
     def finished(self, item: dict) -> bool:
         """Whether a download that just left the list completed (else it was stopped)."""
@@ -231,6 +364,8 @@ class DownloadWatch:
             except Exception:
                 return True
             return bool(m and m.get("installed"))
+        if item["source"] == "job":
+            return True                         # its command carried on past it; a failure shows in its log
         final = item.get("final")
         return bool(final) and os.path.exists(final)
 

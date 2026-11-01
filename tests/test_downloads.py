@@ -105,3 +105,36 @@ class Watch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HerJobs(unittest.TestCase):
+    def test_a_command_of_hers_writing_a_download_shows_wherever_it_writes(self):
+        import subprocess
+        import sys
+        import time as _t
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        d = Path(tmp.name)
+        blob = d / "hub/models--org--Big-Model/blobs/abc.incomplete"
+        blob.parent.mkdir(parents=True)
+        script = ("import sys,time\n"
+                  f"f=open({str(blob)!r},'wb')\n"
+                  "for i in range(60):\n"
+                  "  f.write(b'x'*1000); f.flush()\n"
+                  "  sys.stdout.write(f'\\rFetching 3 files: {i}%|##  | 1/3 [00:01<00:02, 2.0MB/s]'); sys.stdout.flush()\n"
+                  "  time.sleep(0.1)\n")
+        log = open(d / "job.log", "w")
+        p = subprocess.Popen([sys.executable, "-c", script], stdout=log, stderr=subprocess.STDOUT,
+                             start_new_session=True)
+        self.addCleanup(lambda: (p.kill(), p.wait(), log.close()))
+        t = [0.0]
+        w = DownloadWatch(None, steam=None, home=d, clock=lambda: t[0], sessions={p.pid: "python download"})
+        _t.sleep(0.6)
+        w.collect()
+        t[0] += 1
+        _t.sleep(0.6)
+        items = w.collect()                                  # no tool window needed: it's her command's
+        self.assertEqual(len(items), 1, items)
+        self.assertEqual(items[0]["name"], "org/Big-Model (Fetching 3 files)")
+        self.assertGreater(items[0]["progress"], 0)
+        self.assertEqual(items[0]["rate"], 2e6)

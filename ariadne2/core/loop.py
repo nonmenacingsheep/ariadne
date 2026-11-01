@@ -391,7 +391,11 @@ class Conversation:
         except Exception:
             return ""
         names = [f'{r["name"]} ({"on" if r["enabled"] else "off"})' for r in rows[:30]]
-        return ("Flows (flow_manage runs them): " + "; ".join(names)) if names else ""
+        if not names:
+            return ""
+        free = getattr(self.flows, "her_runs", False)
+        return (f"Flows (flow_manage runs them{'; he lets you run any of them yourself, unasked' if free else ''}): "
+                + "; ".join(names))
 
     def _rounds(self) -> int:
         more = [r for r in (getattr(ts, "rounds", lambda: None)() for ts in self.toolsets) if r]

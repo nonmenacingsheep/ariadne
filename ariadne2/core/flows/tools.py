@@ -123,7 +123,10 @@ async def _manage(engine, args: dict, his_words) -> str:
         raise AdapterError(f"No flow matches {args.get('id')!r}; use op list.")
     if op == "explain":
         return engine.explain(fid)
-    if not _may_touch(engine.flows[fid], his_words, engine.flows.values()):
+    # His setting lets her run any flow in a talk with him (not from a flow's own
+    # turn: a flow starting flows could loop); approval still holds (run_now).
+    free = op == "run" and his_words and getattr(engine, "her_runs", False)
+    if not free and not _may_touch(engine.flows[fid], his_words, engine.flows.values()):
         raise AdapterError("Not done: that needs him to ask in his own words, naming the flow if it's his.")
     if op == "run":
         result = engine.run_now(fid)

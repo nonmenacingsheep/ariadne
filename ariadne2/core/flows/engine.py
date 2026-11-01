@@ -77,6 +77,7 @@ class Engine(RunnerMixin, ManageMixin, EditorMixin):
         self._rate: dict[str, collections.deque] = {}
         self._queues: dict[str, collections.deque] = {}
         self._summaries: dict[str, str] = {}
+        self.her_runs = False                 # his setting general.flows_on_her_own: she runs flows unasked
         self._alias: dict[str, str] = {}      # a test copy's id -> the flow id its events carry (editor.py)
         self.last_refusal = ""
         self._started = False

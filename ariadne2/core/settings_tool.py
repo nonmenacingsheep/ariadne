@@ -51,6 +51,8 @@ def _shown(spec: dict, value) -> str:
 def _range(spec: dict) -> str:
     if spec.get("readonly"):
         return "read-only"
+    if spec.get("his_only"):
+        return "his to change, not yours"
     if spec.get("secret"):
         return "he sets it himself"
     if spec.get("action"):
@@ -162,6 +164,8 @@ class SettingsTools:
             need_him(his_words, "changing his settings")
             if spec.get("secret"):
                 raise ToolError("API keys are his to enter, in Settings > Models; I don't touch them")
+            if spec.get("his_only"):
+                raise ToolError(f"{spec['label']} is his alone to change, in Settings")
             if spec.get("readonly"):
                 raise ToolError(f"{spec['label']} is changed in System Settings, Shortcuts")
             if "value" not in a and not spec.get("action"):

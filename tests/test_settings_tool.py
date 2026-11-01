@@ -60,6 +60,12 @@ class SettingsToolTests(unittest.IsolatedAsyncioTestCase):
         out = await self.call(action="get", section="models", key="anthropic_key")
         self.assertNotIn("sk-", out)
 
+    async def test_letting_her_run_flows_is_his_alone(self):
+        with self.assertRaises(AdapterError) as cm:
+            await self.call(action="set", key="general.flows_on_her_own", value="on")
+        self.assertIn("his alone", str(cm.exception))
+        self.assertIn("off", await self.call(action="get", key="general.flows_on_her_own"))
+
     async def test_unknown_setting(self):
         with self.assertRaises(AdapterError):
             await self.call(action="get", section="voice", key="pitch")

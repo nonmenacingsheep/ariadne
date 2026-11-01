@@ -157,6 +157,17 @@ class FlowManageTests(ToolCase):
             await self.call("flow_manage", {"op": "delete", "id": self.mine}, "delete the late one")
         self.assertEqual(await self.call("flow_manage", {"op": "delete", "id": self.mine}, "delete Late Gaming"), "deleted.")
 
+    async def test_his_setting_lets_her_run_his_flows_unnamed_but_not_from_a_flow(self):
+        with self.assertRaises(AdapterError):
+            await self.call("flow_manage", {"op": "run", "id": self.mine}, "run that")
+        self.e.her_runs = True
+        self.assertEqual(await self.call("flow_manage", {"op": "run", "id": self.mine}, "run that"), "Started.")
+        await self.e.idle()
+        with self.assertRaises(AdapterError):          # a flow's own turn still can't
+            await self.call("flow_manage", {"op": "run", "id": self.mine}, None)
+        with self.assertRaises(AdapterError):          # running only, not deleting
+            await self.call("flow_manage", {"op": "delete", "id": self.mine}, "bin it")
+
     async def test_unapproved_flow_will_not_enable_or_run(self):
         graph = dict(self.tell_flow(), name="risky")
         graph["nodes"][1] = {"id": "n2", "type": "steam.send", "values": {"person": "Kai", "text": "d"}}

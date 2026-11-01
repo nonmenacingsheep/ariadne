@@ -187,6 +187,9 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     for kind in SOUND_KINDS:
         s.append(_entry("voice", f"sound_{kind}", _SOUND_LABELS[kind], "bool", True,
                         "Play this sound; off mutes just this one."))
+    s.append(_entry("general", "flows_on_her_own", "Let her run flows on her own", "bool", False,
+                    "She runs any approved flow when she sees fit, without you naming it. Only you can change this.",
+                    his_only=True))
     s.append(_entry("general", "check_updates", "Check for updates", "bool", True,
                     "Look for a newer Ariadne on GitHub every few hours."))
     s.append(_entry("general", "auto_update", "Install updates automatically", "bool", True,

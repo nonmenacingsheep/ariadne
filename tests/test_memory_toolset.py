@@ -126,6 +126,19 @@ class ContextTests(Base):
         self.assertNotIn("Birdie", ctx)                             # not relevant, not newest
         self.assertIn('on 3 Oct (3 weeks ago) you said: "the tea bench kettle', ctx)
 
+    def test_what_bore_on_an_earlier_turn_stays_in_view(self):
+        # She used a memory one turn; the next turn's block left it out, and she
+        # told him she'd made it up. It stays, under its own heading.
+        self.facts.add("keeps a dog called Birdie", "fact", date="2026-09-01")
+        for i in range(4):
+            self.facts.add(f"owns a gadget number {i}", "fact", date="2026-10-2" + str(i))
+        self.m.turn("how is my dog Birdie")
+        self.assertIn("Birdie", self.m.context())
+        self.m.turn("propose some automations")
+        ctx = self.m.context()
+        self.assertIn("Came up earlier in this talk:", ctx)
+        self.assertIn("Birdie", ctx)
+
     def test_replaced_and_empty(self):
         self.assertEqual(self.m.context(), "")
         self.facts.add("uses Firefox", "preference")

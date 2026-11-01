@@ -12,7 +12,6 @@ import collections
 import dataclasses
 import itertools
 import logging
-import shutil
 import time
 
 from ... import protocol
@@ -42,13 +41,19 @@ class _Ctx:
 
 
 async def _notify_send(title: str, text: str) -> None:
-    if not shutil.which("notify-send"):
-        raise AdapterError("there's no notify-send here for toasts")
-    proc = await asyncio.create_subprocess_exec("notify-send", title, text,
-                                                stdout=asyncio.subprocess.DEVNULL,
-                                                stderr=asyncio.subprocess.DEVNULL)
-    if await proc.wait():
-        raise AdapterError("the toast didn't show")
+    """A desktop toast, asked of the notification server over D-Bus (the
+    container has no notify-send, and doesn't need one)."""
+    def call() -> None:
+        from gi.repository import Gio, GLib
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call_sync("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+                      "org.freedesktop.Notifications", "Notify",
+                      GLib.Variant("(susssasa{sv}i)", ("Ariadne", 0, "", title, text, [], {}, -1)),
+                      GLib.VariantType.new("(u)"), Gio.DBusCallFlags.NONE, 5000, None)
+    try:
+        await asyncio.to_thread(call)
+    except Exception as e:
+        raise AdapterError(f"the toast didn't show ({getattr(e, 'message', e)})")
 
 
 class Engine(RunnerMixin, ManageMixin, EditorMixin):

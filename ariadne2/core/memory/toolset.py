@@ -89,6 +89,11 @@ class MemoryToolset(Toolset):
     def turn(self, text: str | None) -> None:
         self._text = text
 
+    def resumed(self, times: list[float]) -> None:
+        """Turns a restart brought back into the history: they're this talk now, so
+        recall leaves them to the history instead of offering them as old talk."""
+        self._thread.extend(times)
+
     def on_turn(self, user_text: str, reply: str, when_: float | None = None) -> None:
         self.talk.turn(user_text, reply, when_)
         self._thread.append(float(when_ or when.now_ts(self._now)))

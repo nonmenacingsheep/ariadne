@@ -136,6 +136,7 @@ async def run(args: argparse.Namespace) -> None:
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)
     conversation.flows = engine
+    memory.resumed(conversation.resume(memory.talk.rows()))     # a restart picks up where the talk was
     settings.hooks[("general", "flows_on_her_own")] = lambda v: setattr(engine, "her_runs", bool(v))
     conversation.on_text = engine.hear
     if voice and not args.no_ears:

@@ -347,3 +347,22 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(sent[2]["content"][0]["text"],
                          "⟦app record of your previous reply, what it really ran: settings set → Her body is now on.⟧")
         self.assertEqual(hist[1]["content"], "I'm back.\n⟦ran: settings set → Her body is now on.⟧")   # history untouched
+
+
+class Resume(unittest.TestCase):
+    def test_a_restart_picks_up_the_last_exchanges(self):
+        from ariadne2.core.loop import Conversation
+        c = Conversation(lambda m: None)
+        rows = [{"role": "user", "text": "old", "ts": 0},
+                {"role": "assistant", "text": "from yesterday-ish", "ts": 1}]
+        for i in range(12):
+            rows += [{"role": "user", "text": f"q{i}", "ts": 100_000 + i * 10},
+                     {"role": "assistant", "text": f"a{i}\n⟦ran: look → a picture⟧", "ts": 100_001 + i * 10}]
+        rows.append({"role": "user", "text": "cut off mid-turn", "ts": 100_500})    # no answer: left out
+        times = c.resume(rows, now=100_600)
+        self.assertEqual(len(c.history), 20)
+        self.assertEqual(c.history[0], {"role": "user", "content": "q2"})
+        self.assertTrue(c.history[-1]["content"].endswith("⟦ran: look → a picture⟧"))    # records come back too
+        self.assertEqual(len(times), 10)
+        self.assertEqual(c.resume(rows, now=100_600 + 2 * 86400), [])                    # too old: memory's job
+        self.assertEqual(c.history, [])

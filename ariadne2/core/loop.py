@@ -21,6 +21,8 @@ from .flows import tools as flow_tools
 log = logging.getLogger("ariadne2.core.loop")
 
 MAX_TURNS = 40                  # exchanges kept in memory (you + her = one)
+RESUME_TURNS = 10               # exchanges a restart brings back from the transcript
+RESUME_WITHIN = 24 * 3600       # ...if they're this recent; an older talk is memory's job
 THINKING = "thinking…"
 MAX_TOOL_ROUNDS = 8             # model calls that may end in tool use, per turn
 _TURN = object()                # "use the words of the turn in progress" for _tool
@@ -517,6 +519,21 @@ class Conversation:
                 await result
         except Exception:
             log.exception("on_sentence hook failed")
+
+    def resume(self, rows: list[dict], now: float | None = None, keep: int = RESUME_TURNS,
+               within: float = RESUME_WITHIN) -> list[float]:
+        """Pick up the talk a restart cut off: the last `keep` exchanges from the
+        transcript (records included), if they're from the last `within` seconds.
+        Returns the times of his messages it brought back."""
+        now = time.time() if now is None else now
+        pairs = []
+        for a, b in zip(rows, rows[1:]):
+            if a.get("role") == "user" and b.get("role") == "assistant" and now - float(a.get("ts") or 0) <= within:
+                pairs.append((a, b))
+        pairs = pairs[-keep:]
+        self.history = [m for a, b in pairs for m in ({"role": "user", "content": a["text"]},
+                                                      {"role": "assistant", "content": b["text"]})]
+        return [float(a.get("ts") or 0) for a, _ in pairs]
 
     def _trim(self) -> None:
         extra = len(self.history) - self.max_turns * 2

@@ -127,13 +127,14 @@ async def run(args: argparse.Namespace) -> None:
     memory = MemoryToolset()
     memory.warm()           # the model and the old transcript, loaded off the main thread
     from .later import Later
+    from .clipboard import ClipboardTools
     later = Later(lambda text, consent: conversation.wake(text, consent))
     conversation = Conversation(server.publish, lambda: server.snapshots,
                                 model_name=args.model or settings.get("models", "conversation_model"),
                                 personality=args.personality or settings.get("general", "personality"),
                                 on_sentence=voice.say if voice else None,
                                 adapters=adapters, toolsets=[GeneralTools(), memory, ExtensionTools(extensions),
-                                          SettingsTools(settings, server.publish), later],
+                                          SettingsTools(settings, server.publish), later, ClipboardTools()],
                                 on_turn=memory.on_turn)
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)

@@ -48,7 +48,7 @@ The machine:
 - shell may run inside a container (a toolbox) sharing his home and drives;
   his desktop apps live outside it, so start them with tasks open, not the
   shell. Long jobs: background=true, then a later check-in.
-- read_file, write_file, edit_file, find_files, search_text.
+- read_file, write_file, edit_file, find_files, search_text, clipboard.
 - web_search and read_page; look (a screenshot: the desktop, a monitor, a
   window); place_window; window_control (clicks inside an app for you).
 - todo and open_project for multi-step coding.

@@ -207,6 +207,52 @@ bold "Extras"
 command -v claude >/dev/null && ok "Claude Code found (the Claude widget uses it)" \
   || warn "Claude Code isn't installed; the Claude widget needs it (https://claude.com/claude-code)"
 
+# ---------------------------------------------- clicking inside apps (ydotool)
+# Her window_control moves the pointer and clicks through ydotool 1.x. Inside
+# a toolbox she uses the desktop's own (host-spawn); elsewhere it has to be
+# here. Ubuntu/Debian before 24.10 ship 0.1.x, whose commands are different,
+# so on those it's built from the 1.0.4 source (plain C, two files) into
+# ~/.local/bin.
+bold "Clicking inside apps (ydotool)"
+RUN=""; [ -f /run/.containerenv ] && command -v host-spawn >/dev/null && RUN="host-spawn"
+ydotool_ok() { $RUN ydotool 2>&1 | grep -q "Available commands" && $RUN sh -c 'command -v ydotoold' >/dev/null; }
+if ydotool_ok; then
+  ok "ydotool 1.x found${RUN:+ (on the desktop)}"
+else
+  if command -v dnf >/dev/null; then ycmd="sudo dnf install -y ydotool"
+  elif command -v pacman >/dev/null; then ycmd="sudo pacman -S --needed ydotool"
+  elif command -v zypper >/dev/null; then ycmd="sudo zypper install -y ydotool"
+  else ycmd=""; fi
+  if [ -n "$ycmd" ] && [ -z "$RUN" ] && { [ $YES = 1 ] || ask "Install ydotool so she can click inside apps ($ycmd)?" y; }; then
+    $ycmd || warn "that didn't finish; window clicks won't work until ydotool 1.x is installed"
+  elif [ -z "$RUN" ] && command -v gcc >/dev/null && command -v git >/dev/null \
+       && { [ $YES = 1 ] || ask "Build ydotool 1.0.4 into ~/.local/bin so she can click inside apps?" y; }; then
+    tmp=$(mktemp -d)
+    if git clone -q --depth 1 --branch v1.0.4 https://github.com/ReimuNotMoe/ydotool.git "$tmp/src" \
+       && gcc -std=gnu99 -O2 -DVERSION='"v1.0.4"' -o "$tmp/ydotoold" "$tmp/src/Daemon/ydotoold.c" \
+       && gcc -std=gnu99 -O2 -DVERSION='"v1.0.4"' -o "$tmp/ydotool" "$tmp"/src/Client/*.c; then
+      mkdir -p "$HOME/.local/bin" && install -m 755 "$tmp/ydotool" "$tmp/ydotoold" "$HOME/.local/bin/" \
+        && ok "built ydotool 1.0.4 into ~/.local/bin (keep that on your PATH)"
+    else
+      warn "couldn't build ydotool; window clicks won't work until ydotool 1.x is installed"
+    fi
+    rm -rf "$tmp"
+  else
+    warn "optional: ydotool 1.x lets her click inside apps (gcc + git can build it; or your distro's package)"
+  fi
+fi
+# It writes to /dev/uinput, which a desktop user usually can't until a udev rule lets them.
+if [ -z "$RUN" ] && [ -e /dev/uinput ] && [ ! -w /dev/uinput ]; then
+  rule='KERNEL=="uinput", TAG+="uaccess", OPTIONS+="static_node=uinput"'
+  if [ $YES = 0 ] && ask "Let your user write /dev/uinput (a udev rule, needed for her clicks)?" y; then
+    echo "$rule" | sudo tee /etc/udev/rules.d/80-ariadne-uinput.rules >/dev/null \
+      && sudo udevadm control --reload && sudo udevadm trigger /dev/uinput \
+      && ok "done (log out and in if clicks still fail)" || warn "couldn't add the rule"
+  else
+    warn "her clicks need write access to /dev/uinput: add $rule to /etc/udev/rules.d/"
+  fi
+fi
+
 # -------------------------------------------------------------- menu entry
 bold "Menu entry"
 APPS=$DATA/applications; ENTRY=$APPS/ariadne-desk.desktop

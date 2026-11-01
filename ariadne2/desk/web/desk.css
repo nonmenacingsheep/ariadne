@@ -72,6 +72,19 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .core-top { display: flex; align-items: center; justify-content: center; gap: 16px; flex: none; }
 .core .wave:last-child { transform: scaleX(-1); }
 .core .line { flex: none; text-align: center; font-size: 11.5px; min-height: 1.3em; }
+/* a download she started, in the line's place while she's quiet */
+.core.dl-on .line { display: none; }
+.core .dl { flex: none; padding: 0 18px; }
+.dl-txt { font: 11.5px "Fira Code", monospace; color: var(--soft); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-bar { position: relative; height: 3px; margin-top: 3px; background: rgba(255,255,255,.07); --f: 0%; --heat: rgb(90,8,20); }
+.dl-bar b { position: absolute; left: 0; top: 0; bottom: 0; width: var(--f); transition: width .6s;
+  background: linear-gradient(90deg, rgb(58,4,12), var(--heat)); box-shadow: 0 0 10px -2px var(--heat); }
+.dl-bar.unknown b { width: 30%; animation: dl-run 1.6s ease-in-out infinite; }
+@keyframes dl-run { from { left: -30%; } to { left: 100%; } }
+.dl-bar { overflow: hidden; }
+.dl-step { padding: 2px 0 4px; }
+.dl-step .dl-bar { margin-top: 2px; }
+.dl-step.finished { color: #7d868e; }
 .ports { flex: 1; display: flex; gap: 6px; align-items: flex-end; justify-content: space-between; min-height: 0; }
 .port { flex: 1; min-width: 0; height: 30px; padding: 0 2px 6px; position: relative; cursor: pointer;
   font: 600 10px/1 Rajdhani, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--soft);

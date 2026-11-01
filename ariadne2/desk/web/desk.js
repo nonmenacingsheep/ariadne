@@ -43,7 +43,7 @@ function build(name) {
       <div class="mark"><span class="r">ARIES</span><span class="cy">ARIES</span><span class="wt">ARIES</span></div>
       <div class="wave">${"<i></i>".repeat(7)}</div></div>
       <button class="brace" title="Widgets"><svg viewBox="0 0 120 12"><path d="M2 2 Q2 8 14 8 H52 Q58 8 60 11 Q62 8 68 8 H106 Q118 8 118 2"/></svg></button>
-      <div class="line"></div><div class="ports"></div>
+      <div class="line"></div><div class="dl" hidden></div><div class="ports"></div>
       <button class="power" title="Close Aries">${POWER}</button>
       <button class="upd" hidden></button><button class="gear" title="Settings"><svg viewBox="0 0 16 16"><path d="M8 5.2A2.8 2.8 0 1 0 8 10.8 2.8 2.8 0 0 0 8 5.2zm6.4 3.8V7l-1.7-.4a5 5 0 0 0-.5-1.2l.9-1.5-1.4-1.4-1.5.9a5 5 0 0 0-1.2-.5L8.6 1.6H7.4L7 3.3a5 5 0 0 0-1.2.5l-1.5-.9-1.4 1.4.9 1.5a5 5 0 0 0-.5 1.2L1.6 7.4v1.2l1.7.4c.1.4.3.8.5 1.2l-.9 1.5 1.4 1.4 1.5-.9c.4.2.8.4 1.2.5l.4 1.7h1.2l.4-1.7c.4-.1.8-.3 1.2-.5l1.5.9 1.4-1.4-.9-1.5c.2-.4.4-.8.5-1.2z"/></svg></button>`;
   } else {
@@ -184,9 +184,80 @@ function workStep(text, state = "live") {
   list.appendChild(row);
   W.chat.msgs.scrollTop = W.chat.msgs.scrollHeight;
 }
+// Every download on the machine (core/downloads.py: Steam, browsers, anything
+// growing in a download folder): a bar under ARIES while she's quiet (her
+// words and work take the line back), and a live row in the chat where her
+// steps go: her current steps if she's mid-turn, else a DOWNLOADS card of its
+// own. Dark red warming to bright red as it fills; a running bar when the
+// size isn't known.
+let dlNow = [];
+const dlRows = {};
+let dlCard = null;
+const mb = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round((n || 0) / 1e6) + " MB";
+function dlText(d) {
+  const amount = d.progress != null ? Math.round(d.progress * 100) + "%" : mb(d.done);
+  return `${d.name} · ${amount}${d.rate ? " · " + (d.rate / 1e6).toFixed(1) + " MB/s" : ""}` +
+         `${d.state && d.state !== "downloading" ? " · " + d.state : ""}`;
+}
+function dlBar(f) {
+  const bar = document.createElement("div"); bar.className = "dl-bar" + (f == null ? " unknown" : "");
+  const k = f == null ? 0.5 : f;
+  bar.style.setProperty("--f", (k * 100).toFixed(1) + "%"); bar.style.setProperty("--heat", Spotify.heat(k));
+  bar.append(document.createElement("b"));
+  return bar;
+}
+function cardForDownload() {
+  if (chatTurn && chatTurn.work && chatTurn.work.classList.contains("live")) return chatTurn.work;
+  if (dlCard && dlCard.isConnected && dlCard === W.chat.msgs.lastElementChild) return dlCard;
+  const card = document.createElement("div"); card.className = "work live dl-card";
+  const label = document.createElement("button"); label.className = "work-label"; label.textContent = "DOWNLOADS";
+  card.append(label); W.chat.msgs.append(card);
+  return (dlCard = card);
+}
+function downloads(items, ended = []) {
+  for (const d of items) {
+    let row = dlRows[d.id];
+    if (!row && W.chat) {
+      row = dlRows[d.id] = document.createElement("div"); row.className = "step dl-step";
+      cardForDownload().append(row);          // outside a step list: still shows once a card folds
+      W.chat.msgs.scrollTop = W.chat.msgs.scrollHeight;
+    }
+    if (row) {
+      row.replaceChildren(document.createTextNode(dlText(d)), dlBar(d.progress));
+      row.dataset.name = d.name; row.dataset.last = d.progress == null ? "" : d.progress;
+    }
+  }
+  for (const id of Object.keys(dlRows)) {
+    if (items.some(d => d.id === id)) continue;
+    const row = dlRows[id], last = row.dataset.last, how = ended.find(e => e.id === id);
+    const stopped = how ? !how.ok : last !== "" && Number(last) < 0.98;     // the core checked; else a guess
+    row.replaceChildren(document.createTextNode(row.dataset.name + (stopped ? " stopped" : " downloaded")),
+                        dlBar(stopped ? Number(last) : 1));
+    row.classList.add("finished");
+    const card = row.parentElement;
+    if (card && card.classList.contains("dl-card") && !card.querySelector(".dl-step:not(.finished)")) {
+      card.classList.remove("live"); card.classList.add("done");
+    }
+    delete dlRows[id];
+  }
+  dlNow = items;
+  coreDl();
+}
+function coreDl() {
+  const c = W.core; if (!c) return;
+  const box = c.root.querySelector(".dl");
+  const busy = !!c.line.textContent || performance.now() - (c.lastVoice || 0) < 1500;
+  box.hidden = !dlNow.length || busy;
+  c.root.classList.toggle("dl-on", !box.hidden);
+  if (box.hidden) return;
+  const d = dlNow[0];
+  box.replaceChildren(Object.assign(document.createElement("div"),
+                                    { className: "dl-txt", textContent: dlText(d) + (dlNow.length > 1 ? ` (+${dlNow.length - 1} more)` : "") }),
+                      dlBar(d.progress));
+}
 function workDone() {
   if (!chatTurn || !chatTurn.work) return;
-  const card = chatTurn.work, n = card.querySelectorAll(".step").length;
+  const card = chatTurn.work, n = card.querySelectorAll(".work-steps .step").length;   // download rows aren't steps
   card.classList.remove("live"); card.classList.add("done", "folded");
   card.querySelector(".work-label").textContent = `${n} STEP${n === 1 ? "" : "S"}`;
   card.querySelectorAll(".step.now").forEach(e => e.classList.remove("now"));
@@ -715,6 +786,11 @@ function reportRects() {
 function voiceLevel(msg) {
   const c = W.core; if (!c) return;
   c.root.classList.toggle("speaking", msg.speaking && msg.level > 0);
+  if (msg.speaking && msg.level > 0 && dlNow.length) {        // her voice takes the line; the bar waits out the pauses
+    c.lastVoice = performance.now();
+    coreDl();
+    clearTimeout(c.dlBack); c.dlBack = setTimeout(coreDl, 1600);
+  }
   c.root.querySelectorAll(".wave i").forEach((bar, i) => {
     const h = msg.speaking ? 4 + Math.min(1, msg.level * 4) * (10 + 14 * Math.abs(Math.sin(i * 1.7 + performance.now() / 90))) : 4;
     bar.style.height = h.toFixed(1) + "px";
@@ -786,7 +862,7 @@ window.desk = {
     switch (msg.t) {
       case "state": setState(msg.widget, msg.data); break;
       case "line":
-        if (W.core) W.core.line.textContent = msg.text;
+        if (W.core) { W.core.line.textContent = msg.text; coreDl(); }
         if (msg.text && msg.text !== "thinking…" && msg.text !== "reconnecting…") workStep(msg.text.replace(/…$/, ""));
         break;
       case "chat": if (W.chat) chat(msg); break;
@@ -798,6 +874,7 @@ window.desk = {
       case "settings": Settings.message(msg); Claude.hello(); post({ t: "send", msg: { t: "update_do", op: "hello" } }); break;     // sent on every (re)connect
       case "cc": Claude.message(msg); break;
       case "update": showUpdate(msg); break;
+      case "downloads": downloads(msg.items || [], msg.ended || []); break;
       case "desk_do": deskDo(msg); break;
       case "shown": if (W.chat) showPicture(msg); break;
       case "attached": if (W.chat) addChip(msg); break;

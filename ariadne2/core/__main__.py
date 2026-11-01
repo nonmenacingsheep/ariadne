@@ -150,6 +150,8 @@ async def run(args: argparse.Namespace) -> None:
     updater = Updater(server.publish, settings=settings)
     from .body_models import BodyModels
     body_models = BodyModels(server.publish, settings)
+    from .downloads import DownloadWatch
+    download_watch = DownloadWatch(server.publish, steam=adapters.get("steam"))
     if "avatar" in adapters:
         adapters["avatar"].settings = settings      # pin / unpin are his Avatar settings
     settings.status_providers[("avatar", "live2d_core")] = body_models.core_status
@@ -242,6 +244,7 @@ async def run(args: argparse.Namespace) -> None:
     updater.start()
     extensions.start()
     body_models.start()
+    download_watch.start()
     for part in (voice, ears):
         if part:
             await part.start()
@@ -256,6 +259,7 @@ async def run(args: argparse.Namespace) -> None:
         updater.stop()
         await extensions.stop()
         body_models.stop()
+        download_watch.stop()
         inbox_task.cancel()
         avatar_task.cancel()
         await conversation.stop()

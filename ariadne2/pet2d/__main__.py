@@ -331,6 +331,8 @@ class PetWindow(Gtk.Window):
         return True
 
     def _forward(self, msg: dict) -> bool:
+        if msg.get("t") == "downloads":
+            return False                           # the desk's bars; her body has no use for them
         if msg.get("t") == "state":
             if msg.get("widget") != "spotify" or not isinstance(msg.get("data"), dict):
                 return False

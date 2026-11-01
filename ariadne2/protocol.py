@@ -51,6 +51,7 @@ _REQUIRED = {
     "cc": ("ev",),              # the Claude widget's live Claude Code session (core/claude_live.py)
     "cc_do": ("op",),
     "update": ("status",),       # core/updater.py: what the update check found
+    "downloads": ("items",),     # every download on the machine, for the desk's bars (core/downloads.py)
     "update_do": ("op",),
     "shown": ("path",),
     "body": ("cmd",),

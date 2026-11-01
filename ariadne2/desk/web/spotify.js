@@ -165,5 +165,5 @@ const Spotify = (() => {
     w.bd.querySelectorAll(`[data-c="${control}"]`).forEach(el => el.classList.toggle("on", on));
   }
 
-  return { build, set, touch };
+  return { build, set, touch, heat };
 })();

@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import os
 import unittest
 from unittest import mock
 
@@ -111,6 +112,24 @@ class Place(Patched):
 
 
 WIN = {"caption": "FunGen", "app": "fungen", "x": 100, "y": 50, "w": 400, "h": 300}
+
+
+class EyesClient(unittest.TestCase):
+    def test_the_window_model_call_builds_its_client(self):
+        # Every test stubs decide(), so a clash between client_kwargs() and
+        # _ask()'s own max_retries broke every click with nothing failing here.
+        import anthropic
+        from unittest import mock
+        from ariadne2.core.tools import operate
+        made = {}
+
+        class Fake:
+            def __init__(self, **kw):
+                made.update(kw)
+                self.messages = mock.Mock(create=lambda **k: mock.Mock(content=[mock.Mock(text='{"action": "done"}')]))
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}), mock.patch.object(anthropic, "Anthropic", Fake):
+            self.assertEqual(operate._ask("sys", [{"type": "text", "text": "x"}], 50), {"action": "done"})
+        self.assertEqual(made["max_retries"], 1)
 
 
 class Operate(Patched):

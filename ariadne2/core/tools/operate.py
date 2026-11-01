@@ -200,7 +200,7 @@ def _ask(system: str, content, max_tokens: int) -> dict:
     model = os.environ.get("ARIADNE2_EYES") or EYES["model"] or models.DEFAULT_MODEL
     try:
         import anthropic
-        client = anthropic.Anthropic(max_retries=1, timeout=60.0, **models.client_kwargs(models.provider_for(model)))
+        client = anthropic.Anthropic(**{**models.client_kwargs(models.provider_for(model)), "max_retries": 1, "timeout": 60.0})
     except (ImportError, models.ModelError) as exc:
         raise ToolError(f"I can't reach a model to work the window: {getattr(exc, 'message', exc)}")
     extra = models._THINKING_OFF.get(model)

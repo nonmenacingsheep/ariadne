@@ -150,6 +150,11 @@ class FlowManageTests(ToolCase):
         self.assertEqual(await self.call("flow_manage", {"op": "run", "id": self.mine}, "run late gaming"), "Started.")
         await self.e.idle()
         self.assertEqual(self.rig.chats()[-1], "x")
+        # A word only his flow's name has names it ("run the gaming one"); a short or shared one doesn't.
+        self.assertEqual(await self.call("flow_manage", {"op": "run", "id": self.mine}, "run the gaming one"), "Started.")
+        await self.e.idle()
+        with self.assertRaises(AdapterError):
+            await self.call("flow_manage", {"op": "delete", "id": self.mine}, "delete the late one")
         self.assertEqual(await self.call("flow_manage", {"op": "delete", "id": self.mine}, "delete Late Gaming"), "deleted.")
 
     async def test_unapproved_flow_will_not_enable_or_run(self):

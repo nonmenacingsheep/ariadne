@@ -8,6 +8,7 @@ flows. His own flows additionally need him to name them.
 from __future__ import annotations
 
 import json
+import re
 
 from ...adapters import AdapterError
 from .catalog import compact
@@ -55,13 +56,19 @@ def _find(engine, key: str) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
-def _may_touch(flow: dict, his_words: str | None) -> bool:
+def _may_touch(flow: dict, his_words: str | None, others=()) -> bool:
+    """Hers to change, or his named in his words: the whole name, its id, or a
+    word of the name no other flow's has ("the Olympus one")."""
     if not his_words:
         return False
     if flow["made_by"] == "aries":
         return True
     low = his_words.lower()
-    return flow["name"].lower() in low or flow["id"].lower() in low
+    if flow["name"].lower() in low or flow["id"].lower() in low:
+        return True
+    said = set(re.findall(r"\w+", low))
+    theirs = {w for o in others if o is not flow for w in re.findall(r"\w+", o["name"].lower())}
+    return any(len(w) >= 5 and w in said and w not in theirs for w in re.findall(r"\w+", flow["name"].lower()))
 
 
 async def call(engine, name: str, args: dict, his_words: str | None = None) -> str:
@@ -84,7 +91,7 @@ async def _save(engine, graph, his_words) -> str:
     if not isinstance(graph, dict):
         raise AdapterError("Not saved: graph must be an object with name, nodes and links.")
     existing = engine.flows.get(str(graph.get("id") or ""))
-    if existing and not _may_touch(existing, his_words):
+    if existing and not _may_touch(existing, his_words, engine.flows.values()):
         raise AdapterError(f"Not saved: {existing['name']} is his own flow; he has to name it before you change it.")
     res = engine.save_graph(graph, made_by="aries", keep_id=bool(existing))
     if not res.ok:
@@ -116,7 +123,7 @@ async def _manage(engine, args: dict, his_words) -> str:
         raise AdapterError(f"No flow matches {args.get('id')!r}; use op list.")
     if op == "explain":
         return engine.explain(fid)
-    if not _may_touch(engine.flows[fid], his_words):
+    if not _may_touch(engine.flows[fid], his_words, engine.flows.values()):
         raise AdapterError("Not done: that needs him to ask in his own words, naming the flow if it's his.")
     if op == "run":
         result = engine.run_now(fid)

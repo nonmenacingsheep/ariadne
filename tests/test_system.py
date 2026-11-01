@@ -162,7 +162,8 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_state_keeps_old_fields_and_adds_new(self):
         await self.a.refresh()
         s = self.a.state()
-        self.assertEqual(set(s), {"cpu", "mem", "mem_used_gb", "mem_total_gb", "gpu", "gpu_mem", "disks"})
+        self.assertEqual(set(s), {"cpu", "mem", "mem_used_gb", "mem_total_gb", "gpu", "gpu_mem", "disks",
+                                  "home_free_gb", "least_free_gb", "least_free_disk"})     # the last three: for flows
         self.assertEqual((s["gpu"], s["gpu_mem"]), (33.0, 44.0))
         self.assertEqual([d["name"] for d in s["disks"]], ["Home", "Olympus"])
         msg = self.sent[-1]

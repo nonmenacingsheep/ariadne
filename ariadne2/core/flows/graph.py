@@ -217,6 +217,8 @@ def _special(n, nt, catalog, err, g) -> None:
         days = v.get("days")
         if days is not None and V.parse_days(days) is None:
             err(f"{label}: days should be like [\"mon\",\"fri\"] or weekdays")
+        if V.parse_dates(v.get("dates")) is None:
+            err(f"{label}: dates should be days of the month like [1, 15] or [\"last\"]")
     elif nt.kind == "day_is" and v.get("days") is not None and V.parse_days(v["days"]) is None:
         err(f"{label}: days should be like [\"mon\",\"fri\"] or weekdays")
     elif nt.kind == "run_flow":

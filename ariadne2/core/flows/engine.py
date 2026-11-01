@@ -22,7 +22,7 @@ from . import values as V
 from .catalog import Catalog, read_path
 from .editor import EditorMixin
 from .manage import ManageMixin
-from .runner import CAUSE_GRACE, MAX_DEPTH, Run, RunnerMixin
+from .runner import CAUSE_GRACE, MAX_DEPTH, SHARED, Run, RunnerMixin
 from .sched import LATE_GRACE, Clock, Scheduler, next_at
 from .store import FlowStore
 
@@ -38,6 +38,7 @@ class _Ctx:
     now: float
     vars: dict
     read: object
+    shared: dict = dataclasses.field(default_factory=dict)
 
 
 async def _notify_send(title: str, text: str) -> None:
@@ -132,7 +133,8 @@ class Engine(RunnerMixin, ManageMixin, EditorMixin):
         return task
 
     def _ctx(self, run: Run) -> _Ctx:
-        return _Ctx(self.now(), self.store.state(run.flow_id)["vars"], self.read)
+        return _Ctx(self.now(), self.store.state(run.flow_id)["vars"], self.read,
+                    self.store.state(SHARED)["vars"])
 
     def read(self, adapter: str | None, field: str):
         spec = self.catalog.reads.get(f"{adapter}.{field}")
@@ -212,7 +214,7 @@ class Engine(RunnerMixin, ManageMixin, EditorMixin):
             if nt.kind == "at":
                 hm = V.parse_time(v.get("time"))
                 if hm:
-                    self._sched_at(key, fid, nid, next_at(now, hm, V.parse_days(v.get("days") or [])))
+                    self._sched_at(key, fid, nid, next_at(now, hm, V.parse_days(v.get("days") or []), v.get("dates")))
             elif nt.kind == "every":
                 iv = V.parse_duration(v.get("interval"))
                 if iv:
@@ -231,7 +233,7 @@ class Engine(RunnerMixin, ManageMixin, EditorMixin):
     def _at_due(self, key, fid, nid, due) -> None:
         v = self.compiled[fid].nodes[nid]["values"]
         hm = V.parse_time(v.get("time"))
-        self._sched_at(key, fid, nid, next_at(max(due, self.now()), hm, V.parse_days(v.get("days") or [])))
+        self._sched_at(key, fid, nid, next_at(max(due, self.now()), hm, V.parse_days(v.get("days") or []), v.get("dates")))
         if self.now() - due <= LATE_GRACE:                  # a missed one (machine off) is skipped, not replayed
             self.fire(fid, nid, {"time": V.fmt_time(hm)})
 

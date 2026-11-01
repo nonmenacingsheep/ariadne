@@ -619,3 +619,72 @@ class DryRunTests(EngineCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoopsAndSharedTests(EngineCase):
+    async def run_button(self, fid):
+        await self.e.on_desk(protocol.press("flows", "run", fid))
+        await self.e.idle()
+
+    async def test_repeat_runs_its_body_n_times_then_done(self):
+        fid = self.rig.save(g("r", [("n1", "you.run_button", {}), ("n2", "flow.repeat", {"times": 3}),
+                                    ("n3", "her.tell", {"text": "a"}), ("n4", "her.tell", {"text": "end"})],
+                              ["n1.exec>n2.exec", "n2.body>n3.exec", "n2.done>n4.exec"]))
+        await self.run_button(fid)
+        self.assertEqual(self.rig.chats(), ["a", "a", "a", "end"])
+
+    async def test_break_leaves_the_loop_for_its_done(self):
+        # The retry shape: try, and on success break; otherwise go round again.
+        fid = self.rig.save(g("r", [("n1", "you.run_button", {}), ("n2", "flow.repeat", {"times": 5}),
+                                    ("n3", "her.tell", {"text": "a"}), ("n4", "flow.break", {}),
+                                    ("n5", "her.tell", {"text": "end"})],
+                              ["n1.exec>n2.exec", "n2.body>n3.exec", "n3.done>n4.exec", "n2.done>n5.exec"]))
+        await self.run_button(fid)
+        self.assertEqual(self.rig.chats(), ["a", "end"])
+
+    async def test_shared_variables_cross_flows(self):
+        a = self.rig.save(g("a", [("n1", "you.run_button", {}),
+                                  ("n2", "data.set", {"name": "x", "value": "seven", "shared": True})], ["n1.exec>n2.exec"]))
+        b = self.rig.save(g("b", [("n1", "you.run_button", {}), ("n2", "data.get", {"name": "x", "shared": True}),
+                                  ("n3", "her.tell", {})], ["n1.exec>n3.exec", "n2.value>n3.text"]))
+        c = self.rig.save(g("c", [("n1", "you.run_button", {}), ("n2", "data.get", {"name": "x", "default": "none"}),
+                                  ("n3", "her.tell", {})], ["n1.exec>n3.exec", "n2.value>n3.text"]))
+        await self.run_button(a)
+        await self.run_button(b)
+        await self.run_button(c)                        # its own variables don't see the shared one
+        self.assertEqual(self.rig.chats(), ["seven", "none"])
+
+    async def test_run_command_uses_her_shell_and_hers_needs_approval(self):
+        from unittest import mock
+        from ariadne2.core.tools import shell
+        seen = []
+        with mock.patch.object(shell, "run", lambda cmd, bg, cwd, words: (seen.append((cmd, words)), "$ echo hi\nhi")[1]):
+            fid = self.rig.save(g("cmd", [("n1", "you.run_button", {}), ("n2", "shell.run", {"command": "echo hi"}),
+                                          ("n3", "her.tell", {})], ["n1.exec>n2.exec", "n2.done>n3.exec", "n2.output>n3.text"]))
+            await self.run_button(fid)
+        self.assertEqual(seen[0][0], "echo hi")
+        self.assertTrue(seen[0][1])                      # the flow stands in for his words
+        self.assertIn("hi", self.rig.chats()[-1])
+        res = self.e.save_graph(g("hers", [("n1", "you.run_button", {}), ("n2", "shell.run", {"command": "ls"})],
+                                  ["n1.exec>n2.exec"]), made_by="aries")
+        self.assertTrue(res.needs_approval)
+
+
+class DatesTests(unittest.TestCase):
+    def test_at_can_fire_on_days_of_the_month_and_the_last(self):
+        from ariadne2.core.flows.sched import next_at
+        now = at(12, day=27)                             # 27 Oct 2026, noon
+        self.assertEqual(datetime.datetime.fromtimestamp(next_at(now, (9, 0), None, [1])).date(),
+                         datetime.date(2026, 11, 1))
+        self.assertEqual(datetime.datetime.fromtimestamp(next_at(now, (9, 0), None, ["last"])).date(),
+                         datetime.date(2026, 10, 31))
+        self.assertEqual(datetime.datetime.fromtimestamp(next_at(now, (13, 0), None, [27])).date(),
+                         datetime.date(2026, 10, 27))
+
+    def test_search_takes_loose_words(self):
+        from tests.flowfakes import Rig
+        rig = Rig()
+        self.addCleanup(rig.tmp.cleanup)
+        found = [nt.type for nt in rig.engine.catalog.search("start trigger time")]
+        self.assertIn("time.at", found)
+        self.assertEqual(rig.engine.catalog.search("retry loop")[0].type, "flow.repeat")

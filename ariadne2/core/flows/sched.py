@@ -108,12 +108,16 @@ class Scheduler:
                 pass
 
 
-def next_at(now: float, hm: tuple[int, int], days: list[str] | None = None) -> float:
-    """The next time of day strictly after `now` on one of the days (none = any day)."""
+def next_at(now: float, hm: tuple[int, int], days: list[str] | None = None, dates=None) -> float:
+    """The next time of day strictly after `now` on one of the weekdays and one of
+    the dates of the month (1-31, or "last"); none of either = any."""
     base = datetime.datetime.fromtimestamp(now)
-    for offset in range(0, 9):
+    dates = V.parse_dates(dates) or []
+    for offset in range(0, 70):
         day = base.date() + datetime.timedelta(days=offset)
         cand = datetime.datetime(day.year, day.month, day.day, hm[0], hm[1])
-        if cand.timestamp() > now and (not days or V.DAYS[cand.weekday()] in days):
+        last = (day + datetime.timedelta(days=1)).month != day.month
+        if (cand.timestamp() > now and (not days or V.DAYS[cand.weekday()] in days)
+                and (not dates or day.day in dates or (last and "last" in dates))):
             return cand.timestamp()
     return now + 86400

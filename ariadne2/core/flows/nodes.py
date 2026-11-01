@@ -119,7 +119,9 @@ def compute(kind: str, nt, inputs: dict, ctx) -> dict:
         return {"result": result, "count": count}
     if kind == "get":
         name = V.text_of(g("name"))
-        return {"value": ctx.vars[name] if name in ctx.vars else g("default")}
+        pool = getattr(ctx, "shared", None) if V.as_bool(g("shared")) else ctx.vars
+        pool = pool if pool is not None else {}
+        return {"value": pool[name] if name in pool else g("default")}
     if kind == "read_state":
         return {"value": ctx.read(nt.meta.get("adapter"), V.text_of(g("field")))}
     raise ValueError(f"{kind} isn't a pure node")

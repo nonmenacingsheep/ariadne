@@ -84,9 +84,10 @@ def _builtins() -> list[NodeType]:
     gone = "needs a desktop source that isn't built yet"
     return [
         # ---- starts ----
-        _t("time.at", "At", "start", "Fires at a time of day, on chosen days (none chosen = every day).",
-           "at", [pin("time", "time", True), pin("days", "list", False, [])], [("time", "time")], False, S,
-           "At {time}{days}"),
+        _t("time.at", "At", "start", "Fires at a time of day, on chosen weekdays and/or days of the month "
+           "(dates: [1, 15] or [\"last\"]; none chosen = every day).",
+           "at", [pin("time", "time", True), pin("days", "list", False, []), pin("dates", "list", False, [])],
+           [("time", "time")], False, S, "At {time}{days}"),
         _t("time.every", "Every", "start", "Fires again and again, once per interval.",
            "every", [pin("interval", "duration", True)], [("count", "number")], False, S, "Every {interval}"),
         _t("time.after", "After", "start", "Fires once, a delay after the flow is turned on.",
@@ -151,9 +152,10 @@ def _builtins() -> list[NodeType]:
            [pin("src", "path", True), pin("dst", "path", True)], [], True, A, "Move {src} to {dst}"),
         _t("file.copy", "Copy file", "action", "Copies a file or folder; refuses to overwrite.", "file_copy",
            [pin("src", "path", True), pin("dst", "path", True)], [], True, A, "Copy {src} to {dst}"),
-        _t("shell.run", "Run command", "action", "Runs a shell command (same hard refusals as her shell).",
-           "planned", [pin("command", "text", True)], [("output", "text")], True, A, "Run {command}",
-           available=False, note="her shell tool isn't built in 2.0 yet"),
+        _t("shell.run", "Run command", "action", "Runs a shell command and waits up to 20 seconds (same hard "
+           "refusals as her shell; long ones run detached). A flow of hers with this needs his approval.",
+           "shell", [pin("command", "text", True)], [("output", "text")], True, A, "Run {command}",
+           consent="command"),
         _t("window.place", "Place window", "action", "Moves and sizes a window.", "planned",
            [pin("match", "text", True), pin("where", "text", True)], [], True, A, "Place {match} {where}",
            available=False, note=gone),
@@ -191,15 +193,21 @@ def _builtins() -> list[NodeType]:
         _t("flow.for_each", "For each", "flow", "Runs its body once per item of a list.", "for_each",
            [pin("items", "list", True)], [("item", "any"), ("index", "number")], True, ("body", "done"),
            "for each of {items}"),
+        _t("flow.repeat", "Repeat", "flow", "A loop: runs its body up to N times (a Break inside ends it early). For "
+           "retry and poll.", "repeat", [pin("times", "number", True)], [("index", "number")], True,
+           ("body", "done"), "repeat {times} times"),
+        _t("flow.break", "Break", "flow", "Leaves the innermost Repeat or For each; it carries on from its done.",
+           "break", [], [], True, (), "break"),
         _t("flow.run_flow", "Run flow", "flow", "Calls another flow (by id or name) and waits for it.",
            "run_flow", [pin("flow", "text", True)], [], True, A, "run flow {flow}"),
         _t("flow.stop", "Stop", "flow", "Ends this run.", "stop", [], [], True, (), "stop"),
         # ---- data ----
-        _t("data.get", "Get", "data", "A variable the flow keeps between runs.", "get",
-           [pin("name", "text", True), pin("default", "any", False, "")], [("value", "any")], False, (),
-           "‹{name}›"),
-        _t("data.set", "Set", "data", "Keeps a value in a variable of the flow.", "set",
-           [pin("name", "text", True), pin("value", "any", True)], [], True, S, "set {name} to {value}"),
+        _t("data.get", "Get", "data", "A variable kept between runs: this flow's, or (shared) one every flow "
+           "sees.", "get", [pin("name", "text", True), pin("default", "any", False, ""),
+                            pin("shared", "yes/no", False, False)], [("value", "any")], False, (), "‹{name}›"),
+        _t("data.set", "Set", "data", "Keeps a value in a variable: this flow's, or (shared) one every flow sees.",
+           "set", [pin("name", "text", True), pin("value", "any", True), pin("shared", "yes/no", False, False)],
+           [], True, S, "set {name} to {value}"),
         _t("data.text", "Text", "data",
            "A template: 'now playing {title} by {artist}'. Each {name} takes the wired or typed input of that name.",
            "text", [pin("template", "text", True)], [("text", "text")], False, (), "“{template}”",
@@ -347,6 +355,8 @@ class Catalog:
         for nt in self.types.values():
             words = re.findall(r"[a-z0-9]+", f"{nt.type} {nt.title}".lower())
             desc = nt.description.lower()
+            # Any word may miss ("start trigger" has no "trigger"): a node scores
+            # by the words it does match, so a loose query still finds things.
             score = 0
             for t in tokens:
                 if any(w == t for w in words):
@@ -355,9 +365,6 @@ class Catalog:
                     score += 3
                 elif t in desc or t in nt.category:
                     score += 1
-                else:
-                    score = -1
-                    break
             if score > 0 or not tokens:
                 scored.append((-score, nt.title, nt))
         scored.sort(key=lambda x: x[:2])

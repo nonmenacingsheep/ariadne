@@ -116,6 +116,15 @@ def recovered(row: dict) -> bool:
     return row["free_gb"] >= CLEAR_GB and 100.0 - row["used_pct"] >= CLEAR_PCT
 
 
+def disk_summary(disks: list[dict]) -> dict:
+    """For flows (read state): Home's free space, and the fullest drive's."""
+    home = next((d for d in disks if d.get("name") == "Home"), None)
+    least = min(disks, key=lambda d: d.get("free_gb", 1e9), default=None)
+    return {"home_free_gb": home["free_gb"] if home else None,
+            "least_free_gb": least["free_gb"] if least else None,
+            "least_free_disk": least["name"] if least else None}
+
+
 class SystemAdapter(Adapter):
     name = "system"
     events = ("disk_low", "cpu_hot")
@@ -124,7 +133,8 @@ class SystemAdapter(Adapter):
                   "cpu_hot": {"phrase": "has the CPU above 90% for 30 seconds",
                               "fields": {"percent": "number"}}}
     state_fields = {"cpu": ("number", "cpu"), "memory": ("number", "mem"), "gpu": ("number", "gpu"),
-                    "gpu_memory": ("number", "gpu_mem")}
+                    "gpu_memory": ("number", "gpu_mem"), "home_free_gb": ("number", "home_free_gb"),
+                    "least_free_gb": ("number", "least_free_gb"), "least_free_disk": ("text", "least_free_disk")}
 
     def __init__(self, publish, sampler=None, gpu=None, disks=None, home=None, mounts=MOUNTS) -> None:
         super().__init__(publish)
@@ -181,7 +191,7 @@ class SystemAdapter(Adapter):
             util, mem = old.get("gpu"), old.get("gpu_mem")
         self._round += 1
         disks = await asyncio.to_thread(self._disks)
-        new = dict(snap, gpu=util, gpu_mem=mem, disks=disks)
+        new = dict(snap, gpu=util, gpu_mem=mem, disks=disks, **disk_summary(disks))
         self.observe(new, self.mono())
         if new != old or self._round == 1:
             self._state = new

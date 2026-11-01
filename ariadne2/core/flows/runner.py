@@ -29,6 +29,7 @@ log = logging.getLogger("ariadne2.core.flows.runner")
 
 MAX_STEPS = 400            # nodes one run may execute (a For each of 100 is well inside)
 MAX_ITEMS = 100
+SHARED = "_shared"         # the flow_state file holding variables every flow sees
 MAX_DEPTH = 3              # chains of flows causing flows (DESIGN: depth 3)
 CAUSE_GRACE = 10.0         # seconds after an action during which its adapter's events count as its doing
 _NO_TOUCH = (".ssh", ".gnupg", ".aws", ".password-store")
@@ -163,6 +164,21 @@ class RunnerMixin:
             self._push(run, c, nid, step.pins if step.pins is not None else nt.exec_out_names(c.nodes[nid]["values"])[:1])
         return "ok"
 
+    async def _shell(self, run: Run, command: str) -> str:
+        """Run Command: her shell's own checks, with the flow standing in for his
+        words (it's his, or one of hers he approved; a tainted path can't reach
+        this node, graph.safety). Anything that would send as him still refuses."""
+        from ..tools import ToolError, shell
+        flow = self.flows.get(run.flow_id) or {}
+        if run.dry:
+            return "(dry run)"
+        if flow.get("made_by") == "aries" and not flow.get("approved"):
+            raise AdapterError("Run command needs his approval of this flow first")
+        try:
+            return await asyncio.to_thread(shell.run, command, False, None, f"(his flow {flow.get('name', '')})")
+        except ToolError as e:
+            raise AdapterError(str(e))
+
     def _for_each_next(self, run: Run, c: Compiled, frame: dict) -> None:
         nid, items, i = frame["node"], frame["items"], frame["i"]
         if i < len(items):
@@ -258,13 +274,33 @@ class RunnerMixin:
         if kind == "wait_for":
             return Step(pause={"kind": "wait_for", "event": V.text_of(inputs.get("event")),
                                "until": now + (V.parse_duration(inputs.get("timeout")) or 3600)})
+        if kind == "repeat":
+            try:
+                times = max(0, min(MAX_ITEMS, int(float(V.text_of(inputs.get("times")) or 0))))
+            except ValueError:
+                return Step(fail="times should be a number")
+            run.stack.append({"k": "fe", "node": nid, "items": list(range(1, times + 1)), "i": 0})
+            return Step(pins=[])
+        if kind == "break":
+            # Drop what the loop's body still had queued, then go on from the loop's done.
+            at = next((i for i in range(len(run.stack) - 1, -1, -1) if run.stack[i]["k"] == "fe"), None)
+            if at is None:
+                return Step(fail="Break isn't inside a Repeat or For each")
+            loop = run.stack[at]["node"]
+            del run.stack[at:]
+            self._push(run, c, loop, ["done"])
+            return Step(pins=[])
         if kind == "for_each":
             items = inputs.get("items")
             items = items if isinstance(items, list) else [x.strip() for x in re.split(r"[\n,]", V.text_of(items)) if x.strip()]
             run.stack.append({"k": "fe", "node": nid, "items": items[:MAX_ITEMS], "i": 0})
             return Step(pins=[])
         if kind == "set":
-            st["vars"][V.text_of(inputs.get("name"))] = inputs.get("value")
+            if V.as_bool(inputs.get("shared")):
+                self.store.state(SHARED)["vars"][V.text_of(inputs.get("name"))] = inputs.get("value")
+                self.store.save_state(SHARED)
+            else:
+                st["vars"][V.text_of(inputs.get("name"))] = inputs.get("value")
             return Step()
         if kind == "run_flow":
             return await self._run_flow_node(run, inputs)
@@ -293,6 +329,10 @@ class RunnerMixin:
                 self.say_hook(text)
             else:
                 await self.tell(text)
+            return Step(pins=["done"])
+        if kind == "shell":
+            out["output"] = await self._shell(run, V.text_of(inputs.get("command")))
+            run.results.append(out["output"][:200])
             return Step(pins=["done"])
         if kind == "notify":
             await self.notify(V.text_of(inputs.get("title")) or "Ariadne", V.text_of(inputs.get("text")))

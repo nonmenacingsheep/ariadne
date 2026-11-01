@@ -161,3 +161,22 @@ def as_number(v) -> float | None:
 
 def as_bool(v) -> bool:
     return _yes(v)
+
+
+def parse_dates(v) -> list | None:
+    """Days of the month for At: [1, 15], "1, 15", ["last"]. None if one isn't a date."""
+    if v in (None, "", []):
+        return []
+    items = v if isinstance(v, list) else re.split(r"[\s,]+", str(v).strip())
+    out: list = []
+    for x in items:
+        t = str(x).strip().lower()
+        if not t:
+            continue
+        if t in ("last", "end"):
+            out.append("last")
+        elif t.isdigit() and 1 <= int(t) <= 31:
+            out.append(int(t))
+        else:
+            return None
+    return out

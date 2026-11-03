@@ -1,0 +1,87 @@
+{
+  "_doc": [
+    "Her places' states (docs/PET_STATES_PLAN.md), read by places.gd.",
+    "A state is a way of being at a piece of furniture. spot: room.gd's spot her body goes to.",
+    "idles: what she does there, [clip or prefix, weight or feeling] like pet.gd ROLES.",
+    "items: idles that replace those while she holds that thing (life.gd holding).",
+    "react: when he clicks or talks to her there (else her idles).",
+    "enter / leave: the move from standing to it and back ('' = a plain blend).",
+    "exits: state -> {clip, lift}; lift 'hips' raises her as her hips go down (lying back onto the bed).",
+    "sleep: the state she dozes off into from here."
+  ],
+
+  "Bed_SitEdge": {
+    "spot": "bed_edge", "enter": "sit_down_", "leave": "sit_up_", "sleep": "Bed_Sleep",
+    "idles": [["bed_edge_kick_", 1.2], ["bed_edge_swing_", 1.5], ["bed_edge_stretch_", "tired"],
+              ["bed_edge_lean_", 0.8], ["bed_edge_bounce_", "joy"], ["sit_idle_1", 0.4]],
+    "items": {"book": [["bed_edge_read_", 1.0]], "phone": [["bed_edge_phone_", 1.0]],
+              "mug": [["bed_edge_sip_", 1.0], ["bed_edge_swing_", 0.3]]},
+    "react": [["bed_edge_wave_", 1.0]],
+    "exits": {"Bed_LieBack": {"clip": "bed_edge_lie_", "lift": "hips"},
+              "Bed_SitUp": {"clip": "bed_edge_situp_", "lift": "hips"}}
+  },
+  "Bed_LieBack": {
+    "spot": "bed_lie", "sleep": "Bed_Sleep",
+    "idles": [["bed_lie_ceiling_", 1.5], ["bed_lie_stretch_", "tired"], ["bed_lie_fidget_", 0.8],
+              ["bed_lie_feet_", "joy"]],
+    "items": {"phone": [["bed_lie_phone_", 1.0]], "book": [["bed_lie_read_", 1.0]]},
+    "react": [["bed_lie_wave_", 1.0]],
+    "exits": {"Bed_SitEdge": {"clip": "bed_lie_edge_", "lift": "hips"},
+              "Bed_LieSide": {"clip": "bed_lie_side_"}, "Bed_LieFront": {"clip": "bed_lie_front_"},
+              "Bed_SitUp": {"clip": "bed_lie_situp_"}, "Bed_Sleep": {"clip": ""}}
+  },
+  "Bed_Sleep": {
+    "spot": "bed_lie", "sleep": "Bed_Sleep",
+    "idles": [["bed_sleep_1", 2.0], ["bed_sleep_2", 0.6]],
+    "exits": {"Bed_LieBack": {"clip": ""}}
+  },
+  "Bed_LieSide": {
+    "spot": "bed_lie", "sleep": "Bed_Sleep",
+    "idles": [["bed_side_hug_", 1.5], ["bed_side_shift_", 1.0]],
+    "items": {"phone": [["bed_side_phone_", 1.0]]},
+    "exits": {"Bed_LieBack": {"clip": "bed_side_lie_"}}
+  },
+  "Bed_LieFront": {
+    "spot": "bed_lie", "sleep": "Bed_Sleep",
+    "idles": [["bed_front_kick_", 1.5], ["bed_front_look_", 1.0]],
+    "items": {"book": [["bed_front_read_", 1.0], ["bed_front_kick_", 0.3]], "phone": [["bed_front_phone_", 1.0]]},
+    "exits": {"Bed_LieBack": {"clip": "bed_front_lie_"}}
+  },
+  "Bed_SitUp": {
+    "spot": "bed_situp", "sleep": "Bed_Sleep",
+    "idles": [["bed_situp_look_", 1.2], ["bed_situp_knees_", 1.0], ["bed_situp_stretch_", "tired"]],
+    "items": {"book": [["bed_situp_read_", 1.0]], "phone": [["bed_situp_phone_", 1.0]],
+              "mug": [["bed_situp_sip_", 1.0], ["bed_situp_look_", 0.3]]},
+    "exits": {"Bed_LieBack": {"clip": "bed_situp_lie_"}, "Bed_SitEdge": {"clip": "bed_situp_edge_", "lift": "hips"}}
+  },
+
+  "Desk_Sit": {
+    "spot": "desk", "enter": "sit_down_", "leave": "sit_up_", "sleep": "Desk_Sit",
+    "idles": [["work_type_", 1.5], ["work_mouse_", 1.0], ["work_think_", 0.5], ["sit_idle_1", 0.1]],
+    "items": {"controller": [["game_pad_", 1.0]]}
+  },
+
+  "Cushion_Sit": {
+    "spot": "cushion", "enter": "tr_stand_floor_", "leave": "tr_floor_stand_", "sleep": "Cushion_Sit",
+    "idles": [["floor_sit_", 1.0]],
+    "items": {"bowl": [["eat_", 1.0]], "book": [["read_", 1.0]], "phone": [["phone_", 1.0]]}
+  },
+
+  "Kitchen_Stand": {
+    "spot": "kitchen", "enter": "", "leave": "",
+    "idles": [["cook_", 1.0]],
+    "items": {"drink": [["drink_", 1.0]]}
+  },
+
+  "Mat_Stand": {
+    "spot": "mat", "enter": "", "leave": "",
+    "idles": [["workout_squat_", 1.0], ["workout_jacks_", 1.0], ["workout_lunge_", 1.0], ["workout_boxing_", 1.0],
+              ["workout_stretch_", 0.6]],
+    "exits": {"Mat_Sit": {"clip": "tr_stand_floor_"}}
+  },
+  "Mat_Sit": {
+    "spot": "mat", "enter": "tr_stand_floor_", "leave": "tr_floor_stand_", "sleep": "Mat_Sit",
+    "idles": [["meditate_", 1.0]],
+    "exits": {"Mat_Stand": {"clip": "tr_floor_stand_"}}
+  }
+}

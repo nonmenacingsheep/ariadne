@@ -5,8 +5,8 @@
 Each prop is one object with its origin on the floor at its centre, its front
 toward -Y (the camera, in Godot), real sizes in metres. Soft bevels and warm,
 plain colours, so the toon shading in pet.gd reads them like her. The heights
-that clips depend on are named: SEAT (chair, the sitting clips' seat), FUTON
-(the mattress top she lies on).
+that clips depend on are named: SEAT (chair, the sitting clips' seat), BED
+(the mattress top: chair height, so she sits on its edge like on a chair).
 """
 import math
 import sys
@@ -14,7 +14,7 @@ import sys
 import bpy
 
 SEAT = 0.47          # SIT_DROP in pet.gd: the seat height in her sitting clips
-FUTON = 0.14
+BED = SEAT         # room.gd BED_TOP
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 MATS = {}
@@ -96,14 +96,20 @@ def join(name, parts):
     return o
 
 
-def futon():
+def bed():
     p = []
-    box((1.0, 2.0, 0.08), (0, 0, 0.04), "wood_dark", 0.01, p)                  # low frame
-    box((0.95, 1.95, FUTON - 0.08), (0, 0, 0.08 + (FUTON - 0.08) / 2), "cream", 0.04, p)
-    box((0.55, 0.32, 0.1), (0, 0.78, FUTON + 0.05), "white", 0.045, p)         # pillow (head at the back)
-    box((0.97, 0.9, 0.04), (0, -0.45, FUTON + 0.02), "red", 0.02, p)           # blanket over the foot
-    box((0.97, 0.12, 0.05), (0, -0.02, FUTON + 0.025), "red_soft", 0.02, p)    # its folded edge
-    return join("futon", p)
+    frame = BED - 0.2                                                          # the mattress is 0.2 thick
+    box((1.04, 2.04, frame - 0.1), (0, 0, 0.1 + (frame - 0.1) / 2), "wood", 0.015, p)   # base
+    for x in (-0.47, 0.47):
+        for y in (-0.97, 0.97):
+            box((0.07, 0.07, 0.1), (x, y, 0.05), "wood_dark", 0.01, p)         # feet
+    box((1.04, 0.07, 0.95), (0, 1.005, 0.475), "wood_dark", 0.02, p)           # headboard (head at the back)
+    box((1.04, 0.06, 0.25), (0, -1.0, frame + 0.04), "wood_dark", 0.02, p)     # low footboard
+    box((0.98, 1.96, 0.2), (0, 0, frame + 0.1), "cream", 0.05, p)              # mattress
+    box((0.6, 0.34, 0.12), (0, 0.76, BED + 0.05), "white", 0.05, p)            # pillow
+    box((1.0, 0.95, 0.05), (0, -0.48, BED + 0.015), "red", 0.024, p)           # blanket over the foot
+    box((1.0, 0.13, 0.06), (0, -0.02, BED + 0.02), "red_soft", 0.025, p)       # its folded edge
+    return join("bed", p)
 
 
 def desk():
@@ -229,7 +235,7 @@ def can():
     return join("watering_can", p)
 
 
-for f in (futon, desk, chair, low_table, cushion, mat_, shelf, plant, kitchen, rug, can):
+for f in (bed, desk, chair, low_table, cushion, mat_, shelf, plant, kitchen, rug, can):
     o = f()
 bpy.ops.object.select_all(action="SELECT")
 out = sys.argv[sys.argv.index("--") + 1]

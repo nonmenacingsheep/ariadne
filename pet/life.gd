@@ -61,7 +61,7 @@ func _process(delta: float) -> void:
 	needs["hunger"] -= 0.008 * m * rates["hunger"]
 	needs["fitness"] -= 0.004 * m
 	needs["purpose"] -= 0.006 * m
-	if pet.state == "sleep" and pet.perched == "futon":
+	if pet.state == "sleep" and pet.pstate.begins_with("Bed_"):
 		needs["energy"] += 0.04 * m               # sleeps better in her bed
 	if pet.state == "sleep" and needs["energy"] > 0.98 and not pet.brain._night():
 		pet._stir()                              # slept her fill: up she gets

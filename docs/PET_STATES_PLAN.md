@@ -102,8 +102,8 @@ About 25 states, 4-6 idles each plus item idles and exits: roughly 150 clips.
 
 | # | Step | STATUS |
 |---|------|--------|
-| 1 | State engine: states.json, base poses, idles, item idles, exits with lift/position curves, graph search, talk reactions; today's activities ported to it unchanged | todo |
-| 2 | Clip pipeline: middle keyframes in kimodo_keyed.py, prone base pose, per-clip checker (ends vs base pose, heights, head direction), auto re-roll, contact sheets | todo |
+| 1 | State engine: states.json, base poses, idles, item idles, exits with lift/position curves, graph search, talk reactions; today's activities ported to it unchanged | done: pet/places.gd + states.json; desk, cushion, kitchen, mat ported; bed raised to chair height |
+| 2 | Clip pipeline: middle keyframes in kimodo_keyed.py, prone base pose, per-clip checker (ends vs base pose, heights, head direction), auto re-roll, contact sheets | in progress: kimodo_keyed.py turned poses, free ends, middle keys, checker + re-rolls |
 | 3 | Bed: raised bed prop, its 6 states, idles, exits, book/phone/mug idles (the Sitting_On_Bed example end to end first) | todo |
 | 4 | Items: homes, pick up / carry / put down / leave behind (saved), carry walks | todo |
 | 5 | Desk: 4 states, idles, mug/controller/book | todo |
@@ -113,10 +113,7 @@ About 25 states, 4-6 idles each plus item idles and exits: roughly 150 clips.
 | 9 | Floor anywhere: items in today's stances | todo |
 | 10 | Brain: goals, chaining states within a place, state-fitting interruptions | todo |
 
-## For Ronald to decide
+## Ronald's answers (2026-11-03)
 
-- Raise the bed to a real bed (needed for sitting on its edge the way you
-  described), or keep the low futon and sit on its edge knees-up?
-- Order: bed first as the worked example (recommended), then items, then the
-  rest?
-- Which item idles matter most to you, and any states missing from the table?
+Raise the bed to a real bed; bed first as the worked example; go ahead with
+everything, no particular item idles in mind.

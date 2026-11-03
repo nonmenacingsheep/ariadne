@@ -7,7 +7,7 @@ extends Node3D
 # round the pieces (blockers) and picks activities that use them.
 
 const PROPS := "res://models/props.glb"
-const FUTON_TOP := 0.14                    # props_build.py FUTON
+const BED_TOP := 0.47                      # props_build.py BED: chair height, so she sits on its edge
 const CUSHION_TOP := 0.05
 const MARGIN := 0.22                       # how close she walks past furniture
 
@@ -58,9 +58,14 @@ func arrange() -> void:
 	blockers.clear()
 	spots.clear()
 	var back := -rd
-	# Bed along the back wall on the left, head to the left.
-	var f := _place("futon", Vector2(1.5, back + 0.62), PI / 2, Vector2(2.0, 1.0))
-	spots["futon"] = {"approach": f + Vector2(-0.3, 0.85), "at": Vector3(f.x - 0.45, FUTON_TOP, f.y), "yaw": -PI / 2}
+	# Bed along the back wall on the left, head to the left. She sits on its
+	# front edge facing you, lies along it (her clips turn her, so she keeps
+	# facing out: yaw 0), or sits up against the headboard.
+	var f := _place("bed", Vector2(1.5, back + 0.62), PI / 2, Vector2(2.04, 1.04))
+	var by := Vector2(f.x - 0.1, f.y + 0.95)
+	spots["bed_edge"] = {"approach": by, "at": Vector3(f.x - 0.1, 0.0, f.y + 0.44), "yaw": 0.0}
+	spots["bed_lie"] = {"approach": by, "at": Vector3(f.x - 0.1, BED_TOP, f.y + 0.12), "yaw": 0.0}
+	spots["bed_situp"] = {"approach": by, "at": Vector3(f.x - 0.72, BED_TOP, f.y), "yaw": 0.0}
 	# Workout mat across the room, left of centre, halfway back.
 	var m := _place("mat", Vector2(3.3, -rd * 0.4), PI / 2, Vector2.ZERO)
 	spots["mat"] = {"approach": m, "at": Vector3(m.x, 0.0, m.y), "yaw": 0.0}

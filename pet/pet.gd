@@ -181,8 +181,10 @@ var crumbs: CPUParticles3D
 var life                                   # life.gd: needs, items, dropped files
 var brain                                  # brain.gd: what she does with her time
 var room                                   # room.gd: her furniture
+var places                                 # places.gd: the ways she can be at it (states.json)
+var pstate := ""                           # the one she's in (Bed_SitEdge ...), "" on her feet
 var furniture := true                      # Avatar setting
-var lift := 0.0                            # raised onto furniture (a cushion, the futon), metres
+var lift := 0.0                            # raised onto furniture (a cushion, the bed), metres
 var perched := ""                          # the furniture spot her body's on, or ""
 var perch := {}                            # moving onto or off it: from, to (x, lift, depth), t0, dur, yaw
 var drag_from := Vector2.ZERO
@@ -213,6 +215,7 @@ func _ready() -> void:
 	room = load("res://room.gd").new()
 	add_child(room)
 	room.setup(self)
+	places = load("res://places.gd").new(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
 	_land()
@@ -733,7 +736,7 @@ func _tell(delta: float) -> void:
 			mood = k
 	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
 		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
-		"dancing": state == "dance", "doing": brain.doing, "at": perched, "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
+		"dancing": state == "dance", "doing": brain.doing, "at": perched, "state": pstate, "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
 		"own": ["smile", "angry", "tears", "wide", "smirk"], "looks": LOOK_FACE.keys()}
 	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
 	if f:
@@ -980,20 +983,9 @@ const ROLES := {
 	"LieDown": [["lie_idle_", 1.0], ["Crouch_Idle", 0.01]],
 	"Cheer": [["cheer_", 1.0], ["wave_", 0.5], ["Yes", 0.01]],
 	"Shy": [["shy_", 1.0], ["Idle_FoldArms", 0.01]],
-	# Her things to do (docs/PET_LIFE_PLAN.md), at her furniture.
-	"Work": [["work_type_", 1.5], ["work_mouse_", 1.0], ["work_think_", 0.5], ["Sitting_Idle", 0.01]],
-	"Game": [["game_pad_", 1.0], ["Sitting_Idle", 0.01]],
-	"Eat": [["eat_", 1.0], ["floor_sit_", 0.01]],
-	"Read": [["read_", 1.0], ["floor_sit_", 0.01]],
-	"Phone": [["phone_", 1.0], ["floor_sit_", 0.01]],
-	"Meditate": [["meditate_", 1.0], ["floor_sit_", 0.01]],
-	"SleepBed": [["sleep_bed_1", 1.0], ["lie_idle_1", 0.3]],   # sleep_bed_2 rolls her end for end
-	# (workout_pushup_/situp_ came out wrong: she sits back on thin air; left out)
-	"Workout": [["workout_squat_", 1.0], ["workout_jacks_", 1.0], ["workout_lunge_", 1.0], ["workout_boxing_", 1.0],
-			["workout_stretch_", 0.6], ["stretch_", 0.15], ["Idle", 0.01]],
-	"Drink": [["drink_", 1.0], ["Idle", 0.01]],
+	# Her things to do (docs/PET_LIFE_PLAN.md): the ones at furniture are its
+	# states now (states.json); watering the plant is still a role.
 	"Water": [["water_plant_", 1.0], ["Interact", 0.01]],
-	"Cook": [["cook_", 1.0], ["Interact", 0.01]],
 }
 const GAIT_PLAYBACK := 0.8                 # a touch slower than Kimodo's brisk takes; speed follows
 # Played once and held at their end (a nod, being knocked over), not re-picked.
@@ -1026,6 +1018,8 @@ func _stance(name: String) -> String:
 
 # A clip that is itself a move between stances.
 func _is_move(name: String) -> bool:
+	if places and places.is_move(name):
+		return true
 	return name.begins_with("tr_") or name.begins_with("sit_down_") or name.begins_with("sit_up_") \
 			or name.begins_with("get_up_") or name == "Sitting_Exit" or name == "LayToIdle"
 
@@ -1057,11 +1051,17 @@ func _feeling(f: String) -> float:
 
 
 func _variant(role: String) -> String:
-	if not ROLES.has(role):
+	var entries: Array = ROLES.get(role, [])
+	if places and places.has(role.get_slice(":", 0)):
+		# A place state's idles (or what she does there with what she's holding);
+		# "<state>:react" when he pokes or talks to her there.
+		var s := role.get_slice(":", 0)
+		entries = places.react(s) if role.ends_with(":react") else places.pool(s, life.holding if life else "")
+	elif not ROLES.has(role):
 		return role if ap.has_animation(role) else ""
 	var pool := []
 	var weights := []
-	for entry in ROLES[role]:
+	for entry in entries:
 		var w: float = entry[1] if (entry[1] is float or entry[1] is int) else _feeling(entry[1])
 		if w <= 0.0:
 			continue
@@ -1087,6 +1087,8 @@ func _variant(role: String) -> String:
 
 
 func _play(name: String, blend := 0.3, speed := 1.0) -> void:
+	if pstate != "" and name in REACTIONS:
+		name = pstate + ":react"               # in bed or at the desk: a wave from there, not up on her feet
 	if clip == name and ap.is_playing():
 		ap.speed_scale = speed
 		return
@@ -1099,13 +1101,26 @@ func _play(name: String, blend := 0.3, speed := 1.0) -> void:
 
 
 func _play_variant(pick: String, blend: float) -> void:
-	var from := _stance(variant) if variant != "" else "stand"
-	var tr := "" if _is_move(pick) else _transition(from, _stance(pick))
-	if tr != "" and tr != pick and not variant.begins_with("tr_"):
-		pending = pick
-		pick = tr
-	elif pick == pending:
-		pending = ""
+	var want := clip.get_slice(":", 0) if _is_state_role(clip) else ""
+	if not _is_move(pick) and (pstate != "" or want != ""):
+		var hop := _state_hop(want)
+		if hop != "":
+			pending = pick
+			pick = hop
+		else:
+			if pick == pending:
+				pending = ""
+			if pstate != want and want != "":      # no way there from here (not beside it): on her feet
+				clip = "Idle"
+				pick = _variant("Idle")
+	else:
+		var from := _stance(variant) if variant != "" else "stand"
+		var tr := "" if _is_move(pick) else _transition(from, _stance(pick))
+		if tr != "" and tr != pick and not variant.begins_with("tr_"):
+			pending = pick
+			pick = tr
+		elif pick == pending:
+			pending = ""
 	# Lying: carry on the way her head points now (the half-turned copy if need be).
 	var none := [Vector2.ZERO, Vector2.ZERO]
 	var head_now: Vector2 = (lie_head.get(variant, none) as Array)[1]
@@ -1137,6 +1152,63 @@ func _play_via(first: String, role: String, blend := 0.3) -> void:
 	clip = role
 	_play_variant(first, blend)
 	ap.speed_scale = 1.0
+
+
+# --- place states (places.gd, states.json) ----------------------------------------
+# Reactions that, in a place state, become that state's own (a wave from the bed).
+const REACTIONS := ["Idle_Talking", "Yes", "Interact", "Cheer", "Shy", "Stretch", "Idle_No", "Idle_FoldArms"]
+
+
+func _is_state_role(role: String) -> bool:
+	return places != null and places.has(role.get_slice(":", 0))
+
+
+# One move toward the state she wants (want; "" = on her feet): the clip to
+# play first, her body sliding to where that state has her, or "" when she's
+# there. A move with no clip (asleep from lying back) happens at once.
+func _state_hop(want: String) -> String:
+	if pstate == "" and want != "" and _stance(variant) != "stand" and variant != "":
+		var up := _transition(_stance(variant), "stand")      # off the floor first (today's stances)
+		if up != "":
+			return up
+	for i in 4:                                # through any moves that have no clip
+		if pstate == want:
+			return ""
+		var e: Dictionary = places.next_exit(pstate, want)
+		if e.is_empty() and pstate != "":
+			e = places.next_exit(pstate, "")   # another place: up on her feet first, the brain walks her
+		if e.is_empty():
+			return ""
+		if pstate == "" and room:
+			# Into a state only from beside it; otherwise she stays on her feet.
+			var near: Vector2 = room.spot(places.spot(e["to"])).get("approach", Vector2(pos.x, depth))
+			if near.distance_to(Vector2(pos.x, depth)) > 0.6:
+				return ""
+		var c: String = e["clip"]
+		var pick := "" if c == "" else (c if ap.has_animation(c) else _variant_of(c))
+		var dur := ap.get_animation(pick).length if pick != "" else 0.5
+		_state_move(e["to"], dur, e["lift"] == "hips")
+		if pick != "":
+			return pick
+		if pstate == want:
+			return ""
+	return ""
+
+
+func _state_move(to: String, dur: float, hips: bool) -> void:
+	pstate = to
+	if to == "":
+		_unperch(dur)
+	else:
+		_perch_on(places.spot(to), dur)
+	if hips and not perch.is_empty():
+		perch["hips"] = true
+
+
+# Her hips' height over her feet, this frame (for lifting her as she lies back).
+func _hips_y() -> float:
+	var h := skel.find_bone("Hips")
+	return (skel.global_transform * skel.get_bone_global_pose(h).origin).y - body.global_position.y if h >= 0 else 0.0
 
 
 # Setting off toward target_x. A short hop sideways she side-steps, still
@@ -1265,6 +1337,9 @@ func _progress() -> float:
 # Falling asleep: on a widget she sits down first (unless already seated),
 # on the floor she settles into a nap.
 func _settle_to_sleep() -> void:
+	if pstate != "":                           # in a place: dozing off there (in bed, lying back first)
+		_play(places.sleep_state(pstate), 1.0, 0.6)
+		return
 	_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)      # the stance move comes first
 
 
@@ -1272,6 +1347,10 @@ func _settle_to_sleep() -> void:
 # just comes to.
 func _wake() -> void:
 	brain.drop()
+	if pstate != "":                           # in bed: the moves back up (sitting up, standing) play in turn
+		_set_state("idle", 3.0)
+		_play("Idle", 0.4)
+		return
 	if perched != "":                          # out of bed: she gets up and steps off it
 		_set_state("idle", 3.0)
 		_play("Idle", 0.4)
@@ -1301,7 +1380,7 @@ func _vary() -> void:
 		pending = ""
 		_play_variant(next, 0.35)
 		return
-	if not ROLES.has(clip) or clip in ONE_SHOT:
+	if not (ROLES.has(clip) or _is_state_role(clip)) or clip in ONE_SHOT or clip.ends_with(":react"):
 		return
 	var pick := _variant(clip)
 	if pick != "" and (pick != variant or ap.get_animation(pick).loop_mode == Animation.LOOP_NONE):
@@ -1325,11 +1404,10 @@ func _nap() -> void:
 	_settle_to_sleep()
 
 
-# To bed: lying down on the futon while her body slides onto it, then asleep.
+# To bed: sitting on its edge, lying back, then asleep (places.gd finds the moves).
 func _bed_sleep() -> void:
 	_set_state("sleep", 1e9)
-	_play("SleepBed", 0.6)
-	_perch_on("futon", maxf(0.6, variant_until - t) if pending != "" else 0.6)
+	_play("Bed_Sleep", 0.6)
 
 
 func _play_ball() -> void:
@@ -1642,7 +1720,7 @@ func _clicked() -> void:
 
 # --- furniture -----------------------------------------------------------------
 # Onto a piece of furniture: her body slides from where she stood to its spot
-# (and up onto the cushion or the futon) while the sitting or lying-down move
+# (and up onto the cushion or the bed) while the sitting or lying-down move
 # plays, and back off it while she gets up.
 func _perch_on(name: String, dur: float) -> void:
 	var s: Dictionary = room.spot(name)
@@ -1664,6 +1742,7 @@ func _unperch(dur: float) -> void:
 
 # Off it at once (picked up, sent somewhere): no sliding.
 func _unperch_now() -> void:
+	pstate = ""
 	perched = ""
 	perch = {}
 	lift = 0.0
@@ -1672,11 +1751,21 @@ func _unperch_now() -> void:
 func _perch_frame() -> void:
 	if perch.is_empty() or not perch.has("t0"):
 		return
-	var k := smoothstep(0.0, 1.0, (t - float(perch["t0"])) / maxf(0.05, float(perch["dur"])))
+	var u := clampf((t - float(perch["t0"])) / maxf(0.05, float(perch["dur"])), 0.0, 1.0)
+	var k := smoothstep(0.0, 1.0, u)
 	var p: Vector3 = (perch["from"] as Vector3).lerp(perch["to"], k)
 	pos.x = p.x
 	lift = p.y
 	depth = p.z
+	if perch.has("hips"):
+		# Lying back onto the bed (or sitting up off it): her hips stay on the
+		# mattress, so she rises as the clip lowers them, and settles at the end.
+		var a: float = (perch["from"] as Vector3).y
+		var b: float = (perch["to"] as Vector3).y
+		if not perch.has("h0"):
+			perch["h0"] = _hips_y()
+		var follow := clampf(a + float(perch["h0"]) - _hips_y(), minf(a, b), maxf(a, b))
+		lift = lerpf(follow, b, smoothstep(0.75, 1.0, u))
 	if k >= 1.0:
 		perch.erase("t0")                       # there; keep the facing
 		if perch.has("off"):
@@ -2065,6 +2154,17 @@ func _snapshot_seq(what: String) -> void:
 		await get_tree().create_timer(0.3).timeout
 		_play_variant(what.substr(5), 0.3)
 		variant_until = 1e9
+	if what.begins_with("state:"):               # place states in turn (states.json), from beside the first
+		var chain := what.substr(6).split(",")
+		var by: Vector2 = room.spot(places.spot(chain[0])).get("approach", Vector2(pos.x, -0.4))
+		pos.x = by.x
+		depth = by.y
+		_set_state("rest", 1e9)
+		if OS.get_environment("PET_HOLD") != "":
+			life._hold(OS.get_environment("PET_HOLD"))
+		var hold := float(OS.get_environment("PET_SEQ_HOLD")) if OS.get_environment("PET_SEQ_HOLD") != "" else 6.0
+		for i in chain.size():
+			get_tree().create_timer(0.3 + hold * i).timeout.connect(_play.bind(chain[i], 0.4))
 	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
 		depth = -0.4
 		var act := what.substr(3)

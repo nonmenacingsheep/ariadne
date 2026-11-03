@@ -72,7 +72,20 @@ func next() -> void:
 		pet._play("Idle", 0.4)
 		return
 	var step: Dictionary = plan[0]
+	if logging:
+		print("STEP %.1f %s pstate=%s clip=%s variant=%s pending=%s perched=%s" % [pet.t, str(step), pet.pstate, pet.clip, pet.variant, pet.pending, pet.perched])
 	if step.has("go") or step.has("hop_down") or step.has("jump_up") or step.has("follow"):
+		if pet.pstate != "" or (pet.perch.has("t0") and pet.places.has(pet.clip)):
+			# Out of bed or up from the desk first: the moves back to her feet play in turn.
+			if pet.clip != "Idle":
+				pet._play("Idle", 0.4)
+			var wait := 0.3
+			if pet.pending != "":
+				wait = pet.variant_until - pet.t        # the move playing now
+			if pet.perch.has("t0"):
+				wait = maxf(wait, float(pet.perch["t0"]) + float(pet.perch["dur"]) - pet.t)
+			pet._set_state("idle", maxf(0.1, wait) + 0.1)
+			return
 		if pet.perched != "":
 			# Off the furniture first: she gets up while her body slides back to where she stood.
 			if not pet.perch.has("off"):
@@ -198,7 +211,7 @@ func _score(a: String, on_widget: bool) -> float:
 		"sit_floor": return 0.25 + tired * 0.6 + sorrow * 0.3 if _has("floor_sit_") else 0.0
 		"lie": return 0.1 + tired * 0.7 + sorrow * 0.2 if _has("lie_idle_") else 0.0
 		"nap":
-			if not allow["nap"] or _room("futon"):
+			if not allow["nap"] or _bed():
 				return 0.0
 			return 3.0 if float(n["energy"]) < 0.2 else maxf(0.0, tired - 0.5) * 0.8
 		"sit_ledge":
@@ -218,7 +231,7 @@ func _score(a: String, on_widget: bool) -> float:
 		"cheer": return joy * 0.25 if _has("cheer_") else 0.0
 		"follow": return (0.3 + lonely * 0.4) if near and allow["seek_cursor"] else 0.0
 		"sleep_bed":
-			if not (allow["nap"] and _room("futon")):
+			if not (allow["nap"] and _bed()):
 				return 0.0
 			return 3.0 if float(n["energy"]) < 0.2 else maxf(0.0, tired - 0.4) * 1.2 + (1.2 if _night() and tired > 0.3 else 0.0)
 		"work":
@@ -287,28 +300,29 @@ func _plan(a: String, on_widget: bool) -> Array:
 		"cheer": return [{"play": "Cheer", "for": 3.0}]
 		"follow": return [{"follow": pet.t + randf_range(8, 14)}, {"play": "Idle", "front": true, "for": 3.0}]
 		# At her furniture. A spot's approach is where she walks to; "perch" puts her on it.
-		"sleep_bed": return [_to("futon"), {"call": "_bed_sleep"}]
-		"work": return [_to("desk"), {"play": "Work", "state": "work", "perch": "desk", "for": randf_range(45, 90),
+		# A state (pet/states.json) as the play: her body finds the moves into it.
+		"sleep_bed": return [_to("bed_edge"), {"call": "_bed_sleep"}]
+		"work": return [_to("desk"), {"play": "Desk_Sit", "state": "work", "for": randf_range(45, 90),
 				"gain": {"purpose": 0.3, "energy": -0.03, "fun": -0.03}}]
-		"game": return [_to("desk"), {"hold": "controller"}, {"play": "Game", "state": "work", "perch": "desk",
+		"game": return [_to("desk"), {"hold": "controller"}, {"play": "Desk_Sit", "state": "work",
 				"for": randf_range(30, 60), "gain": {"fun": 0.3, "energy": -0.02}}, {"release": true}]
 		"eat":
 			var e: Array = []
 			if _room("kitchen") and _has("cook_"):
-				e += [_to("kitchen"), {"play": "Cook", "perch": "kitchen", "for": randf_range(6, 9)}]
-			return e + [{"hold": "bowl"}, _to("cushion"), {"play": "Eat", "state": "rest", "perch": "cushion",
+				e += [_to("kitchen"), {"play": "Kitchen_Stand", "for": randf_range(6, 9)}]
+			return e + [{"hold": "bowl"}, _to("cushion"), {"play": "Cushion_Sit", "state": "rest",
 					"for": randf_range(20, 35), "gain": {"hunger": 0.6}}, {"release": true}]
 		"read": return [_to("shelf"), {"play": "PickUp_Table", "state": "react", "perch": "shelf", "for": 1.4},
-				{"hold": "book"}, _to("cushion"), {"play": "Read", "state": "rest", "perch": "cushion",
+				{"hold": "book"}, _to("cushion"), {"play": "Cushion_Sit", "state": "rest",
 				"for": randf_range(30, 60), "gain": {"fun": 0.15}}, {"release": true}]
-		"phone": return [_to("cushion"), {"hold": "phone"}, {"play": "Phone", "state": "rest", "perch": "cushion",
+		"phone": return [_to("cushion"), {"hold": "phone"}, {"play": "Cushion_Sit", "state": "rest",
 				"for": randf_range(20, 40), "gain": {"fun": 0.1, "affection": 0.03}}, {"release": true}]
-		"meditate": return [_to("mat"), {"play": "Meditate", "state": "rest", "perch": "mat", "for": randf_range(25, 45),
+		"meditate": return [_to("mat"), {"play": "Mat_Sit", "state": "rest", "for": randf_range(25, 45),
 				"gain": {"energy": 0.04}}]
-		"workout": return [_to("mat"), {"play": "Workout", "state": "workout", "perch": "mat",
+		"workout": return [_to("mat"), {"play": "Mat_Stand", "state": "workout",
 				"for": randf_range(30, 50), "gain": {"fitness": 0.3, "energy": -0.08, "fun": 0.05}},
-				{"play": "Stretch", "perch": "mat", "for": 4.0}]
-		"drink": return [_to("kitchen"), {"hold": "drink"}, {"play": "Drink", "perch": "kitchen",
+				{"play": "Stretch", "for": 4.0}]
+		"drink": return [_to("kitchen"), {"hold": "drink"}, {"play": "Kitchen_Stand",
 				"for": randf_range(6, 10), "gain": {"hunger": 0.08}}, {"release": true}]
 		"water":
 			watered_at = pet.t
@@ -321,6 +335,11 @@ func _plan(a: String, on_widget: bool) -> Array:
 # Walking to a piece of furniture's spot.
 func _to(name: String) -> Dictionary:
 	return {"go": pet.room.spot(name).get("approach", Vector2(pet.pos.x, pet.depth))}
+
+
+# Her bed, and the clips to get into it asleep.
+func _bed() -> bool:
+	return _room("bed_edge") and pet.places.reachable("Bed_Sleep")
 
 
 func _room(piece: String) -> bool:

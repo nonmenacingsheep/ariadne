@@ -365,6 +365,25 @@ class Verbs(unittest.IsolatedAsyncioTestCase):
     async def run_verb(self, verb, **args):
         return await self.a.run(verb, args, announce=False)
 
+    async def test_windows_are_listed_and_closed_all_but_the_kept_ones(self):
+        self.wins += [{"id": "{o}", "pid": 200, "cls": "opera", "desk": "com.opera.opera-gx", "cap": "YouTube"},
+                      {"id": "{p}", "pid": 501, "cls": "godot", "desk": "", "cap": "ariadne2-pet"}]
+        await self.a.poll_windows()                 # windows are read every third refresh; now
+        await self.a._regroup()
+        st = self.a.state()
+        self.assertEqual(st["window_count"], 4)
+        self.assertIn("YouTube", st["window_titles"])
+        out = await self.run_verb("close_windows", keep=["discord"])
+        self.assertIn("Asked 1 window to close", out)
+        self.assertIn("Kept Discord", out)
+        js = self.sent[-1]
+        self.assertIn('"{o}"', js)
+        for kept in ('"{a}"', '"{k}"', '"{p}"'):          # kept; the session's konsole; Ariadne's body
+            self.assertNotIn(kept, js)
+        out = await self.run_verb("close_windows", only=["youtube"])     # by a word in the title
+        self.assertIn('"{o}"', self.sent[-1])
+        self.assertNotIn('"{a}"', self.sent[-1])
+
     async def test_close_asks_politely_then_ends_when_asked_again(self):
         out = await self.run_verb("close", app="discord")
         self.assertIn("Asked Discord to close", out)
@@ -514,7 +533,7 @@ class Wiring(unittest.TestCase):
         reg = adapters.load_adapters(None, only=["tasks"])
         self.assertIn("tasks", reg)
         (t,) = adapters.tools(reg)
-        self.assertEqual(set(t["input_schema"]["properties"]["action"]["enum"]), {"open", "report", "focus", "close", "restart_yourself"})
+        self.assertEqual(set(t["input_schema"]["properties"]["action"]["enum"]), {"open", "report", "focus", "close", "close_windows", "restart_yourself"})
 
     def test_default_rect_overlaps_nothing(self):
         def hit(a, b):

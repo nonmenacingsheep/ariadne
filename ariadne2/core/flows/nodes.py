@@ -12,7 +12,7 @@ import re
 from . import values as V
 
 PURE_KINDS = ("compare", "and", "or", "not", "time_between", "day_is", "text", "math", "list",
-              "get", "read_state")
+              "get", "read_state", "windows")
 
 
 def compare(a, op, b) -> bool:
@@ -122,6 +122,10 @@ def compute(kind: str, nt, inputs: dict, ctx) -> dict:
         pool = getattr(ctx, "shared", None) if V.as_bool(g("shared")) else ctx.vars
         pool = pool if pool is not None else {}
         return {"value": pool[name] if name in pool else g("default")}
+    if kind == "windows":                           # from the Tasks widget's state (adapters/tasks.py)
+        apps, titles = ctx.read("tasks", "window_apps"), ctx.read("tasks", "window_titles")
+        titles = titles if isinstance(titles, list) else []
+        return {"apps": apps if isinstance(apps, list) else [], "titles": titles, "count": len(titles)}
     if kind == "read_state":
         return {"value": ctx.read(nt.meta.get("adapter"), V.text_of(g("field")))}
     raise ValueError(f"{kind} isn't a pure node")

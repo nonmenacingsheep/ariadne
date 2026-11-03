@@ -556,6 +556,10 @@ def parse_windows(payload) -> list[dict]:
 
 class TasksAdapter(Adapter):
     name = "tasks"
+    # For flows (read state, and the Open windows node): the windows open now.
+    state_fields = {"window_apps": ("list", "window_apps"), "window_titles": ("list", "window_titles"),
+                    "window_count": ("number", "window_count"), "cpu": ("number", "total.cpu"),
+                    "memory": ("number", "total.mem_pct")}
 
     def __init__(self, publish, root: str = "/proc", kwin=None, gpu=None, desktop=None, kill=None,
                  self_pid: int | None = None, my_uid: int | None = None, mono=None, spawn=None,
@@ -605,6 +609,16 @@ class TasksAdapter(Adapter):
                  "session and Ariadne herself.",
                  {"properties": {"app": {"type": "string", "description": "the app's name"}},
                   "required": ["app"]}, self._close, control="close"),
+            Verb("close_windows", "Close every open window except the ones to keep: each is asked politely, "
+                 "so apps can ask to save. keep: app names or words from window titles to leave open "
+                 "(\"Spotify\", \"Discord\"); only: close just these instead of everything. Never touches "
+                 "the system, the session or Ariadne. Only when he asked; a flow of yours with it needs "
+                 "his approval.",
+                 {"properties": {"keep": {"type": "array", "items": {"type": "string"},
+                                          "description": "apps or title words to leave open"},
+                                 "only": {"type": "array", "items": {"type": "string"},
+                                          "description": "close only these (apps or title words)"}}},
+                 self._close_windows, consent="approve"),
             Verb("restart_yourself", "Restart yourself, Ariadne: every part closes at once and comes back in "
                  "about 20 seconds. Only when he asks. It ends whatever you have running (a Claude hand's job, a "
                  "flow mid-run).",
@@ -723,8 +737,13 @@ class TasksAdapter(Adapter):
         for r in pinned:
             r["pinned"] = True
         rest = [r for r in rows if not r.get("pinned")]
+        # Every open window, in KWin's order: its app, and its title.
+        caps = {str(w.get("id")): str(w.get("cap") or "") for w in self._windows}
+        named = [(g.name, caps.get(str(i), "")) for g in self._groups for i in g.win_ids]
+        apps = list(dict.fromkeys(a for a, _ in named))
         return {"status": "ok", "apps": pinned + rest[:max(0, MAX_APPS - len(pinned))],
-                "total": {"cpu": machine, "mem_pct": mem}}
+                "total": {"cpu": machine, "mem_pct": mem},
+                "window_apps": apps, "window_titles": [t for _, t in named], "window_count": len(named)}
 
     # ---- verbs ----
 
@@ -768,6 +787,35 @@ class TasksAdapter(Adapter):
             raise AdapterError(f"{g.name} has no window open")
         await self._kwin_run(act_js("focus", g.win_ids), False)
         return f"Brought {g.name} to the front."
+
+    async def _close_windows(self, keep=None, only=None) -> str:
+        def words(v) -> list[str]:
+            items = v if isinstance(v, list) else re.split(r"[,\n]", str(v or ""))
+            return [str(x).strip().lower() for x in items if str(x).strip()]
+        keep, only = words(keep), words(only)
+        await self.poll_windows()
+        await self._regroup()
+        caps = {str(w.get("id")): str(w.get("cap") or "") for w in self._windows}
+        hit = lambda g, wid, ws: any(x in g.name.lower() or x in caps.get(str(wid), "").lower() for x in ws)  # noqa: E731
+        ids, closing, kept, refused = [], [], [], []
+        for g in self._groups:
+            for wid in g.win_ids:
+                if g.protected or g.name == SYSTEM:
+                    refused.append(g.name)
+                elif only and not hit(g, wid, only):
+                    continue
+                elif keep and hit(g, wid, keep):
+                    kept.append(g.name)
+                else:
+                    ids.append(wid)
+                    closing.append(g.name)
+        if ids:
+            await self._kwin_run(act_js("close", ids), False)
+        said = (f"Asked {len(ids)} window{'s' if len(ids) != 1 else ''} to close "
+                f"({', '.join(dict.fromkeys(closing))})." if ids else "No windows to close.")
+        if kept:
+            said += f" Kept {', '.join(dict.fromkeys(kept))}."
+        return said
 
     async def _close(self, app: str) -> str:
         await self.poll_windows()

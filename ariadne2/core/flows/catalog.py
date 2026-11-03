@@ -208,6 +208,10 @@ def _builtins() -> list[NodeType]:
         _t("data.set", "Set", "data", "Keeps a value in a variable: this flow's, or (shared) one every flow sees.",
            "set", [pin("name", "text", True), pin("value", "any", True), pin("shared", "yes/no", False, False)],
            [], True, S, "set {name} to {value}"),
+        _t("desktop.windows", "Open windows", "data",
+           "The windows open right now, as lists: their apps (each once) and their titles, plus a count. "
+           "Feed them to List, For each, or Tasks: close windows (keep).", "windows", [],
+           [("apps", "list"), ("titles", "list"), ("count", "number")], False, (), "open windows"),
         _t("data.text", "Text", "data",
            "A template: 'now playing {title} by {artist}'. Each {name} takes the wired or typed input of that name.",
            "text", [pin("template", "text", True)], [("text", "text")], False, (), "“{template}”",

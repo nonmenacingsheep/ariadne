@@ -41,6 +41,8 @@ class Verb:
     # "spend": the verb spends his Claude usage (starts a run). It only runs when
     # his own words this turn ask for Claude, or a hand, to do it.
     # "him": anything he said this turn (no flow or dropped file can trigger it).
+    # "approve": runs when asked (her judgement in a chat), but a flow of hers
+    # that uses it needs his approval first, like the others.
     consent: str | None = None
     # The verb returns text that came from outside (a web page): in a flow it
     # taints the path, like an outside-content start does (core/flows/graph.py).

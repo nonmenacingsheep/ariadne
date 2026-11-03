@@ -688,3 +688,18 @@ class DatesTests(unittest.TestCase):
         found = [nt.type for nt in rig.engine.catalog.search("start trigger time")]
         self.assertIn("time.at", found)
         self.assertEqual(rig.engine.catalog.search("retry loop")[0].type, "flow.repeat")
+
+
+class OpenWindowsNode(unittest.TestCase):
+    def test_it_gives_the_open_windows_as_lists(self):
+        from ariadne2.core.flows import nodes
+        from ariadne2.core.flows.engine import _Ctx
+        state = {"window_apps": ["Discord", "Opera GX"], "window_titles": ["general", "YouTube", "Docs"]}
+        ctx = _Ctx(0, {}, lambda adapter, field: state.get(field) if adapter == "tasks" else None)
+        rig = __import__("tests.flowfakes", fromlist=["Rig"]).Rig()
+        self.addCleanup(rig.tmp.cleanup)
+        nt = rig.engine.catalog.types["desktop.windows"]
+        self.assertEqual(nodes.compute("windows", nt, {}, ctx),
+                         {"apps": ["Discord", "Opera GX"], "titles": ["general", "YouTube", "Docs"], "count": 3})
+        empty = _Ctx(0, {}, lambda a, f: None)                    # no Tasks: empty lists, not a crash
+        self.assertEqual(nodes.compute("windows", nt, {}, empty)["count"], 0)

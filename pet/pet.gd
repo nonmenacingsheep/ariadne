@@ -772,7 +772,7 @@ const ROLES := {
 			["look_around_", 0.35], ["think_", 0.15]],
 	"Idle_FoldArms": [["Idle_FoldArms", 1.0], ["think_", 0.8], ["shy_", "shy"]],
 	"Sitting_Idle": [["Sitting_Idle", 1.0], ["sit_idle_", 1.5]],
-	"Crouch_Idle": [["Crouch_Idle", 1.0], ["nap_", 1.5]],
+	"Crouch_Idle": [["Crouch_Idle", 1.0], ["nap_", 1.5], ["floor_sit_", 1.0]],   # on the floor (asleep)
 	"Dance": [["Dance", 1.0], ["dance_", 1.5]],
 }
 var variant := ""                          # the clip actually playing for the role in `clip`

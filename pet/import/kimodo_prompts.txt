@@ -18,9 +18,9 @@ look_around_2|6|A woman turns her head to look behind her over her shoulder, the
 wave_1|4|A woman smiles and waves hello with her right hand.
 cheer_1|4|An excited woman pumps her fist and does a small happy hop.
 sit_down_1|4|A woman sits down onto a ledge behind her, letting her legs dangle.
-sit_idle_1|8|A woman sits on a high ledge with her legs dangling, swinging her feet back and forth.
+sit_idle_1|8|A woman sits on the edge of a tall table with her legs hanging over the side, swinging her feet.
 sit_idle_2|8|A woman sits on a ledge, leaning back on her hands and looking up.
-sit_idle_3|8|A woman sits on a ledge hugging one knee to her chest.
+floor_sit_1|8|A woman sits on the floor hugging one knee to her chest.
 lie_down_1|5|A woman lies down on her side on the floor and rests her head on her arm.
 lie_idle_1|8|A woman lies on her stomach on the floor, propped up on her elbows, kicking her feet in the air.
 nap_1|10|A woman curls up on the floor and sleeps peacefully, breathing slowly.

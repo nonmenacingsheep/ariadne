@@ -57,7 +57,7 @@ the Live2D Jane). Friends bring their own.
 
 | # | Step | STATUS |
 |---|------|--------|
-| 1 | Jane into the 3D body. Not VRM (no add-on needed): pet/import/jane_export.py cleans the MMD rig (constraints, IK and control bones off, D bones deform), rebuilds materials as base texture + clip mask, exports pet/models/jane.glb; jane_bonemap.tres maps it to Godot's humanoid skeleton, so her clips play on it (PET_MODEL=res://models/jane.glb). Left: Avatar-widget picker, toon shader, spring bones (tail/hair/ears), face shapes -> moods | in progress |
+| 1 | Jane into the 3D body: pet/import/jane_export.py -> pet/models/jane.glb + jane_bonemap.tres (humanoid), picked in Avatar > Model as 'Jane (3D)' and swapped live; toon shading + outlines; spring-bone jiggle (hair, ponytail, ears, chest, hips, belts, tie, bag, tassels) with a dragon tail; MMD faces blended per mood plus accents (hearts, blush, smirk, tears, gloom, sleepy, thoughtful, bored, dizzy, stars, sweat) for her looks and voice emotions | done |
 | 2 | Retarget pipeline: SOMA BVH -> Jane in Blender (bone map + rest-pose fix), bake, export clips; check against her current Quaternius set | todo |
 | 3 | Kimodo locally (ComfyUI nodes or its own runner): VRAM check on the 4070, a prompt list per state, batch-generate variations | todo |
 | 4 | MotionBricks locally: install, TensorRT plan, record locomotion clips (walk/run/strafe/crouch x styles, starts/stops/turns) | todo |

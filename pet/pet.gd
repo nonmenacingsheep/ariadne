@@ -53,6 +53,37 @@ const EMOTION_FACE := {
 	"resigned": "sorrow", "tired": "sorrow", "bored": "sorrow", "distant": "sorrow", "contemplative": "sorrow",
 }
 # Her avatar tool's looks (adapters/avatar.py) onto the same five.
+# MMD-style English face shapes (the Jane Doe model): each face is a blend.
+# Besides the five moods and the mouth, these models have accents the VRoid
+# face lacks, so her looks and voice emotions get their own faces here.
+const MMD_FACE := {
+	"blink": {"Eye_Closed": 1.0},
+	"joy": {"Eye_Joyful": 1.0, "Mouth_Smile": 0.8, "Eyebrow_Up": 0.3},
+	"sorrow": {"Eyebrow_Sad": 1.0, "Eye_Inner_Up": 0.5, "Mouth_Sad": 0.8},
+	"angry": {"Eyebrow_Angry": 1.0, "Eye_Sharp": 0.7, "Mouth_Narrow": 0.4},
+	"surprised": {"Eyebrow_Surprised": 1.0, "Eye_Surprised": 1.0, "Pupil_Small": 0.5, "Mouth_O": 0.4},
+	"fun": {"Eye_Calm": 0.35, "Mouth_Cat": 0.6},
+	"hearts": {"Pupil_Heart": 1.0, "Mouth_Smile": 0.6, "Blush": 0.6},
+	"blush": {"Blush": 1.0, "Eye_Calm": 0.3, "Mouth_Smile": 0.4, "Eyebrow_Sad": 0.2},
+	"smirk": {"Mouth_Smile.L": 1.0, "Mouth_Turn.L": 0.5, "Eye_Sharp": 0.4, "Eyebrow_Up": 0.3},
+	"tears": {"Tear": 1.0, "Tear2": 1.0, "Eyebrow_Sad": 1.0, "Mouth_Sad": 0.8, "Eye_Inner_Up": 0.5},
+	"gloom": {"Pale": 1.0, "Eyebrow_Sad": 0.6, "Eye_Bored": 0.6, "Pupil_Small": 0.4},
+	"sleepy": {"Eye_Closed": 0.55, "Eyebrow_Down": 0.3, "Mouth_NN": 0.3},
+	"thoughtful": {"Eye_Calm": 0.5, "Eyebrow_Close": 0.4, "Mouth_Narrow": 0.3, "Mouth_Move_Left": 0.3},
+	"bored": {"Eye_Bored": 1.0, "Mouth_NN": 0.4},
+	"dizzy": {"Pupil_HL_Off": 1.0, "Pupil_Small": 0.7, "Eye_Surprised": 0.6, "Eyebrow_Sad": 0.5, "Sweat1": 1.0,
+			"Sweat2": 1.0, "Mouth_Wide": 0.4},
+	"stars": {"Eye_Joyful": 0.5, "Pupil_Large": 0.6, "Mouth_Joyful": 0.8},
+	"sweat": {"Sweat1": 1.0, "Eyebrow_Sad": 0.4, "Mouth_Narrow": 0.2},
+	"a": {"Mouth_A": 1.0}, "i": {"Mouth_I": 1.0}, "u": {"Mouth_U": 1.0}, "e": {"Mouth_E": 1.0}, "o": {"Mouth_O": 1.0},
+}
+const MMD_LOOK := {"stars": "stars", "hearts": "hearts", "blush": "blush", "smirk": "smirk", "tears": "tears",
+		"gloom": "gloom", "sleepy": "sleepy", "thoughtful": "thoughtful", "eyeroll": "bored", "dizzy": "dizzy"}
+const MMD_EMOTION := {"affectionate": "hearts", "flirtatious": "smirk", "embarrassed": "blush", "shy": "blush",
+		"sarcastic": "smirk", "ironic": "smirk", "bored": "bored", "tired": "sleepy", "contemplative": "thoughtful",
+		"anxious": "sweat", "nervous": "sweat", "confused": "dizzy", "euphoric": "stars", "excited": "stars",
+		"hurt": "tears", "melancholic": "gloom", "dejected": "gloom"}
+const MOUTH_KEYS := ["blink", "a", "i", "u", "e", "o"]
 const LOOK_FACE := {
 	"smile": "joy", "stars": "joy", "hearts": "joy", "blush": "fun", "soft": "fun", "smirk": "fun",
 	"angry": "angry", "tears": "sorrow", "gloom": "sorrow", "sleepy": "sorrow", "thoughtful": "sorrow",
@@ -68,7 +99,8 @@ var said_hello := false
 var body: Node3D
 var skel: Skeleton3D
 var ap: AnimationPlayer
-var face := {}                            # key -> [[mesh, index], ...]
+var face := {}                            # key -> [[mesh, index, weight], ...]
+var face_slots := {}                      # [mesh, index] -> this frame's summed weight
 var body_path := ""                       # the model she's wearing (res://models/...)
 var fill: WorldEnvironment                # ambient light for GLB bodies (_toonify)
 var clip_lib: AnimationLibrary            # the humanoid clips, shared by every body
@@ -181,9 +213,22 @@ func _load_body(path: String) -> void:
 		for i in (m as MeshInstance3D).mesh.get_blend_shape_count() if (m as MeshInstance3D).mesh else 0:
 			if String((m as MeshInstance3D).mesh.get_blend_shape_name(i)).begins_with("Shrink_for"):
 				(m as MeshInstance3D).set_blend_shape_value(i, 1.0)
+	# Which face set: MMD-style names if it has them, else VRoid's. Each key ->
+	# [[mesh, index, weight], ...]; every slot is written every frame (_face_apply).
+	var mmd := not _find_shapes(body, "Eye_Joyful").is_empty()
+	var map: Dictionary = MMD_FACE if mmd else FACE
 	face = {}
-	for key in FACE:
-		face[key] = _find_shapes(body, FACE[key])
+	face_slots = {}
+	for key in map:
+		var blend: Dictionary = map[key] if map[key] is Dictionary else {map[key]: 1.0}
+		face[key] = []
+		for shape in blend:
+			for pair in _find_shapes(body, shape):
+				face[key].append([pair[0], pair[1], blend[shape]])
+				face_slots[[pair[0], pair[1]]] = 0.0
+		if key not in MOUTH_KEYS and not moods.has(key):
+			moods[key] = 0.0
+			mood_target[key] = 0.0
 	bones = {}
 	for b in ["Neck", "Head", "Hips"]:
 		var i := skel.find_bone(b)
@@ -536,7 +581,7 @@ func _command(msg: Dictionary) -> void:
 			_set_state("idle", 2.0)
 			_play("Idle", 0.3)
 		"feel":
-			_feel(LOOK_FACE.get(str(msg.get("look", "")), "joy"), 0.8, float(msg.get("seconds", 4)))
+			_feel(_look_key(str(msg.get("look", ""))), 0.8, float(msg.get("seconds", 4)))
 		"sleep":
 			_set_state("sleep", 1e9)
 			_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)
@@ -960,6 +1005,7 @@ func _face_frame(delta: float) -> void:
 		_shape(k, moods[k])
 	for v in mouth:
 		_shape(v, mouth[v] if allow["lip_sync"] else 0.0)
+	_face_apply()
 
 
 # a i u e o: step through the vowels of the sentence she's saying, at the
@@ -969,8 +1015,8 @@ func _speech_frame(delta: float) -> void:
 		speech_on = speech.pop_front()
 		speech_at = 0.0
 		var em: String = speech_on.get("emotion", "")
-		if EMOTION_FACE.has(em):
-			_feel(EMOTION_FACE[em], 0.6, float(speech_on["seconds"]) + 0.5)
+		if _emotion_key(em) != "":
+			_feel(_emotion_key(em), 0.6, float(speech_on["seconds"]) + 0.5)
 	var want := {"a": 0.0, "i": 0.0, "u": 0.0, "e": 0.0, "o": 0.0}
 	if not speech_on.is_empty():
 		speech_at += delta
@@ -994,8 +1040,31 @@ func _speech_frame(delta: float) -> void:
 
 
 func _shape(key: String, w: float) -> void:
-	for pair in face.get(key, []):
-		(pair[0] as MeshInstance3D).set_blend_shape_value(pair[1], w)
+	for e in face.get(key, []):
+		var slot := [e[0], e[1]]
+		face_slots[slot] = face_slots.get(slot, 0.0) + w * float(e[2])
+
+
+# Faces add up (blinking and a sleepy face share the lids), then each shape
+# is set once, clamped, and its tally cleared for the next frame.
+func _face_apply() -> void:
+	for slot in face_slots:
+		(slot[0] as MeshInstance3D).set_blend_shape_value(slot[1], clampf(face_slots[slot], 0.0, 1.0))
+		face_slots[slot] = 0.0
+
+
+# Her look ("hearts") or voice emotion ("affectionate") -> a face key, using
+# the richer MMD faces when this body has them.
+func _look_key(look: String) -> String:
+	if MMD_LOOK.has(look) and face.has(MMD_LOOK[look]):
+		return MMD_LOOK[look]
+	return LOOK_FACE.get(look, "joy")
+
+
+func _emotion_key(em: String) -> String:
+	if MMD_EMOTION.has(em) and face.has(MMD_EMOTION[em]):
+		return MMD_EMOTION[em]
+	return EMOTION_FACE.get(em, "")
 
 
 # --- picking her up -----------------------------------------------------------
@@ -1231,6 +1300,7 @@ func _snapshot() -> void:
 		mouth["a"] = 0.8 if s[3] == "talk" else 0.0
 		for v in mouth:
 			_shape(v, mouth[v])
+		_face_apply()
 		_place_body()
 		await get_tree().process_frame
 		await get_tree().process_frame

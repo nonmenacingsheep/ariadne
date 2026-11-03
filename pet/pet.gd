@@ -180,6 +180,11 @@ var carry_pose := {}                       # arm bones -> rotation, sampled from
 var crumbs: CPUParticles3D
 var life                                   # life.gd: needs, items, dropped files
 var brain                                  # brain.gd: what she does with her time
+var room                                   # room.gd: her furniture
+var furniture := true                      # Avatar setting
+var lift := 0.0                            # raised onto furniture (a cushion, the futon), metres
+var perched := ""                          # the furniture spot her body's on, or ""
+var perch := {}                            # moving onto or off it: from, to (x, lift, depth), t0, dur, yaw
 var drag_from := Vector2.ZERO
 var drag_moved := false
 var last_rect := Rect2()
@@ -205,6 +210,9 @@ func _ready() -> void:
 	add_child(life)
 	life.setup(self)
 	brain = load("res://brain.gd").new(self)
+	room = load("res://room.gd").new()
+	add_child(room)
+	room.setup(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
 	_land()
@@ -658,6 +666,8 @@ func _on_message(msg: Dictionary) -> void:
 func _command(msg: Dictionary) -> void:
 	_stir()
 	brain.drop()                               # his order (through her) comes before her plans
+	if str(msg.get("cmd", "")) in ["go", "dance"]:
+		_unperch_now()
 	match str(msg.get("cmd", "")):
 		"go":
 			var tx := pos.x
@@ -723,7 +733,7 @@ func _tell(delta: float) -> void:
 			mood = k
 	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
 		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
-		"dancing": state == "dance", "doing": brain.doing, "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
+		"dancing": state == "dance", "doing": brain.doing, "at": perched, "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
 		"own": ["smile", "angry", "tears", "wide", "smirk"], "looks": LOOK_FACE.keys()}
 	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
 	if f:
@@ -797,8 +807,47 @@ func _load_clips() -> void:
 								anim.loop_mode = Animation.LOOP_LINEAR
 							anim = _in_place(anim, String(name).begins_with("stop_"))
 						clip_lib.add_animation(name, anim)
+						_lying_heads(name, anim)
 			src.free()
 	ap.add_animation_library("", clip_lib)
+
+
+# Lying clips don't agree which way her head points (lying back from sitting
+# puts it away from you, lying down from standing toward you), and a blend
+# between two that disagree swings her through 180 degrees, feet up. So each
+# clip that starts or ends lying gets a copy turned half round ("<name>@r"),
+# and _play_variant plays whichever starts the way she's lying now.
+var lie_head := {}                         # clip -> [start, end] head direction on the floor (x, z), or ZERO when not lying
+
+
+func _lying_heads(name: String, anim: Animation) -> void:
+	var hips := -1
+	for tr in anim.get_track_count():
+		if anim.track_get_type(tr) == Animation.TYPE_ROTATION_3D and String(anim.track_get_path(tr)).ends_with(":Hips"):
+			hips = tr
+	if hips < 0:
+		return
+	var ends := []
+	for at in [0.0, anim.length]:
+		var up := Basis(anim.rotation_track_interpolate(hips, at)) * Vector3.UP
+		ends.append(Vector2(up.x, up.z).normalized() if up.y < 0.5 else Vector2.ZERO)
+	if ends[0] == Vector2.ZERO and ends[1] == Vector2.ZERO:
+		return
+	lie_head[name] = ends
+	var turned := anim.duplicate(true) as Animation
+	var half := Quaternion(Vector3.UP, PI)
+	for tr in turned.get_track_count():
+		var path := String(turned.track_get_path(tr))
+		if not (path.ends_with(":Hips") or path.ends_with(":Root")):
+			continue
+		for k in turned.track_get_key_count(tr):
+			var v = turned.track_get_key_value(tr, k)
+			if turned.track_get_type(tr) == Animation.TYPE_ROTATION_3D:
+				turned.track_set_key_value(tr, k, half * (v as Quaternion))
+			elif turned.track_get_type(tr) == Animation.TYPE_POSITION_3D:
+				turned.track_set_key_value(tr, k, Vector3(-v.x, v.y, -v.z))
+	clip_lib.add_animation(name + "@r", turned)
+	lie_head[name + "@r"] = [-ends[0], -ends[1]]
 
 
 # Locomotion loops (pet/import/kimodo_loop.py): each one's ground velocity,
@@ -931,6 +980,18 @@ const ROLES := {
 	"LieDown": [["lie_idle_", 1.0], ["Crouch_Idle", 0.01]],
 	"Cheer": [["cheer_", 1.0], ["wave_", 0.5], ["Yes", 0.01]],
 	"Shy": [["shy_", 1.0], ["Idle_FoldArms", 0.01]],
+	# Her things to do (docs/PET_LIFE_PLAN.md), at her furniture.
+	"Work": [["work_type_", 1.5], ["work_mouse_", 1.0], ["work_think_", 0.5], ["Sitting_Idle", 0.01]],
+	"Game": [["game_pad_", 1.0], ["Sitting_Idle", 0.01]],
+	"Eat": [["eat_", 1.0], ["floor_sit_", 0.01]],
+	"Read": [["read_", 1.0], ["floor_sit_", 0.01]],
+	"Phone": [["phone_", 1.0], ["floor_sit_", 0.01]],
+	"Meditate": [["meditate_", 1.0], ["floor_sit_", 0.01]],
+	"SleepBed": [["sleep_bed_1", 1.0], ["lie_idle_1", 0.3]],   # sleep_bed_2 rolls her end for end
+	"Workout": [["workout_", 1.0], ["stretch_", 0.15], ["Idle", 0.01]],
+	"Drink": [["drink_", 1.0], ["Idle", 0.01]],
+	"Water": [["water_plant_", 1.0], ["Interact", 0.01]],
+	"Cook": [["cook_", 1.0], ["Interact", 0.01]],
 }
 const GAIT_PLAYBACK := 0.8                 # a touch slower than Kimodo's brisk takes; speed follows
 # Played once and held at their end (a nod, being knocked over), not re-picked.
@@ -941,7 +1002,9 @@ const ONE_SHOT := ["Jump_Land", "Death01", "PickUp_Table", "LayToIdle", "Interac
 # plays first (tr_<from>_<to>_*, sit_down_/sit_up_ for ledges), so she never
 # pops from a nap to standing or from standing to a crouch.
 const STANCE_PREFIXES := [["sit_idle_", "ledge"], ["Sitting_", "ledge"], ["nap_", "floor"], ["floor_sit_", "floor"],
-		["lie_", "lie"], ["crouch_idle_", "crouch"], ["Crouch_Idle", "crouch"]]
+		["lie_", "lie"], ["crouch_idle_", "crouch"], ["Crouch_Idle", "crouch"],
+		["work_", "ledge"], ["game_", "ledge"], ["eat_", "floor"], ["read_", "floor"], ["phone_", "floor"],
+		["meditate_", "floor"], ["sleep_bed_", "lie"]]
 const TRANSITION_EXTRA := {"stand>ledge": "sit_down_", "ledge>stand": "sit_up_"}
 var pending := ""                          # the clip waiting for a transition to finish
 
@@ -1002,7 +1065,7 @@ func _variant(role: String) -> String:
 			continue
 		var names: Array = [entry[0]] if ap.has_animation(entry[0]) else []
 		if entry[0].ends_with("_"):
-			names = Array(ap.get_animation_list()).filter(func(a): return String(a).begins_with(entry[0]))
+			names = Array(ap.get_animation_list()).filter(func(a): return String(a).begins_with(entry[0]) and not String(a).contains("@"))
 		for a in names:
 			pool.append(a)
 			weights.append(w / names.size())        # a prefix's weight is shared by its variants
@@ -1041,6 +1104,21 @@ func _play_variant(pick: String, blend: float) -> void:
 		pick = tr
 	elif pick == pending:
 		pending = ""
+	# Lying: carry on the way her head points now (the half-turned copy if need be).
+	var none := [Vector2.ZERO, Vector2.ZERO]
+	var head_now: Vector2 = (lie_head.get(variant, none) as Array)[1]
+	var head_next: Vector2 = (lie_head.get(pick, none) as Array)[0]
+	if head_now != Vector2.ZERO and head_next != Vector2.ZERO and head_now.dot(head_next) < 0.0 \
+			and ap.has_animation(pick + "@r"):
+		pick += "@r"
+	elif variant.ends_with("@r") and head_now == Vector2.ZERO:
+		# Up off the floor from a half-turned clip she faces the other way:
+		# her body turns with her instead, and the next clip starts square.
+		yaw = wrapf(yaw + PI, -PI, PI)
+		yaw_target = wrapf(yaw_target + PI, -PI, PI)
+		if perch.has("yaw"):
+			perch["yaw"] = wrapf(float(perch["yaw"]) + PI, -PI, PI)
+		blend = 0.0
 	variant = pick
 	ap.play(pick, blend)
 	var a := ap.get_animation(pick)
@@ -1192,6 +1270,11 @@ func _settle_to_sleep() -> void:
 # just comes to.
 func _wake() -> void:
 	brain.drop()
+	if perched != "":                          # out of bed: she gets up and steps off it
+		_set_state("idle", 3.0)
+		_play("Idle", 0.4)
+		_unperch(maxf(0.8, variant_until - t))
+		return
 	# Getting up from wherever she was comes first (the stance moves); off
 	# the floor, now and then she comes up through a crouch, stretching awake.
 	if floor_y < 0.01 and randf() < 0.35 and _variant_of("crouch_idle_") != "":
@@ -1203,7 +1286,7 @@ func _wake() -> void:
 
 
 func _variant_of(prefix: String) -> String:
-	var names := Array(ap.get_animation_list()).filter(func(a): return String(a).begins_with(prefix))
+	var names := Array(ap.get_animation_list()).filter(func(a): return String(a).begins_with(prefix) and not String(a).contains("@"))
 	return names.pick_random() if not names.is_empty() else ""
 
 
@@ -1240,6 +1323,13 @@ func _nap() -> void:
 	_settle_to_sleep()
 
 
+# To bed: lying down on the futon while her body slides onto it, then asleep.
+func _bed_sleep() -> void:
+	_set_state("sleep", 1e9)
+	_play("SleepBed", 0.6)
+	_perch_on("futon", maxf(0.6, variant_until - t) if pending != "" else 0.6)
+
+
 func _play_ball() -> void:
 	life.play_ball()
 
@@ -1272,9 +1362,17 @@ func _read_settings() -> void:
 		FPS_IDLE = maxi(10, FPS_BUSY / 2)
 	if av.has("sleep_after"):
 		SLEEP_AFTER = clampf(float(av["sleep_after"]), 1, 120) * 60.0
+	if av.has("furniture") and bool(av["furniture"]) != furniture:
+		furniture = bool(av["furniture"])
+		if room:
+			room.visible = furniture
+			if not furniture:
+				_unperch_now()
 	if av.has("room_depth"):
 		room_depth = clampf(float(av["room_depth"]), 5.0, 10.0) * 0.3048
 		depth = clampf(depth, -room_depth, 0.0)
+		if room:
+			room.arrange()
 	if av.has("size") and absf(float(av["size"]) - PPM) > 0.5:
 		PPM = clampf(float(av["size"]), 200, 840)
 		screen = Vector2.ZERO                 # forces the camera to re-fit
@@ -1302,6 +1400,8 @@ func _sync_screen() -> void:
 	if v != screen and v.x > 0:
 		screen = v
 		_frame_camera()
+		if room:
+			room.arrange()
 		_read_layout()
 		_land()
 		pos.x = clampf(pos.x, 0.4, maxf(0.4, screen.x / PPM - 0.4))   # a smaller screen than assumed: keep her on it
@@ -1333,6 +1433,7 @@ func _process(delta: float) -> void:
 		Engine.max_fps = 5                  # still reading settings, so she can come back
 		return
 	_think(delta)
+	_perch_frame()
 	_move(delta)
 	_vary()
 	ap.advance(delta)                       # clips first, then her arms, head and face on top
@@ -1482,7 +1583,9 @@ func _move(delta: float) -> void:
 	if state not in ["fall", "held"]:
 		roll = lerpf(roll, 0.0, clampf(delta * 8.0, 0.0, 1.0))
 	pos.x = clampf(pos.x, 0.3, screen.x / PPM - 0.3)
-	if t > look_until and state not in ["wander", "stopping"]:
+	if perched != "":
+		yaw_target = float(perch.get("yaw", yaw_target))   # at the desk, in bed: facing the way it faces
+	elif t > look_until and state not in ["wander", "stopping"]:
 		yaw_target = sin(t * 0.17) * 0.25
 	yaw = lerp_angle(yaw, yaw_target, clampf(delta * 5.0, 0.0, 1.0))
 
@@ -1535,6 +1638,50 @@ func _clicked() -> void:
 		_play("Yes" if randf() < 0.6 else "Interact", 0.2)
 
 
+# --- furniture -----------------------------------------------------------------
+# Onto a piece of furniture: her body slides from where she stood to its spot
+# (and up onto the cushion or the futon) while the sitting or lying-down move
+# plays, and back off it while she gets up.
+func _perch_on(name: String, dur: float) -> void:
+	var s: Dictionary = room.spot(name)
+	if s.is_empty():
+		return
+	perched = name
+	perch = {"from": Vector3(pos.x, lift, depth), "to": s["at"], "t0": t, "dur": dur, "yaw": s["yaw"]}
+	yaw_target = s["yaw"]
+
+
+func _unperch(dur: float) -> void:
+	if perched == "":
+		return
+	var s: Dictionary = room.spot(perched)
+	var back: Vector2 = s.get("approach", Vector2(pos.x, depth))
+	perch = {"from": Vector3(pos.x, lift, depth), "to": Vector3(back.x, 0.0, back.y), "t0": t, "dur": dur,
+			"yaw": perch.get("yaw", yaw), "off": true}
+
+
+# Off it at once (picked up, sent somewhere): no sliding.
+func _unperch_now() -> void:
+	perched = ""
+	perch = {}
+	lift = 0.0
+
+
+func _perch_frame() -> void:
+	if perch.is_empty() or not perch.has("t0"):
+		return
+	var k := smoothstep(0.0, 1.0, (t - float(perch["t0"])) / maxf(0.05, float(perch["dur"])))
+	var p: Vector3 = (perch["from"] as Vector3).lerp(perch["to"], k)
+	pos.x = p.x
+	lift = p.y
+	depth = p.z
+	if k >= 1.0:
+		perch.erase("t0")                       # there; keep the facing
+		if perch.has("off"):
+			perched = ""
+			perch = {}
+
+
 # Arrived: a moment's pause, short when her plan has more to do there.
 func _pause() -> float:
 	return 0.25 if brain.plan_left() else randf_range(2, 5)
@@ -1553,7 +1700,7 @@ func _place_body() -> void:
 			sit = 1.0 - smoothstep(0.15, 0.75, _progress())
 	# SIT_DROP was measured on Aries (hips 0.795 m); a taller body sits lower.
 	var drop := SIT_DROP * (skel.motion_scale / 0.795 if skel and skel.motion_scale > 0.1 else 1.0)
-	body.position = Vector3(pos.x, pos.y - drop * sit, depth)
+	body.position = Vector3(pos.x, pos.y + lift - drop * sit, depth)
 	if shadow:
 		# On the room's floor only (a ledge is a thin edge); fainter the higher she's up.
 		shadow.visible = shown and floor_y < 0.01 and pos.y < 2.0
@@ -1727,6 +1874,7 @@ func _input(event: InputEvent) -> void:
 			held_vel = Vector2.ZERO
 			_stir()
 			brain.drop()
+			_unperch_now()
 			_set_state("held", 1e9)
 			_feel("surprised", 0.4, 1.0)
 		else:
@@ -1908,6 +2056,14 @@ func _snapshot_seq(what: String) -> void:
 	floor_y = pos.y
 	floor_span = Vector2(0.0, 99.0)
 	yaw = 0.0
+	if OS.get_environment("PET_TIME_SCALE") != "":
+		Engine.time_scale = float(OS.get_environment("PET_TIME_SCALE"))
+	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
+		depth = -0.4
+		var act := what.substr(3)
+		brain.doing = act
+		brain.plan = brain._plan(act, false)
+		_set_state("idle", 0.2)
 	match what:
 		"sit":
 			_set_state("sit", 99.0)
@@ -1920,6 +2076,15 @@ func _snapshot_seq(what: String) -> void:
 		"brain":                                   # her own choices, sped up (PET_TIME_SCALE)
 			Engine.time_scale = float(OS.get_environment("PET_TIME_SCALE")) if OS.get_environment("PET_TIME_SCALE") != "" else 1.0
 			_set_state("idle", 0.5)
+		"liedown":                                 # lies down on the floor, then gets up again (side on)
+			yaw = PI / 2
+			yaw_target = yaw
+			look_until = 1e9
+			_set_state("rest", 99.0)
+			_play("LieDown", 0.4)
+			await get_tree().create_timer(5.5).timeout
+			_set_state("idle", 99.0)
+			_play("Idle", 0.4)
 		"attend", "follow":                        # he talks to her / wiggles his pointer, she's at the back
 			depth = -room_depth * 0.8
 			yaw = 2.6

@@ -13,7 +13,8 @@ const ITEMS := ["cookie", "drink", "ball", "plush"]
 const BALL_R := 0.09
 
 var pet                                   # pet.gd (her body)
-var needs := {"energy": 0.8, "fun": 0.6, "affection": 0.6, "hunger": 0.7}   # hunger: 1 = full
+var needs := {"energy": 0.8, "fun": 0.6, "affection": 0.6, "hunger": 0.7,   # hunger: 1 = full
+		"fitness": 0.6, "purpose": 0.6}           # a workout and her work at the desk fill these
 # Drain multipliers, set from the Avatar settings (1 = normal).
 var rates := {"energy": 1.0, "fun": 1.0, "affection": 1.0, "hunger": 1.0}
 var tick_in := 1.0
@@ -58,6 +59,12 @@ func _process(delta: float) -> void:
 	needs["fun"] += (0.06 if pet.state == "dance" else -0.012 * rates["fun"]) * m
 	needs["affection"] -= 0.007 * m * rates["affection"]
 	needs["hunger"] -= 0.008 * m * rates["hunger"]
+	needs["fitness"] -= 0.004 * m
+	needs["purpose"] -= 0.006 * m
+	if pet.state == "sleep" and pet.perched == "futon":
+		needs["energy"] += 0.04 * m               # sleeps better in her bed
+	if pet.state == "sleep" and needs["energy"] > 0.98 and not pet.brain._night():
+		pet._stir()                              # slept her fill: up she gets
 	for k in needs:
 		needs[k] = clampf(needs[k], 0.0, 1.0)
 	save_in -= 1.0
@@ -262,6 +269,23 @@ func _item_mesh(item: String) -> MeshInstance3D:
 			s.radius = BALL_R; s.height = BALL_R * 2
 			m.mesh = s
 			mat.albedo_color = Color(1.0, 0.16, 0.24)
+		"book", "phone", "controller":
+			var b := BoxMesh.new()
+			b.size = {"book": Vector3(0.15, 0.2, 0.03), "phone": Vector3(0.07, 0.14, 0.01),
+					"controller": Vector3(0.15, 0.04, 0.09)}[item]
+			m.mesh = b
+			mat.albedo_color = {"book": Color(0.25, 0.35, 0.6), "phone": Color(0.1, 0.1, 0.12),
+					"controller": Color(0.15, 0.15, 0.18)}[item]
+		"bowl":
+			var c := CylinderMesh.new()
+			c.top_radius = 0.07; c.bottom_radius = 0.04; c.height = 0.06
+			m.mesh = c
+			mat.albedo_color = Color(0.95, 0.93, 0.88)
+		"can":
+			var c := CylinderMesh.new()
+			c.top_radius = 0.07; c.bottom_radius = 0.07; c.height = 0.16
+			m.mesh = c
+			mat.albedo_color = Color(0.25, 0.5, 0.52)
 		"plush":
 			var s := CapsuleMesh.new()
 			s.radius = 0.07; s.height = 0.2

@@ -1,0 +1,12 @@
+# name|seconds|prompt|start pose|end pose (clip:frame from clips/aries; -1 = last)
+work_type_1|10|A woman sits on a chair at a desk typing on a keyboard in front of her, looking ahead at a screen.|sit_idle_1:0|sit_idle_1:0
+work_mouse_1|8|A woman sits on a chair at a desk using a computer mouse with her right hand, leaning in to read the screen ahead.|sit_idle_1:0|sit_idle_1:0
+work_think_1|7|A woman sits on a chair at a desk, rests her chin on her hand and thinks, then goes back to typing.|sit_idle_1:0|sit_idle_1:0
+game_pad_1|8|A woman sits on a chair holding a game controller in both hands, playing a video game excitedly, leaning side to side.|sit_idle_1:0|sit_idle_1:0
+eat_1|8|A woman sits cross-legged on the floor eating a sandwich held in her right hand, taking bites and chewing.|floor_sit_1:0|floor_sit_1:0
+eat_2|8|A woman sits cross-legged on the floor eating from a bowl held in her left hand with chopsticks in her right.|floor_sit_1:0|floor_sit_1:0
+read_1|9|A woman sits cross-legged on the floor reading a book held open in both hands, and turns a page.|floor_sit_1:0|floor_sit_1:0
+phone_1|8|A woman sits cross-legged on the floor scrolling on a phone held in her right hand, smiling.|floor_sit_1:0|floor_sit_1:0
+meditate_1|10|A woman sits cross-legged on the floor meditating with her hands resting on her knees, breathing slowly.|floor_sit_1:0|floor_sit_1:0
+sleep_bed_1|10|A woman lies on her back asleep, breathing slowly and shifting a little.|lie_idle_1:0|lie_idle_1:0
+sleep_bed_2|10|A woman lies asleep and rolls onto her side, curling up.|lie_idle_1:0|lie_idle_2:0

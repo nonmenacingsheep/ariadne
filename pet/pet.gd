@@ -199,8 +199,104 @@ func _load_body(path: String) -> void:
 	var glb := path.ends_with(".glb")
 	if glb:
 		_toonify(body)
+	_add_jiggle()
 	if fill:
 		fill.environment.ambient_light_energy = TOON_FILL if glb else 0.0
+
+
+# --- secondary motion ----------------------------------------------------------
+# Spring bones (Godot's SpringBoneSimulator3D) on whatever of these chains the
+# model has: [root, end, stiffness, drag, gravity, radius]. root == end is a
+# single bone, extended. Missing bones are skipped, so any rig works.
+const JIGGLE := [
+	["Tail_0", "Tail_7", 0.45, 0.18, 0.10, 0.025],          # the dragon: loose, low drag, the wave carries
+	["Hair_Ponytail_1", "Hair_Ponytail_5", 0.7, 0.35, 0.35, 0.02],
+	["Hair_Ponytail_B_1", "Hair_Ponytail_B_2", 0.8, 0.4, 0.35, 0.015],
+	["Hair_Ponytail_C_1", "Hair_Ponytail_C_4", 0.7, 0.35, 0.35, 0.015],
+	["Hair_Back_C_1.L", "Hair_Back_C_2.L", 0.9, 0.45, 0.3, 0.015], ["Hair_Back_C_1.R", "Hair_Back_C_2.R", 0.9, 0.45, 0.3, 0.015],
+	["Hair_Back_E_1.L", "Hair_Back_E_2.L", 0.9, 0.45, 0.3, 0.015], ["Hair_Back_E_1.R", "Hair_Back_E_2.R", 0.9, 0.45, 0.3, 0.015],
+	["Hair_Side_1.L", "Hair_Side_2.L", 1.0, 0.45, 0.25, 0.015], ["Hair_Side_1.R", "Hair_Side_2.R", 1.0, 0.45, 0.25, 0.015],
+	["Hair_Bangs_Side_1.L", "Hair_Bangs_Side_2.L", 1.4, 0.5, 0.15, 0.01], ["Hair_Bangs_Side_1.R", "Hair_Bangs_Side_2.R", 1.4, 0.5, 0.15, 0.01],
+	["Hair_Back_A.C", "Hair_Back_A.C", 1.2, 0.45, 0.2, 0.015], ["Hair_Back_B.L", "Hair_Back_B.L", 1.2, 0.45, 0.2, 0.015],
+	["Hair_Back_B.R", "Hair_Back_B.R", 1.2, 0.45, 0.2, 0.015], ["Hair_Back_D.L", "Hair_Back_D.L", 1.2, 0.45, 0.2, 0.015],
+	["Hair_Back_D.R", "Hair_Back_D.R", 1.2, 0.45, 0.2, 0.015], ["Hair_Back_F.L", "Hair_Back_F.L", 1.2, 0.45, 0.2, 0.015],
+	["Hair_Back_F.R", "Hair_Back_F.R", 1.2, 0.45, 0.2, 0.015],
+	["Ear.L", "Ear.L", 2.0, 0.3, 0.0, 0.01], ["Ear.R", "Ear.R", 2.0, 0.3, 0.0, 0.01],        # a twitchy flick
+	["Breast_1.L", "Breast_2.L", 4.0, 0.55, 0.0, 0.03], ["Breast_1.R", "Breast_2.R", 4.0, 0.55, 0.0, 0.03],
+	["Butt.L", "Butt.L", 4.0, 0.55, 0.0, 0.03], ["Butt.R", "Butt.R", 4.0, 0.55, 0.0, 0.03],      # firm: a bounce, not a swing
+	["JacketBelt_1.L", "JacketBelt_3.L", 0.6, 0.4, 0.6, 0.01], ["JacketBelt_1.R", "JacketBelt_3.R", 0.6, 0.4, 0.6, 0.01],
+	["Necktie_1", "Necktie_3", 0.8, 0.4, 0.5, 0.012],
+	["WaistBag", "WaistBag_Zipper", 1.2, 0.4, 0.5, 0.02],
+	["Shoe_A_1.L", "Shoe_A_2.L", 0.7, 0.4, 0.7, 0.008], ["Shoe_A_1.R", "Shoe_A_2.R", 0.7, 0.4, 0.7, 0.008],
+	["Shoe_B_1.L", "Shoe_B_2.L", 0.7, 0.4, 0.7, 0.008], ["Shoe_B_1.R", "Shoe_B_2.R", 0.7, 0.4, 0.7, 0.008],
+]
+# What hair and tail bump against: [humanoid bone, radius m].
+const JIGGLE_COLLIDE := [["Head", 0.095], ["Chest", 0.12], ["Hips", 0.13], ["LeftUpperLeg", 0.07],
+		["RightUpperLeg", 0.07], ["Spine", 0.11]]
+var jiggle: SpringBoneSimulator3D
+var jiggle_at := Vector3.ZERO              # where her body was last frame: a jump is a teleport
+var tail_bones: Array[int] = []
+var tail_rest: Array[Quaternion] = []
+
+
+func _add_jiggle() -> void:
+	var have := func(b: String) -> bool: return skel.find_bone(b) >= 0
+	var chains := JIGGLE.filter(func(c): return have.call(c[0]) and have.call(c[1]))
+	jiggle = null
+	tail_bones.clear()
+	tail_rest.clear()
+	if chains.is_empty():
+		return
+	var sim := SpringBoneSimulator3D.new()
+	jiggle = sim
+	sim.name = "Jiggle"
+	skel.add_child(sim)
+	sim.set_setting_count(chains.size())
+	for i in chains.size():
+		var c: Array = chains[i]
+		sim.set_root_bone_name(i, c[0])
+		sim.set_end_bone_name(i, c[1])
+		sim.set_extend_end_bone(i, true)
+		sim.set_end_bone_length(i, 0.05)
+		sim.set_stiffness(i, c[2])
+		sim.set_drag(i, c[3])
+		sim.set_gravity(i, c[4])
+		sim.set_radius(i, c[5])
+	for c in JIGGLE_COLLIDE:
+		if have.call(c[0]):
+			var col := SpringBoneCollisionSphere3D.new()
+			col.bone_name = c[0]
+			col.radius = c[1]
+			sim.add_child(col)
+	for i in chains.size():
+		sim.set_enable_all_child_collisions(i, true)
+	for i in 8:
+		var b := skel.find_bone("Tail_%d" % i)
+		if b < 0:
+			break
+		tail_bones.append(b)
+		tail_rest.append(skel.get_bone_rest(b).basis.get_rotation_quaternion())
+
+
+# The dragon tail: each frame its segments are given a lazy S-curl and the
+# root a slow sway; the springs (low drag) make every segment trail the one
+# before it, so the sway travels down the tail as a wave. Livelier when she's
+# busy or happy, a slow drift when she sleeps.
+func _tail_frame() -> void:
+	# Teleported (placed on a widget, dropped in by a test shot)? The springs
+	# start from rest instead of flinging everything across the screen.
+	if jiggle and body.global_position.distance_to(jiggle_at) > 0.5:
+		jiggle.reset()
+	if body:
+		jiggle_at = body.global_position
+	if tail_bones.is_empty():
+		return
+	var pace := 0.6 if state == "sleep" else (1.8 if state in ["dance", "held", "fall", "react"] else 1.0)
+	for i in tail_bones.size():
+		var curl := 0.22 + 0.06 * sin(t * 0.7 * pace - i * 0.9)          # lifts it off the floor, S-shaped
+		var side := (0.35 if i == 0 else 0.05) * sin(t * 1.3 * pace - i * 0.6)
+		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
+		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
 
 
 # Anime look for GLB bodies: two-tone lighting, a soft rim, no gloss, both
@@ -693,6 +789,7 @@ func _process(delta: float) -> void:
 	_think(delta)
 	_move(delta)
 	ap.advance(delta)                       # clips first, then her arms, head and face on top
+	_tail_frame()
 	_carry_frame(delta)
 	_head()
 	_face_frame(delta)

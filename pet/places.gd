@@ -36,7 +36,7 @@ func spot(s: String) -> String:
 func pool(s: String, holding: String) -> Array:
 	var e: Dictionary = table.get(s, {})
 	var items: Dictionary = e.get("items", {})
-	if holding != "" and items.has(holding):
+	if holding != "" and items.has(holding) and (items[holding] as Array).any(func(x): return _has_clip(str(x[0]))):
 		return items[holding]
 	return e.get("idles", [])
 
@@ -48,6 +48,20 @@ func react(s: String) -> Array:
 
 func sleep_state(s: String) -> String:
 	return str(table.get(s, {}).get("sleep", s))
+
+
+func wake_state(s: String) -> String:
+	return str(table.get(s, {}).get("wake", s))
+
+
+func talk_state(s: String) -> String:
+	var to := str(table.get(s, {}).get("talk", s))
+	return to if reachable(to) else s
+
+
+# The place a state belongs to: the bit before the underscore (Bed_SitEdge: Bed).
+func place_of(s: String) -> String:
+	return s.get_slice("_", 0) if has(s) else ""
 
 
 # Every move out of a state: [to, clip prefix, lift]. Out of standing, the
@@ -100,6 +114,16 @@ func next_exit(from: String, to: String) -> Dictionary:
 
 func reachable(s: String) -> bool:
 	return has(s) and (not next_exit("", s).is_empty())
+
+
+# She can be in that state doing something there with what she's holding.
+func can(s: String, holding := "") -> bool:
+	if not reachable(s):
+		return false
+	for e in pool(s, holding):
+		if _has_clip(str(e[0])):
+			return true
+	return false
 
 
 # A clip that is one of the moves (it's played once, as the way between).

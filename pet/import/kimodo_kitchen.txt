@@ -1,0 +1,13 @@
+# Her kitchen (pet/states.json), standing at the counter (idle_calm_1:0) or
+# leaning back against it (made by the first move).
+kitchen_lean_1|3|A woman standing leans back against a counter behind her, hands resting on its edge.|idle_calm_1:0|-
+kitchen_unlean_1|3|A woman leaning back against a counter stands up straight.|kitchen_lean_1:-1|idle_calm_1:0
+kitchen_wipe_1|7|A woman standing at a kitchen counter wipes it down with a cloth in her right hand.|idle_calm_1:0|idle_calm_1:0
+kitchen_cupboard_1|6|A woman standing at a kitchen counter reaches up to open a cupboard above and looks inside.|idle_calm_1:0|idle_calm_1:0
+kitchen_stir_1|8|A woman standing at a stove stirs a pot with a spoon in her right hand.|idle_calm_1:0|idle_calm_1:0
+kitchen_chop_1|8|A woman standing at a kitchen counter chops vegetables with a knife.|idle_calm_1:0|idle_calm_1:0
+kitchen_taste_1|5|A woman standing at a stove tastes from a spoon and nods happily.|idle_calm_1:0|idle_calm_1:0
+kitchen_tea_1|8|A woman standing at a counter pours hot water from a kettle into a mug and stirs it.|idle_calm_1:0|idle_calm_1:0
+kitchen_lean_idle_1|8|A woman leaning back against a counter with her arms crossed looks around.|kitchen_lean_1:-1|kitchen_lean_1:-1
+kitchen_lean_sip_1|7|A woman leaning back against a counter sips from a mug held in both hands.|kitchen_lean_1:-1|kitchen_lean_1:-1
+kitchen_lean_phone_1|8|A woman leaning back against a counter looks at a phone in her hand.|kitchen_lean_1:-1|kitchen_lean_1:-1

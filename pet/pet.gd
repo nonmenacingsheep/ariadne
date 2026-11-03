@@ -987,6 +987,14 @@ const ROLES := {
 	# states now (states.json); watering the plant is still a role.
 	"Water": [["water_plant_", 1.0], ["Interact", 0.01]],
 }
+# Today's stances with one of her things in hand (docs/PET_STATES_PLAN.md, phase 9).
+const ROLE_ITEMS := {
+	"Idle": {"phone": [["stand_phone_", 1.0], ["idle_calm_", 0.2]], "book": [["stand_read_", 1.0]],
+			"mug": [["stand_sip_", 1.0], ["drink_", 1.0], ["idle_calm_", 0.3]]},
+	"FloorSit": {"book": [["read_", 1.0]], "phone": [["phone_", 1.0]], "bowl": [["eat_", 1.0]],
+			"mug": [["floor_sip_", 1.0], ["floor_sit_", 0.3]]},
+	"LieDown": {"book": [["floor_front_read_", 1.0]], "phone": [["floor_front_phone_", 1.0]]},
+}
 const GAIT_PLAYBACK := 0.8                 # a touch slower than Kimodo's brisk takes; speed follows
 # Played once and held at their end (a nod, being knocked over), not re-picked.
 const ONE_SHOT := ["Jump_Land", "Death01", "PickUp_Table", "LayToIdle", "Interact", "Yes"]
@@ -1052,6 +1060,10 @@ func _feeling(f: String) -> float:
 
 func _variant(role: String) -> String:
 	var entries: Array = ROLES.get(role, [])
+	var held: String = life.holding if life else ""
+	if ROLE_ITEMS.has(role) and ROLE_ITEMS[role].has(held) \
+			and (ROLE_ITEMS[role][held] as Array).any(func(e): return _variant_of(e[0]) != ""):
+		entries = ROLE_ITEMS[role][held]       # a book or her phone in hand, standing or on the floor
 	if places and places.has(role.get_slice(":", 0)):
 		# A place state's idles (or what she does there with what she's holding);
 		# "<state>:react" when he pokes or talks to her there.
@@ -1260,7 +1272,9 @@ func _gait_clip() -> void:
 		"back":
 			_play("Walk_Back", 0.3, GAIT_PLAYBACK)
 		_:
-			_play("Walk", 0.35, GAIT_PLAYBACK)
+			# A bowl or a mug she carries in front of her in both hands.
+			var carry: bool = life != null and life.holding in ["bowl", "mug"] and _variant_of("carry_walk_") != ""
+			_play("Walk_Carry" if carry else "Walk", 0.35, GAIT_PLAYBACK)
 
 
 # Stopping: walk, side-steps or backing up each end in their own stop clip,
@@ -1347,9 +1361,9 @@ func _settle_to_sleep() -> void:
 # just comes to.
 func _wake() -> void:
 	brain.drop()
-	if pstate != "":                           # in bed: the moves back up (sitting up, standing) play in turn
-		_set_state("idle", 3.0)
-		_play("Idle", 0.4)
+	if pstate != "":                           # in bed: she comes to there (lying back), then the brain decides
+		_set_state("rest", randf_range(3.0, 6.0))
+		_play(places.wake_state(pstate), 0.6)
 		return
 	if perched != "":                          # out of bed: she gets up and steps off it
 		_set_state("idle", 3.0)
@@ -1675,7 +1689,10 @@ const FREE := ["idle", "wander", "stopping", "rest", "dance"]
 
 # He's talking to her (typing to her or speaking): she comes to the front and faces him.
 func _attend() -> void:
-	if state in FREE:
+	if pstate != "" and state in ["rest", "work", "workout", "idle"]:
+		brain.attend()                         # where she is: sitting up in bed, turning in her chair
+		_choose()
+	elif state in FREE:
 		brain.attend()
 		_choose()
 
@@ -1799,9 +1816,25 @@ func _place_body() -> void:
 		shadow.scale = Vector3.ONE * (1.0 - clampf(pos.y / 2.5, 0.0, 0.6))
 	# Roll about the point she's held by (her upper chest), not her feet.
 	var pivot := Vector3(0, 1.3, 0)
-	body.rotation = Vector3(0, yaw, roll)
+	var spin := _chair_spin()
+	body.rotation = Vector3(0, yaw + spin, roll)
+	if spin != 0.0:                            # round the chair's centre, not her feet
+		var c: Vector3 = (room.items["chair"] as Node3D).position
+		var off := body.position - Vector3(c.x, body.position.y, c.z)
+		body.position = Vector3(c.x, body.position.y, c.z) + off.rotated(Vector3.UP, spin)
 	if state in ["held", "fall"]:
 		body.position += pivot - pivot.rotated(Vector3.FORWARD, -roll)
+
+
+# Spinning round on the desk chair (desk_spin_ clips lift her feet): she and
+# the chair turn a full circle over the clip.
+func _chair_spin() -> float:
+	var a := 0.0
+	if variant.begins_with("desk_spin_") and pstate.begins_with("Desk_"):
+		a = TAU * smoothstep(0.15, 0.85, _progress())
+	if room and room.items.has("chair"):
+		(room.items["chair"] as Node3D).rotation.y = a
+	return a
 
 
 func _head() -> void:

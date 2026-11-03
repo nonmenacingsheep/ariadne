@@ -1,0 +1,7 @@
+# Her things anywhere (phase 9): today's stances with a book, phone or mug.
+stand_phone_1|8|A woman stands looking down at a phone in her right hand, scrolling with her thumb.|idle_calm_1:0|idle_calm_1:0
+stand_read_1|8|A woman stands reading a book held open in both hands, turning a page.|idle_calm_1:0|idle_calm_1:0
+stand_sip_1|6|A woman stands holding a mug in both hands and takes a sip.|idle_calm_1:0|idle_calm_1:0
+floor_front_read_1|9|A woman lies on her stomach propped on her elbows reading a book open on the floor in front of her.|lie_idle_1:0|lie_idle_1:0
+floor_front_phone_1|8|A woman lies on her stomach propped on her elbows tapping on a phone in front of her.|lie_idle_1:0|lie_idle_1:0
+floor_sip_1|6|A woman sitting on the floor holds a mug in both hands and sips from it.|floor_sit_1:0|floor_sit_1:0

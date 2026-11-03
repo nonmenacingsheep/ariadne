@@ -7,7 +7,8 @@
     "react: when he clicks or talks to her there (else her idles).",
     "enter / leave: the move from standing to it and back ('' = a plain blend).",
     "exits: state -> {clip, lift}; lift 'hips' raises her as her hips go down (lying back onto the bed).",
-    "sleep: the state she dozes off into from here."
+    "sleep: the state she dozes off into from here; wake: where she comes to from it.",
+    "talk: the state she turns to him from when he talks to her (sitting up in bed)."
   ],
 
   "Bed_SitEdge": {
@@ -21,6 +22,7 @@
               "Bed_SitUp": {"clip": "bed_edge_situp_", "lift": "hips"}}
   },
   "Bed_LieBack": {
+    "talk": "Bed_SitEdge",
     "spot": "bed_lie", "sleep": "Bed_Sleep",
     "idles": [["bed_lie_ceiling_", 1.5], ["bed_lie_stretch_", "tired"], ["bed_lie_fidget_", 0.8],
               ["bed_lie_feet_", "joy"]],
@@ -31,23 +33,27 @@
               "Bed_SitUp": {"clip": "bed_lie_situp_"}, "Bed_Sleep": {"clip": ""}}
   },
   "Bed_Sleep": {
+    "wake": "Bed_LieBack",
     "spot": "bed_lie", "sleep": "Bed_Sleep",
     "idles": [["bed_sleep_1", 2.0], ["bed_sleep_2", 0.6]],
     "exits": {"Bed_LieBack": {"clip": ""}}
   },
   "Bed_LieSide": {
+    "talk": "Bed_SitEdge",
     "spot": "bed_lie", "sleep": "Bed_Sleep",
     "idles": [["bed_side_hug_", 1.5], ["bed_side_shift_", 1.0]],
     "items": {"phone": [["bed_side_phone_", 1.0]]},
     "exits": {"Bed_LieBack": {"clip": "bed_side_lie_"}}
   },
   "Bed_LieFront": {
+    "talk": "Bed_SitEdge",
     "spot": "bed_lie", "sleep": "Bed_Sleep",
     "idles": [["bed_front_kick_", 1.5], ["bed_front_look_", 1.0]],
     "items": {"book": [["bed_front_read_", 1.0], ["bed_front_kick_", 0.3]], "phone": [["bed_front_phone_", 1.0]]},
     "exits": {"Bed_LieBack": {"clip": "bed_front_lie_"}}
   },
   "Bed_SitUp": {
+    "talk": "Bed_SitEdge",
     "spot": "bed_situp", "sleep": "Bed_Sleep",
     "idles": [["bed_situp_look_", 1.2], ["bed_situp_knees_", 1.0], ["bed_situp_stretch_", "tired"]],
     "items": {"book": [["bed_situp_read_", 1.0]], "phone": [["bed_situp_phone_", 1.0]],
@@ -56,32 +62,100 @@
   },
 
   "Desk_Sit": {
-    "spot": "desk", "enter": "sit_down_", "leave": "sit_up_", "sleep": "Desk_Sit",
-    "idles": [["work_type_", 1.5], ["work_mouse_", 1.0], ["work_think_", 0.5], ["sit_idle_1", 0.1]],
-    "items": {"controller": [["game_pad_", 1.0]]}
+    "spot": "desk", "enter": "sit_down_", "leave": "sit_up_", "sleep": "Desk_Doze",
+    "idles": [["work_type_", 1.5], ["work_mouse_", 1.0], ["work_think_", 0.5], ["desk_stretch_", "tired"],
+              ["desk_rub_eyes_", "tired"], ["desk_drum_", "bored"], ["desk_chin_", "bored"], ["desk_spin_", "light"],
+              ["sit_idle_1", 0.1]],
+    "items": {"controller": [["game_pad_", 1.0], ["desk_game_rage_", 0.3], ["desk_game_cheer_", 0.3]],
+              "mug": [["desk_sip_", 1.0], ["work_type_", 0.8], ["work_mouse_", 0.5]],
+              "book": [["desk_study_", 1.0], ["desk_chin_", 0.2]]},
+    "react": [["desk_wave_", 1.0]],
+    "exits": {"Desk_LeanBack": {"clip": "desk_sit_lean_"}, "Desk_Slouch": {"clip": "desk_sit_slouch_"}}
+  },
+  "Desk_LeanBack": {
+    "talk": "Desk_Sit",
+    "spot": "desk", "sleep": "Desk_Doze",
+    "idles": [["desk_lean_think_", 1.2], ["desk_lean_look_", 1.0]],
+    "items": {"phone": [["desk_lean_phone_", 1.0]], "mug": [["desk_lean_sip_", 1.0], ["desk_lean_look_", 0.4]]},
+    "exits": {"Desk_Sit": {"clip": "desk_lean_sit_"}}
+  },
+  "Desk_Slouch": {
+    "talk": "Desk_Sit",
+    "spot": "desk", "sleep": "Desk_Doze",
+    "idles": [["desk_slouch_sigh_", 1.0]],
+    "exits": {"Desk_Sit": {"clip": "desk_slouch_sit_"}, "Desk_Doze": {"clip": ""}}
+  },
+  "Desk_Doze": {
+    "wake": "Desk_Slouch", "talk": "Desk_Sit",
+    "spot": "desk", "sleep": "Desk_Doze",
+    "idles": [["desk_slouch_doze_", 1.0]],
+    "exits": {"Desk_Slouch": {"clip": ""}}
   },
 
   "Cushion_Sit": {
-    "spot": "cushion", "enter": "tr_stand_floor_", "leave": "tr_floor_stand_", "sleep": "Cushion_Sit",
-    "idles": [["floor_sit_", 1.0]],
-    "items": {"bowl": [["eat_", 1.0]], "book": [["read_", 1.0]], "phone": [["phone_", 1.0]]}
+    "spot": "cushion", "enter": "tr_stand_floor_", "leave": "tr_floor_stand_", "sleep": "Cushion_Lie",
+    "idles": [["floor_sit_", 0.5], ["cushion_sway_", 1.0], ["cushion_look_", 1.0], ["cushion_stretch_", "tired"]],
+    "items": {"bowl": [["eat_", 1.0]], "book": [["read_", 1.0]], "phone": [["phone_", 1.0]],
+              "mug": [["cushion_sip_", 1.0], ["cushion_look_", 0.3]]},
+    "react": [["cushion_wave_", 1.0]],
+    "exits": {"Cushion_Kneel": {"clip": "cushion_kneel_1"}, "Cushion_Lie": {"clip": "cushion_lie_1"}}
+  },
+  "Cushion_Kneel": {
+    "talk": "Cushion_Sit",
+    "spot": "cushion", "sleep": "Cushion_Lie",
+    "idles": [["cushion_kneel_look_", 1.0]],
+    "items": {"bowl": [["cushion_kneel_eat_", 1.0]], "mug": [["cushion_kneel_sip_", 1.0]]},
+    "exits": {"Cushion_Sit": {"clip": "cushion_kneel_sit_"}}
+  },
+  "Cushion_Lie": {
+    "talk": "Cushion_Sit",
+    "spot": "cushion", "sleep": "Cushion_Lie",
+    "idles": [["cushion_lie_idle_", 1.0]],
+    "items": {"book": [["cushion_lie_read_", 1.0]], "phone": [["cushion_lie_phone_", 1.0]]},
+    "exits": {"Cushion_Sit": {"clip": "cushion_lie_sit_"}}
   },
 
   "Kitchen_Stand": {
+    "talk": "Kitchen_Lean",
     "spot": "kitchen", "enter": "", "leave": "",
-    "idles": [["cook_", 1.0]],
-    "items": {"drink": [["drink_", 1.0]]}
+    "idles": [["cook_", 1.0], ["kitchen_stir_", 1.0], ["kitchen_chop_", 0.8], ["kitchen_wipe_", 0.5],
+              ["kitchen_cupboard_", 0.4], ["kitchen_taste_", "joy"]],
+    "items": {"mug": [["kitchen_tea_", 1.0], ["drink_", 1.0]]},
+    "exits": {"Kitchen_Lean": {"clip": "kitchen_lean_1"}}
+  },
+  "Kitchen_Lean": {
+    "spot": "kitchen_lean", "leave": "",
+    "idles": [["kitchen_lean_idle_", 1.0]],
+    "items": {"mug": [["kitchen_lean_sip_", 1.0], ["kitchen_lean_idle_", 0.3]], "phone": [["kitchen_lean_phone_", 1.0]]},
+    "exits": {"Kitchen_Stand": {"clip": "kitchen_unlean_"}}
   },
 
   "Mat_Stand": {
     "spot": "mat", "enter": "", "leave": "",
     "idles": [["workout_squat_", 1.0], ["workout_jacks_", 1.0], ["workout_lunge_", 1.0], ["workout_boxing_", 1.0],
-              ["workout_stretch_", 0.6]],
+              ["workout_stretch_", 0.6], ["mat_warmup_", 0.6], ["mat_cooldown_", 0.3]],
     "exits": {"Mat_Sit": {"clip": "tr_stand_floor_"}}
   },
   "Mat_Sit": {
-    "spot": "mat", "enter": "tr_stand_floor_", "leave": "tr_floor_stand_", "sleep": "Mat_Sit",
+    "spot": "mat", "enter": "tr_stand_floor_", "leave": "tr_floor_stand_", "sleep": "Mat_Meditate",
+    "idles": [["mat_toes_", 1.0], ["floor_sit_", 0.2]],
+    "exits": {"Mat_Stand": {"clip": "tr_floor_stand_"}, "Mat_Lie": {"clip": "mat_sit_lie_"},
+              "Mat_Meditate": {"clip": ""}}
+  },
+  "Mat_Meditate": {
+    "wake": "Mat_Meditate",
+    "spot": "mat", "enter": "tr_stand_floor_", "leave": "tr_floor_stand_", "sleep": "Mat_Meditate",
     "idles": [["meditate_", 1.0]],
-    "exits": {"Mat_Stand": {"clip": "tr_floor_stand_"}}
+    "exits": {"Mat_Sit": {"clip": ""}}
+  },
+  "Mat_Lie": {
+    "spot": "mat",
+    "idles": [["mat_crunch_", 1.0], ["mat_legraise_", 1.0], ["mat_bridge_", 1.0]],
+    "exits": {"Mat_Sit": {"clip": "mat_lie_sit_"}, "Mat_Plank": {"clip": "mat_lie_plank_"}}
+  },
+  "Mat_Plank": {
+    "spot": "mat",
+    "idles": [["mat_plank_hold_", 1.0]],
+    "exits": {"Mat_Lie": {"clip": "mat_plank_down_"}}
   }
 }

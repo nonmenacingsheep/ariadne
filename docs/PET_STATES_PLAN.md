@@ -103,15 +103,15 @@ About 25 states, 4-6 idles each plus item idles and exits: roughly 150 clips.
 | # | Step | STATUS |
 |---|------|--------|
 | 1 | State engine: states.json, base poses, idles, item idles, exits with lift/position curves, graph search, talk reactions; today's activities ported to it unchanged | done: pet/places.gd + states.json; desk, cushion, kitchen, mat ported; bed raised to chair height |
-| 2 | Clip pipeline: middle keyframes in kimodo_keyed.py, prone base pose, per-clip checker (ends vs base pose, heights, head direction), auto re-roll, contact sheets | in progress: kimodo_keyed.py turned poses, free ends, middle keys, checker + re-rolls |
-| 3 | Bed: raised bed prop, its 6 states, idles, exits, book/phone/mug idles (the Sitting_On_Bed example end to end first) | todo |
-| 4 | Items: homes, pick up / carry / put down / leave behind (saved), carry walks | todo |
+| 2 | Clip pipeline: middle keyframes in kimodo_keyed.py, prone base pose, per-clip checker (ends vs base pose, heights, head direction), auto re-roll, contact sheets | done: kimodo_keyed.py (turned poses, free ends, middle keys, kimodo_check.pinned_ok + 3 re-rolls), import/film_states.sh; prone = lie_idle_1 turned |
+| 3 | Bed: raised bed prop, its 6 states, idles, exits, book/phone/mug idles (the Sitting_On_Bed example end to end first) | done: 41 clips (kimodo_bed.txt), all 6 states filmed with a book |
+| 4 | Items: homes, pick up / carry / put down / leave behind (saved), carry walks | done: life.gd THINGS/where/take/leave (saved), brain _fetch/_put_away/done_with/tidy, carry walk for bowl+mug |
 | 5 | Desk: 4 states, idles, mug/controller/book | todo |
 | 6 | Cushion and low table: 4 states, bowl/book/phone | todo |
 | 7 | Kitchen: 2 states, cooking and tea | todo |
 | 8 | Mat: 4 states, a real routine (warm-up, floor work, cool-down) | todo |
 | 9 | Floor anywhere: items in today's stances | todo |
-| 10 | Brain: goals, chaining states within a place, state-fitting interruptions | todo |
+| 10 | Brain: goals, chaining states within a place, state-fitting interruptions | in progress: linger, wake in bed, talk states, mat routine written |
 
 ## Ronald's answers (2026-11-03)
 

@@ -1,0 +1,22 @@
+# Her desk's states (pet/states.json). Base poses: sitting sit_idle_1:0 (the
+# work clips' pose), leaning back sit_idle_2:0, slouched forward sit_idle_3:0.
+desk_sit_lean_1|3|A woman sitting on a chair leans back and rests her hands behind her.|sit_idle_1:0|sit_idle_2:0
+desk_lean_sit_1|3|A woman leaning back on a chair sits up straight again.|sit_idle_2:0|sit_idle_1:0
+desk_sit_slouch_1|3|A woman sitting on a chair slumps forward with her elbows on her knees.|sit_idle_1:0|sit_idle_3:0
+desk_slouch_sit_1|3|A woman slumped forward on a chair sits up straight again.|sit_idle_3:0|sit_idle_1:0
+desk_stretch_1|6|A woman sitting at a desk stretches her arms up high and twists side to side.|sit_idle_1:0|sit_idle_1:0
+desk_rub_eyes_1|6|A woman sitting at a desk rubs her eyes tiredly, then blinks and looks ahead.|sit_idle_1:0|sit_idle_1:0
+desk_drum_1|6|A woman sitting at a desk drums her fingers on the desk in front of her, bored.|sit_idle_1:0|sit_idle_1:0
+desk_chin_1|8|A woman sitting at a desk rests her chin in her hand, staring ahead, then sighs.|sit_idle_1:0|sit_idle_1:0
+desk_spin_1|5|A woman sitting on an office chair lifts her feet and holds them up off the floor, smiling, then puts them down.|sit_idle_1:0|sit_idle_1:0
+desk_sip_1|6|A woman sitting at a desk picks up a mug with her right hand, sips, and keeps holding it.|sit_idle_1:0|sit_idle_1:0
+desk_game_rage_1|6|A woman sitting holding a game controller in both hands loses the game and throws her head back frustrated.|sit_idle_1:0|sit_idle_1:0
+desk_game_cheer_1|6|A woman sitting holding a game controller in both hands wins and lifts it up cheering.|sit_idle_1:0|sit_idle_1:0
+desk_study_1|9|A woman sitting at a desk reads a book open on the desk and writes notes with her right hand.|sit_idle_1:0|sit_idle_1:0
+desk_lean_think_1|8|A woman leaning back on a chair puts her hands behind her head and looks up thinking.|sit_idle_2:0|sit_idle_2:0
+desk_lean_look_1|7|A woman leaning back on a chair looks around and swings one foot.|sit_idle_2:0|sit_idle_2:0
+desk_lean_phone_1|8|A woman leaning back on a chair scrolls on a phone held in front of her face.|sit_idle_2:0|sit_idle_2:0
+desk_lean_sip_1|6|A woman leaning back on a chair sips from a mug held in both hands.|sit_idle_2:0|sit_idle_2:0
+desk_slouch_sigh_1|7|A woman slumped forward with her elbows on her knees sighs and rubs her face.|sit_idle_3:0|sit_idle_3:0
+desk_slouch_doze_1|10|A woman slumped forward on a chair dozes off, her head nodding down slowly.|sit_idle_3:0|sit_idle_3:0
+desk_wave_1|4|A woman sitting on a chair turns her head and waves over her shoulder.|sit_idle_1:0|sit_idle_1:0

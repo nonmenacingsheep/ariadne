@@ -20,6 +20,12 @@ var rates := {"energy": 1.0, "fun": 1.0, "affection": 1.0, "hunger": 1.0}
 var tick_in := 1.0
 var save_in := 30.0
 var holding := ""                          # item in her hands
+# Her things (docs/PET_STATES_PLAN.md, phase 4): each has a home (the spot in
+# room.gd it lives at); she carries one about, and sometimes leaves it where
+# she used it (a book on the bed), saved, until she tidies it or picks it up there.
+const THINGS := {"book": "shelf", "phone": "desk", "mug": "kitchen", "controller": "desk", "bowl": "kitchen"}
+var left := {}                             # thing -> the spot it was left at
+var left_nodes := {}
 var holding_node: MeshInstance3D
 var ring: Control
 var ring_open := false
@@ -99,7 +105,7 @@ func _save() -> void:
 		f.store_string(JSON.stringify(data))
 	var g := FileAccess.open(SAVE_FILE, FileAccess.WRITE)
 	if g:
-		g.store_string(JSON.stringify(needs))
+		g.store_string(JSON.stringify(needs.merged({"_left": left})))
 
 
 func _load() -> void:
@@ -110,6 +116,10 @@ func _load() -> void:
 			for k in needs:
 				if d.has(k):
 					needs[k] = clampf(float(d[k]), 0.0, 1.0)
+			if d.get("_left") is Dictionary:
+				for k in d["_left"]:
+					if THINGS.has(k):
+						left[k] = str(d["_left"][k])
 
 
 # --- the item ring ----------------------------------------------------------
@@ -238,6 +248,45 @@ func _hold(item: String) -> void:
 		pet.add_child(holding_node)
 
 
+# Where a thing is now: the spot it was left at, or its home.
+func where(thing: String) -> String:
+	return left.get(thing, THINGS.get(thing, ""))
+
+
+# Picked up from wherever it was.
+func take(thing: String) -> void:
+	left.erase(thing)
+	show_left()
+	_hold(thing)
+
+
+# Put down where she is (perched at a spot): left there, or home if that's its home.
+func leave(spot: String) -> void:
+	var thing := holding
+	_hold("")
+	if THINGS.has(thing) and spot != THINGS[thing] and pet.room.spot(spot).has("drop"):
+		left[thing] = spot
+	show_left()
+
+
+# Things lying about where she left them (room.gd's drop point on each spot).
+func show_left() -> void:
+	for k in left_nodes.keys():
+		if not left.has(k):
+			left_nodes[k].queue_free()
+			left_nodes.erase(k)
+	for k in left:
+		var d: Dictionary = pet.room.spot(left[k]) if pet.room else {}
+		if not d.has("drop"):
+			continue
+		if not left_nodes.has(k):
+			left_nodes[k] = _item_mesh(k)
+			pet.room.add_child(left_nodes[k])
+		var n: MeshInstance3D = left_nodes[k]
+		n.position = d["drop"]
+		n.rotation = Vector3(-PI / 2 if k in ["book", "phone"] else 0.0, 0.6, 0.0)    # books and phones lie flat
+
+
 func _hold_frame() -> void:
 	if not holding_node:
 		return
@@ -276,6 +325,11 @@ func _item_mesh(item: String) -> MeshInstance3D:
 			m.mesh = b
 			mat.albedo_color = {"book": Color(0.25, 0.35, 0.6), "phone": Color(0.1, 0.1, 0.12),
 					"controller": Color(0.15, 0.15, 0.18)}[item]
+		"mug":
+			var c := CylinderMesh.new()
+			c.top_radius = 0.042; c.bottom_radius = 0.042; c.height = 0.1
+			m.mesh = c
+			mat.albedo_color = Color(0.62, 0.1, 0.12)
 		"bowl":
 			var c := CylinderMesh.new()
 			c.top_radius = 0.07; c.bottom_radius = 0.04; c.height = 0.06

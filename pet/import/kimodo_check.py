@@ -61,11 +61,12 @@ def pinned_ok(path, want):
     moved = _angle(rots, rots[0:1], top=8).max()
     if moved < 6:
         bad.append(f"static ({moved:.1f} deg)")
-    if pj[:, :, 1].min() < -0.12:
+    lying = hips[0] < 0.35 and hips[-1] < 0.35
+    if pj[:, :, 1].min() < (-0.2 if lying else -0.12):          # a roll on the bed sinks an arm in a bit
         bad.append(f"through the floor ({pj[:, :, 1].min():.2f})")
     if (head < hips - 0.3).any():
         bad.append("upside down")
-    if hips[0] < 0.35 and hips[-1] < 0.35 and hips.max() > 0.55:
+    if lying and hips.max() > 0.55:
         bad.append(f"gets up off the floor (hips {hips.max():.2f})")
     hd = pj[-1, head_i] - pj[-1, 0]
     face = f"ends hips {hips[-1]:.2f} head {head[-1]:.2f} dir ({hd[0]:+.2f},{hd[2]:+.2f}) moved {moved:.0f}"

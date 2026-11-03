@@ -50,7 +50,8 @@ for f in "$OUT"/*.npz; do
       rm -f "$OUT/$n.bvh" ;;
   esac
 done
-$GATE blender -b --python "$HERE/bvh_to_glb.py" -- "$PET/assets/anims/kimodo/kimodo.glb" "$OUT"/*.bvh "$LOOPS"/*.bvh
+# (not a take still being made or re-rolled: <name>_try.bvh)
+$GATE blender -b --python "$HERE/bvh_to_glb.py" -- "$PET/assets/anims/kimodo/kimodo.glb" $(ls "$OUT"/*.bvh | grep -v '_try\.bvh$') "$LOOPS"/*.bvh
 # (kimodo.glb.import, committed, holds the retarget settings)
 rm -f "$PET"/.godot/imported/kimodo.glb-*
 $GATE /var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64 --headless --path "$PET" --import >/dev/null 2>&1

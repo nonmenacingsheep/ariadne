@@ -8,6 +8,7 @@ extends Node3D
 
 const PROPS := "res://models/props.glb"
 const BED_TOP := 0.47                      # props_build.py BED: chair height, so she sits on its edge
+const LIE_UP := 0.12                       # lying clips have her hips at the floor: up onto the mattress by her back's depth
 const CUSHION_TOP := 0.05
 const MARGIN := 0.22                       # how close she walks past furniture
 
@@ -63,9 +64,10 @@ func arrange() -> void:
 	# facing out: yaw 0), or sits up against the headboard.
 	var f := _place("bed", Vector2(1.5, back + 0.62), PI / 2, Vector2(2.04, 1.04))
 	var by := Vector2(f.x - 0.1, f.y + 0.95)
-	spots["bed_edge"] = {"approach": by, "at": Vector3(f.x - 0.1, 0.0, f.y + 0.44), "yaw": 0.0}
-	spots["bed_lie"] = {"approach": by, "at": Vector3(f.x - 0.1, BED_TOP, f.y + 0.12), "yaw": 0.0}
-	spots["bed_situp"] = {"approach": by, "at": Vector3(f.x - 0.72, BED_TOP, f.y), "yaw": 0.0}
+	var on_bed := Vector3(f.x + 0.55, BED_TOP + 0.02, f.y + 0.15)              # where she leaves things
+	spots["bed_edge"] = {"approach": by, "at": Vector3(f.x - 0.1, 0.0, f.y + 0.36), "yaw": 0.0, "drop": on_bed}
+	spots["bed_lie"] = {"approach": by, "at": Vector3(f.x - 0.35, BED_TOP + LIE_UP, f.y + 0.12), "yaw": 0.0, "drop": on_bed}
+	spots["bed_situp"] = {"approach": by, "at": Vector3(f.x - 0.42, BED_TOP, f.y), "yaw": 0.0, "drop": on_bed}
 	# Workout mat across the room, left of centre, halfway back.
 	var m := _place("mat", Vector2(3.3, -rd * 0.4), PI / 2, Vector2.ZERO)
 	spots["mat"] = {"approach": m, "at": Vector3(m.x, 0.0, m.y), "yaw": 0.0}
@@ -75,23 +77,30 @@ func arrange() -> void:
 	var cu := _place("cushion", Vector2(lt.x, lt.y - 0.48), 0.0, Vector2(0.5, 0.5))
 	blockers[-1] = blockers[-1].merge(blockers[-2])            # table and cushion as one
 	blockers.remove_at(blockers.size() - 2)
-	spots["cushion"] = {"approach": Vector2(cu.x - 0.75, cu.y), "at": Vector3(cu.x, CUSHION_TOP, cu.y), "yaw": 0.0}
+	spots["cushion"] = {"approach": Vector2(cu.x - 0.75, cu.y), "at": Vector3(cu.x, CUSHION_TOP, cu.y), "yaw": 0.0,
+			"drop": Vector3(lt.x - 0.2, 0.37, lt.y + 0.05)}
 	# Bookshelf and kitchenette along the back wall.
 	var sh := _place("shelf", Vector2(w * 0.55, back + 0.17), 0.0, Vector2(0.8, 0.3))
 	spots["shelf"] = {"approach": sh + Vector2(0, 0.6), "at": Vector3(sh.x, 0, sh.y + 0.6), "yaw": PI}
 	var k := _place("kitchen", Vector2(w * 0.68, back + 0.32), 0.0, Vector2(1.24, 0.64))
-	spots["kitchen"] = {"approach": k + Vector2(0.2, 0.68), "at": Vector3(k.x + 0.2, 0, k.y + 0.68), "yaw": PI}
+	spots["kitchen"] = {"approach": k + Vector2(0.2, 0.68), "at": Vector3(k.x + 0.2, 0, k.y + 0.68), "yaw": PI,
+			"drop": Vector3(k.x - 0.35, 0.94, k.y)}
+	spots["kitchen_lean"] = {"approach": k + Vector2(0.2, 0.68), "at": Vector3(k.x + 0.2, 0, k.y + 0.5), "yaw": 0.0,
+			"drop": Vector3(k.x - 0.35, 0.94, k.y)}           # her back to the counter
 	# Desk on the right, its chair in front: she works with her back to you.
 	var d := _place("desk", Vector2(w - 2.3, back + 0.33), 0.0, Vector2(1.2, 0.6))
 	var ch := _place("chair", Vector2(d.x, d.y + 0.58), 0.0, Vector2(0.5, 0.5))
 	blockers[-1] = blockers[-1].merge(blockers[-2])
 	blockers.remove_at(blockers.size() - 2)
-	spots["desk"] = {"approach": Vector2(ch.x + 0.62, ch.y + 0.25), "at": Vector3(ch.x + 0.06, 0, ch.y - 0.12), "yaw": PI}
+	spots["desk"] = {"approach": Vector2(ch.x + 0.62, ch.y + 0.25), "at": Vector3(ch.x + 0.06, 0, ch.y - 0.12), "yaw": PI,
+			"drop": Vector3(d.x + 0.3, 0.79, d.y - 0.12)}
 	# A plant in the corner by the desk, its watering can beside it.
 	var p := _place("plant", Vector2(w - 0.75, back + 0.3), 0.0, Vector2(0.4, 0.4))
 	spots["plant"] = {"approach": p + Vector2(-0.1, 0.62), "at": Vector3(p.x - 0.1, 0, p.y + 0.62), "yaw": PI}
 	var c := _place("watering_can", Vector2(w - 1.15, back + 0.22), 0.0, Vector2.ZERO)
 	spots["can"] = {"approach": c + Vector2(0, 0.5), "at": Vector3(c.x, 0, c.y + 0.5), "yaw": PI}
+	if pet.life:
+		pet.life.show_left()
 
 
 # Puts a piece at (x, depth), turned by yaw, and blocks its footprint (size, before turning).

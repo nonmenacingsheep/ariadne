@@ -255,6 +255,31 @@ class StateTests(Base):
         self.assertEqual(a.state()["recent"], [])
 
 
+class LiveDownloadTests(Base):
+    async def test_a_running_download_isnt_queued_while_the_manifest_lags(self):
+        # Steam writes StateFlags and BytesDownloaded only now and then; its content
+        # log and the downloading folder are live.
+        t = self.tree
+        t.manifest(1091500, "Cyberpunk 2077", flags=1042, done=0, total=100_000)
+        logs = t.home / ".local/share/Steam/logs"
+        logs.mkdir(parents=True)
+        (logs / "content_log.txt").write_text(
+            "[2026-11-01 18:05:42] AppID 1091500 state changed : Update Required,Update Queued,\n"
+            "[2026-11-01 18:05:45] AppID 1091500 state changed : Update Required,Update Queued,Update Running,Update Started,\n")
+        part = t.apps / "downloading" / "1091500"
+        part.mkdir(parents=True)
+        (part / "chunk").write_bytes(b"x" * 40_960)
+        a = self.make()
+        t.steam_up()
+        await a.refresh()
+        (d,) = a.state()["downloads"]
+        self.assertEqual(d["state"], "downloading")
+        self.assertGreater(d["progress"], 0.3)
+        t.kill_process(10)                                  # Steam closed: the log is stale, not trusted
+        await a.refresh()
+        self.assertNotEqual([x["state"] for x in a.state()["downloads"]], ["downloading"])
+
+
 class DownloadTests(Base):
     def test_download_state_table(self):
         f = lambda flags, done=0: steam.download_state({"flags": flags, "bytes_done": done})  # noqa: E731

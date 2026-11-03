@@ -34,12 +34,21 @@ LIB_ROWS = 25
 RANK = {"downloading": 0, "updating": 1, "queued": 2, "paused": 3}
 
 
-def download_state(m: dict) -> str | None:
+def download_state(m: dict, live: set | None = None) -> str | None:
     """What an appmanifest says about a transfer, or None when it isn't transferring.
 
     StateFlags 6 (installed, update required) is just an update that is available or
     scheduled, not in progress, so it is left out. 1026/1030 are Steam's "started"
     states: with nothing downloaded yet they are a queue entry."""
+    if live:                     # Steam's content log, written live (SteamFiles.content_states)
+        if "Update Paused" in live:
+            return "paused"
+        if "Update Running" in live:
+            return "updating" if m["installed"] else "downloading"
+        if "Update Queued" in live:
+            return "queued"
+        if "Fully Installed" in live and not ({"Update Required", "Update Started"} & live):
+            return None
     f = m["flags"]
     busy = f & BUSY_BITS
     if f & PAUSED and (busy or f & (UPDATE_REQUIRED | UPDATE_STARTED) or not f & INSTALLED):
@@ -263,18 +272,23 @@ class SteamAdapter(Adapter):
             rows[playing["appid"]] = {"appid": playing["appid"], "name": playing["name"],
                                       "last_played": playing["since"], "hours": 0.0, "installed": True}
         recent = sorted(rows.values(), key=lambda r: (-r["last_played"], r["name"]))[:RECENT]
+        # The content log is only the truth while Steam runs (closed mid-download, it still says Running).
+        live = self.files.content_states() if procs["steam"] and hasattr(self.files, "content_states") else {}
         return {"status": "running" if procs["steam"] else "not running", "playing": playing,
-                "recent": recent, "downloads": self._downloads(man)}
+                "recent": recent, "downloads": self._downloads(man, live)}
 
-    def _downloads(self, man: dict) -> list[dict]:
+    def _downloads(self, man: dict, live: dict | None = None) -> list[dict]:
         out = []
         now = self.mono()
+        live = live or {}
         for appid, m in man.items():
-            st = download_state(m)
+            st = download_state(m, live.get(appid))
             if st is None:
                 self._samples.pop(appid, None)
                 continue
             done, total = m["bytes_done"], m["bytes_total"]
+            if st in ("downloading", "updating") and not done and total and hasattr(self.files, "partial_bytes"):
+                done = min(total, self.files.partial_bytes(appid))     # the manifest lags; the files don't
             if total and done >= total and m["to_stage"] and m["staged"] < m["to_stage"]:
                 done, total = m["staged"], m["to_stage"]      # files downloaded, now being written
                 st = "updating" if m["installed"] else "downloading"

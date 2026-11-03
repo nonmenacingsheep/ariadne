@@ -151,6 +151,21 @@ def parse_appinfo(blob: bytes) -> dict[int, str]:
 
 # ---- the file set ----
 
+_STATE_LINE = re.compile(r"AppID (\d+) state changed : (.*)")
+
+
+def _content_states(path: str) -> dict[int, set]:
+    """The last state line per app, from the log's last 256 KB."""
+    with open(path, "rb") as fh:
+        fh.seek(0, 2)
+        fh.seek(max(0, fh.tell() - 262144))
+        tail = fh.read().decode("utf-8", "replace")
+    out: dict[int, set] = {}
+    for m in _STATE_LINE.finditer(tail):
+        out[int(m.group(1))] = {x.strip() for x in m.group(2).split(",") if x.strip()}
+    return out
+
+
 class SteamFiles:
     """Reads what Steam leaves on disk. Caches the heavy files by mtime."""
 
@@ -234,6 +249,29 @@ class SteamFiles:
                 if old is None or (row["installed"] and not old["installed"]):
                     out[appid] = row        # a stale copy on a vanished drive must not win
         return out
+
+    def content_states(self) -> dict[int, set]:
+        """appid -> the states in its last 'state changed' line of Steam's content log
+        ('Update Running', 'Update Queued', 'Update Paused', ...). The manifests'
+        StateFlags and byte counts are only written now and then, so a download in
+        full swing can still read as queued there; this log is written live."""
+        out: dict[int, set] = {}
+        for root in self.roots:
+            out.update(self._cached(os.path.join(root, "logs", "content_log.txt"), _content_states) or {})
+        return out
+
+    def partial_bytes(self, appid: int) -> int:
+        """Bytes Steam has written so far for a download, in steamapps/downloading/<appid>
+        (allocated blocks: the files are made at full size and filled in)."""
+        total = 0
+        for lib in self.libraries():
+            for d, _, files in os.walk(os.path.join(lib, "downloading", str(appid))):
+                for f in files:
+                    try:
+                        total += os.lstat(os.path.join(d, f)).st_blocks * 512
+                    except OSError:
+                        pass
+        return total
 
     def playtime(self) -> dict[int, dict]:
         """appid -> {last_played, minutes} from every user's localconfig.vdf."""

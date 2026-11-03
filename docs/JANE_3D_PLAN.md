@@ -27,9 +27,15 @@ the Live2D Jane). Friends bring their own.
 - Kimodo (NVIDIA): text-to-motion on SOMA ("she stretches, then sits
   cross-legged"), exports BVH; has ComfyUI nodes (ComfyUI is installed).
 
-## Approach
+## Decisions (Ronald, 2026-11-02)
 
-Offline first, live later:
+- GASP-like, from baked clips. Running MotionBricks live is too expensive:
+  it and Kimodo only generate clips here, offline.
+- Idle life first (many idles per mood, stretches, yawns, looking around,
+  sitting on widget edges, lying down, napping, dancing); getting around
+  after.
+
+## Approach
 
 1. **Bake, don't stream.** Kimodo and MotionBricks generate clips on this PC;
    they're retargeted SOMA -> Jane in Blender and baked into a Godot
@@ -45,24 +51,21 @@ Offline first, live later:
 3. **Live layers on top.** Look-at and gaze (head/eyes to the cursor),
    VRM spring bones for hair/ponytail/tail/ears, face shape keys from her
    TTS emotions, lip sync, foot IK on widget tops.
-4. **Live MotionBricks (later, opt-in).** A sidecar streaming poses for
-   free locomotion to targets, for NVIDIA GPUs only, kept under the 75%
-   GPU rule; the baked set stays the fallback.
+4. ~~Live MotionBricks~~: dropped, too expensive to run all the time.
 
 ## Phases
 
 | # | Step | STATUS |
 |---|------|--------|
-| 1 | Jane -> VRM: MMD -> humanoid bone map, spring bones for hair/tail/ears, expressions from her 79 shape keys, MToon materials; load in pet/ as a second 3D model the Avatar widget can pick | todo |
+| 1 | Jane into the 3D body. Not VRM (no add-on needed): pet/import/jane_export.py cleans the MMD rig (constraints, IK and control bones off, D bones deform), rebuilds materials as base texture + clip mask, exports pet/models/jane.glb; jane_bonemap.tres maps it to Godot's humanoid skeleton, so her clips play on it (PET_MODEL=res://models/jane.glb). Left: Avatar-widget picker, toon shader, spring bones (tail/hair/ears), face shapes -> moods | in progress |
 | 2 | Retarget pipeline: SOMA BVH -> Jane in Blender (bone map + rest-pose fix), bake, export clips; check against her current Quaternius set | todo |
 | 3 | Kimodo locally (ComfyUI nodes or its own runner): VRAM check on the 4070, a prompt list per state, batch-generate variations | todo |
 | 4 | MotionBricks locally: install, TensorRT plan, record locomotion clips (walk/run/strafe/crouch x styles, starts/stops/turns) | todo |
 | 5 | State graph in pet.gd: states, transitions, variation picking, mood weights, distance-matched starts/stops, sit/lie on widgets | todo |
 | 6 | Live layers: gaze, spring bones, TTS faces, lip sync, foot IK | todo |
 | 7 | Her control: the avatar tool gains the new states (sit, lie, stretch, wave...) | todo |
-| 8 | Live MotionBricks sidecar (opt-in) | later |
+| 8 | ~~Live MotionBricks sidecar~~ | dropped |
 
 ## Open questions
 
-- Which states matter most first (her everyday idle life vs. walking around the desk).
 - Clothing: the default outfit, and whether the jacket/weapon are toggles.

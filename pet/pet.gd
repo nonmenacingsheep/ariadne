@@ -132,9 +132,17 @@ func _ready() -> void:
 	get_viewport().transparent_bg = true
 	get_window().title = "ariadne2-pet"      # KWin finds her by this (desk/kwin_layer.js)
 	_cover_ultrawide()
-	body = (load(MODEL) as PackedScene).instantiate()
+	# PET_MODEL picks another 3D body (a GLB imported with the humanoid bone map,
+	# e.g. res://models/jane.glb; docs/JANE_3D_PLAN.md).
+	var model_path := OS.get_environment("PET_MODEL")
+	body = (load(model_path if model_path != "" else MODEL) as PackedScene).instantiate()
 	add_child(body)
 	skel = _find(body, "Skeleton3D")
+	# MMD-style bodies tuck the skin in under clothes with "Shrink_for..." shapes.
+	for m in body.find_children("*", "MeshInstance3D", true, false):
+		for i in (m as MeshInstance3D).mesh.get_blend_shape_count() if (m as MeshInstance3D).mesh else 0:
+			if String((m as MeshInstance3D).mesh.get_blend_shape_name(i)).begins_with("Shrink_for"):
+				(m as MeshInstance3D).set_blend_shape_value(i, 1.0)
 	for key in FACE:
 		face[key] = _find_shapes(body, FACE[key])
 	for k in moods:

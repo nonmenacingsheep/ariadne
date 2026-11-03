@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .venv/
 tools/
+
+# Fan models stay on this machine (docs/JANE_3D_PLAN.md)
+pet/models/jane*
+!pet/models/jane_bonemap.tres
+!pet/models/jane.glb.import

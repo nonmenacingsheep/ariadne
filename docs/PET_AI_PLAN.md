@@ -13,7 +13,7 @@ what to do, reacting to him.
 - A perspective camera that keeps the front plane (z = 0) exactly where the
   old flat camera had it, PPM pixels a metre, so widget ledges, the cursor
   and clicks line up as before; behind it she shrinks toward the horizon.
-- Widget tops stay ledges at the front: to jump up she walks to the front.
+- ~~Widget tops stay ledges at the front~~. Ronald, later the same day: "like the widgets are on the screen and she's behind the screen", so she lives in the monitor: KWin stacks her 3D window under the desk, widgets cover her, and going to a widget walks her up behind it. (The Live2D body still stands on widgets.)
 - A soft shadow under her on the floor sells the depth.
 
 ## Getting around

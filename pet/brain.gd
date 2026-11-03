@@ -15,10 +15,10 @@ var logging := OS.get_environment("PET_BRAIN_LOG") != ""
 
 # name: [cooldown seconds, needs the floor (hops down first)]
 const ACTIVITIES := {
-	"idle": [10.0, false], "wander": [12.0, false], "look_around": [25.0, false], "stretch": [60.0, false],
-	"think": [30.0, false], "explore": [40.0, true], "sit_floor": [60.0, true], "lie": [90.0, true],
-	"nap": [300.0, true], "sit_ledge": [60.0, false], "dance": [20.0, false], "ball": [90.0, true],
-	"watch_him": [45.0, true], "find_him": [60.0, true], "cheer": [60.0, false], "follow": [90.0, true],
+	"idle": [10.0, false], "wander": [35.0, false], "look_around": [60.0, false], "stretch": [120.0, false],
+	"think": [60.0, false], "explore": [40.0, true], "sit_floor": [60.0, true], "lie": [90.0, true],
+	"nap": [300.0, true], "sit_ledge": [60.0, false], "dance": [20.0, false],
+	"watch_him": [45.0, true], "find_him": [60.0, true], "cheer": [120.0, false], "follow": [90.0, true],
 	# At her furniture (room.gd, docs/PET_LIFE_PLAN.md).
 	"sleep_bed": [600.0, true], "work": [120.0, true], "game": [150.0, true], "eat": [600.0, true],
 	"read": [180.0, true], "phone": [150.0, true], "meditate": [240.0, true], "workout": [300.0, true],
@@ -26,7 +26,7 @@ const ACTIVITIES := {
 	# Staying where she is: another way of being at the same place (lying back, then onto her side).
 	"linger": [20.0, false],
 	# One of her interactions (play.json: on her own, with her things, at the glass).
-	"play": [6.0, false], "play_more": [20.0, false],
+	"play": [50.0, false], "play_more": [240.0, false],
 	# Her things anywhere (phase 9): her phone on her feet, a book on the floor.
 	"phone_about": [200.0, true], "read_floor": [240.0, true],
 }
@@ -262,7 +262,7 @@ func _score(a: String, on_widget: bool) -> float:
 	var lonely := maxf(0.0, 0.6 - float(n["affection"])) * 2.5
 	var near: bool = pet.t - pet.cursor_at < 4.0            # his pointer moving about
 	match a:
-		"idle": return 0.4
+		"idle": return 0.75
 		"wander": return (0.8 + bored * 0.5 - tired * 0.3) if allow["wander"] else 0.0
 		"look_around": return 0.35 + bored * 0.3 if _has("look_around_") else 0.0
 		"stretch": return (0.2 + tired * 0.4 + (1.0 if doing in ["nap", "lie", "sit_floor"] else 0.0)) \
@@ -283,7 +283,6 @@ func _score(a: String, on_widget: bool) -> float:
 			if not (pet.spotify_playing and allow["dance_to_music"]):
 				return 0.0
 			return 1.0 + maxf(0.0, 0.7 - float(n["fun"])) * 2.0 + joy * 0.4
-		"ball": return maxf(0.0, (0.75 - float(n["fun"])) * 1.6 - tired * 0.3) if allow["play_ball"] else 0.0
 		"watch_him": return 0.25 + lonely * 0.5 + (0.5 if near else 0.0)
 		"find_him":
 			if not allow["seek_cursor"]:
@@ -318,7 +317,7 @@ func _score(a: String, on_widget: bool) -> float:
 		"play", "play_more":
 			if pet.play == null or pet.play.names().is_empty():
 				return 0.0
-			return (0.9 if a == "play" else 0.5) + bored * 0.5 + joy * 0.2 - tired * 0.3
+			return (0.5 if a == "play" else 0.12) + bored * 0.35 + joy * 0.1 - tired * 0.3
 		"linger":
 			if pet.pstate == "" or _stay_in().is_empty():
 				return 0.0
@@ -335,12 +334,12 @@ func _score(a: String, on_widget: bool) -> float:
 func _plan(a: String, on_widget: bool) -> Array:
 	var rd: float = pet.room_depth
 	match a:
-		"idle": return [{"play": "Idle", "for": randf_range(4, 8)}]
+		"idle": return [{"play": "Idle", "for": randf_range(10, 20)}]
 		"wander":
 			if on_widget:
 				return [{"go": Vector2(clampf(pet.pos.x + randf_range(-1.0, 1.0), pet.floor_span.x + 0.2,
 						pet.floor_span.y - 0.2), 0.0)}, {"play": "Idle", "for": randf_range(2, 4)}]
-			return [{"go": _spot(randf_range(1.0, 3.5))}, {"play": "Idle", "for": randf_range(2, 5)}]
+			return [{"go": _spot(randf_range(1.0, 3.5))}, {"play": "Idle", "for": randf_range(5, 10)}]
 		"look_around": return [{"play": "LookAround", "for": randf_range(5, 9)}]
 		"stretch": return [{"play": "Stretch", "for": randf_range(4, 6)}]
 		"think": return [{"play": "Idle_FoldArms", "for": randf_range(5, 10)}]
@@ -361,7 +360,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 					{"play": "Sitting_Idle", "state": "sit", "for": randf_range(15, 30)}]
 		"dance": return [{"go": Vector2(_mid(), -rd * randf_range(0.15, 0.45))},
 				{"play": "Dance", "state": "dance", "for": randf_range(10, 18), "speed": 0.9}]
-		"ball": return [{"call": "_play_ball"}]
 		"watch_him":
 			return [{"go": Vector2(clampf(_cursor_x(), _x0(), _x1()), -0.25)},
 					{"play": "Idle" if randf() < 0.6 else "Idle_FoldArms", "front": true, "for": randf_range(8, 16)}]
@@ -390,12 +388,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 				var n: String = pet.play.pick()
 				if n == "":
 					break
-				var toy := str(pet.play.entry(n).get("hold", ""))
-				if pet.life.toys.has(toy) and pet.life.holding != toy:
-					# Over to where it lies, and down to pick it up.
-					out.append({"go": pet.life.toys[toy] + Vector2(-0.35, 0.15)})
-					out.append({"play": "PickUp_Table", "state": "react", "for": 1.3})
-					out.append({"hold": toy})
 				var wid = pet.play.entry(n).get("widget", false)
 				var behind: Array = pet.widget_x.keys() if wid is bool else ([wid] if pet.widget_x.has(wid) else [])
 				if wid and not behind.is_empty():

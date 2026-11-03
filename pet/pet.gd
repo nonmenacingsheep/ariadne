@@ -24,7 +24,7 @@ var FPS_BUSY := 30                        # Avatar: frame rate cap; idle runs at
 var FPS_IDLE := 15
 # What she may do (Avatar settings). Everything on unless he turns it off.
 var allow := {"wander": true, "sit_on_widgets": true, "walk_off_edges": true, "dance_to_music": true,
-	"play_ball": true, "nap": true, "seek_cursor": true, "react_to_work": true, "lip_sync": true}
+	"nap": true, "seek_cursor": true, "react_to_work": true, "lip_sync": true}
 var shown := true                          # Desktop: her body
 var settings_mtime := 0
 var settings_check := 0.0
@@ -1196,10 +1196,23 @@ func _play_variant(pick: String, blend: float) -> void:
 			perch["yaw"] = wrapf(float(perch["yaw"]) + PI, -PI, PI)
 		blend = 0.0
 	variant = pick
-	ap.play(pick, blend)
+	ap.play(pick, maxf(blend, _calm_blend(pick)))
 	var a := ap.get_animation(pick)
 	# A looping clip gets a cycle or three before a change; a one-shot plays out.
 	variant_until = t + (a.length * randi_range(1, 3) if a.loop_mode != Animation.LOOP_NONE else a.length) - minf(0.4, a.length * 0.3)
+
+
+# The least blend between two clips: unhurried, so a change of clip eases in
+# instead of snapping. Quick only where it must be (a fall, being grabbed,
+# landing); steps and stance moves a little quicker so her feet stay put.
+const MIN_BLEND := 0.6
+const QUICK := ["Jump", "fall_", "held_", "land_", "knocked_", "Death01", "Held"]
+func _calm_blend(pick: String) -> float:
+	if state in ["fall", "held", "knocked"] or QUICK.any(func(q): return pick.begins_with(q)):
+		return 0.0
+	if gait_velocity.has(pick) or pick.begins_with("stop_") or _is_move(pick):
+		return 0.4
+	return MIN_BLEND
 
 
 # A one-shot transition into a role: sitting down onto a widget, getting up
@@ -1506,10 +1519,6 @@ func _bed_sleep() -> void:
 	_play("Bed_Sleep", 0.6)
 
 
-func _play_ball() -> void:
-	life.play_ball()
-
-
 # --- every frame ------------------------------------------------------------
 # His settings (~/.config/ariadne2/settings.json): the avatar section and
 # whether her body is shown. Re-read when the file changes.
@@ -1583,12 +1592,6 @@ func _sync_screen() -> void:
 		pos.x = clampf(pos.x, 0.4, maxf(0.4, screen.x / PPM - 0.4))   # a smaller screen than assumed: keep her on it
 
 
-func fetch(x: float) -> void:
-	target_x = clampf(x, floor_span.x, floor_span.y)
-	_set_state("fetch", 30.0)
-	_play("Jog_Fwd", 0.25, 0.8)
-
-
 func _process(delta: float) -> void:
 	t += delta
 	_sync_screen()
@@ -1624,20 +1627,16 @@ func _process(delta: float) -> void:
 	_place_body()
 	_update_click_area()
 	_tell(delta)
-	var busy: bool = state in ["wander", "fall", "held", "react", "dance", "knocked", "fetch", "throw", "eat", "pickup"] or (life != null and life.ball_live) or speaking or t < mood_until or (slab and slab.visible)
+	var busy: bool = state in ["wander", "fall", "held", "react", "dance", "knocked"] or speaking or t < mood_until or (slab and slab.visible)
 	Engine.max_fps = FPS_BUSY if busy else FPS_IDLE
 
 
 func _think(_delta: float) -> void:
 	if state in ["fall", "held"] or (state == "knocked" and t < state_until):
 		return
-	if state == "hug":
-		_play("Idle_FoldArms", 0.4)          # arms round the plush
 	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit", "rest"]:
 		_set_state("sleep", 1e9)
 		_settle_to_sleep()
-		return
-	if state == "fetch":
 		return
 	if speaking and state in ["rest", "sit"]:
 		yaw_target = 0.0                       # seated, she turns to him to talk
@@ -1652,8 +1651,6 @@ func _think(_delta: float) -> void:
 			_play("Idle", 0.3)                    # sitting up off the ledge comes first
 			_set_state("idle", 1.2)
 			return
-		if state == "hug":
-			life._hold("")
 		_choose()
 
 
@@ -1741,16 +1738,6 @@ func _move(delta: float) -> void:
 					roll = 0.0
 					_set_state("react", 0.6)
 					_play("Jump_Land", 0.1)
-		"fetch":
-			var fdir := signf(target_x - pos.x)
-			pos.x += fdir * (_gait_speed() if gait_velocity.has(variant) else WALK_SPEED * 2.4 * _stride()) * delta
-			yaw_target = fdir * 1.3
-			pos.y = floor_y
-			if absf(target_x - pos.x) < 0.1:
-				yaw_target = 0.0
-				_set_state("pickup", 1.3)
-				_play("PickUp_Table", 0.2)
-				get_tree().create_timer(0.8).timeout.connect(func(): life.picked_up_ball())
 		"held":
 			depth = lerpf(depth, 0.0, clampf(delta * 8.0, 0.0, 1.0))   # picked up: pulled to the front
 			# Dangling from your cursor: she sways behind the way you move her.
@@ -1883,7 +1870,7 @@ func _perch_frame() -> void:
 
 # Arrived: a moment's pause, short when her plan has more to do there.
 func _pause() -> float:
-	return 0.25 if brain.plan_left() else randf_range(2, 5)
+	return 0.8 if brain.plan_left() else randf_range(4, 9)
 
 
 func _place_body() -> void:
@@ -2062,8 +2049,6 @@ func _update_click_area() -> void:
 	var head := cam.unproject_position(Vector3(pos.x, pos.y + 1.62, depth))
 	var wide := (feet.y - head.y) * 0.3                  # narrower further back
 	var r := Rect2(Vector2(feet.x - wide / 2.0, head.y - 10), Vector2(wide, feet.y - head.y + 20))
-	if life != null and life.ring_open:
-		r = r.merge(life.ring_rect())
 	if r.position.distance_to(last_rect.position) < 3 and r.size.distance_to(last_rect.size) < 3:
 		return
 	last_rect = r
@@ -2072,16 +2057,6 @@ func _update_click_area() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if life.ring_open:
-			life.close_ring()
-		else:
-			life.open_ring(cam.unproject_position(Vector3(pos.x, pos.y + 1.7, depth)))
-		return
-	if life.ring_open and event is InputEventMouseButton and event.pressed:
-		if not life.ring.get_global_rect().has_point(event.position):
-			life.close_ring()
-		return
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] \
 			and event.pressed:
 		_stir()

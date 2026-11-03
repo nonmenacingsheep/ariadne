@@ -70,7 +70,7 @@ class SchemaTests(unittest.TestCase):
         for k in ("energy_drain", "fun_drain", "affection_drain", "hunger_drain"):
             self.assertEqual((by[k]["min"], by[k]["max"], by[k]["default"]), (0.25, 4.0, 1.0))
         self.assertEqual((by["size"]["min"], by["size"]["max"]), (200, 840))
-        for k in ("wander", "sit_on_widgets", "walk_off_edges", "dance_to_music", "play_ball", "nap",
+        for k in ("wander", "sit_on_widgets", "walk_off_edges", "dance_to_music", "nap",
                   "seek_cursor", "react_to_work", "lip_sync"):
             self.assertEqual(by[k]["type"], "bool")
         self.assertIn("fps_cap", by)

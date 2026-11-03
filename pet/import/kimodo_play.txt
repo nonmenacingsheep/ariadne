@@ -55,29 +55,7 @@ solo_shiver_1|5|A woman shivers and rubs her arms to warm up.|idle_calm_1:0|idle
 solo_side_stretch_1|6|A woman stretches to one side with an arm over her head, then the other side.|idle_calm_1:0|idle_calm_1:0
 solo_idea_1|6|A woman taps her chin thinking, then gets an idea and points one finger up excitedly.|idle_calm_1:0|idle_calm_1:0
 solo_sway_dance_1|8|A woman dances slowly by herself, swaying with her eyes closed.|idle_calm_1:0|idle_calm_1:0
-# -- with things in her hands
-thing_ball_kick_1|4|A woman drops a ball onto her foot and kicks it forward.|idle_calm_1:0|idle_calm_1:0
-thing_ball_bounce_1|6|A woman bounces a ball on the ground with one hand, dribbling.|idle_calm_1:0|idle_calm_1:0
-thing_ball_throw_1|4|A woman throws a ball forward overhand at a window in front of her.|idle_calm_1:0|idle_calm_1:0
-thing_ball_juggle_1|7|A woman juggles a ball with her knees and feet, keeping it up.|idle_calm_1:0|idle_calm_1:0
-thing_balloon_1|7|A woman bats a balloon up above her head again and again, looking up.|idle_calm_1:0|idle_calm_1:0
-thing_plane_1|6|A woman folds a paper plane and throws it gently forward.|idle_calm_1:0|idle_calm_1:0
-thing_bubbles_1|7|A woman blows bubbles with a wand, then pops them with her finger.|idle_calm_1:0|idle_calm_1:0
-thing_rope_1|7|A woman skips with a jump rope in place.|idle_calm_1:0|idle_calm_1:0
-thing_hoop_1|7|A woman spins a hula hoop around her waist.|idle_calm_1:0|idle_calm_1:0
-thing_yoyo_1|6|A woman plays with a yo-yo, throwing it down and catching it.|idle_calm_1:0|idle_calm_1:0
-thing_plush_hug_1|6|A woman hugs a plush toy tightly to her chest and sways.|idle_calm_1:0|idle_calm_1:0
-thing_plush_dance_1|7|A woman dances holding a plush toy out at arm's length.|idle_calm_1:0|idle_calm_1:0
-thing_flower_1|6|A woman smells a flower, smiles, and tucks it behind her ear.|idle_calm_1:0|idle_calm_1:0
-thing_guitar_1|8|A woman strums a guitar held across her body, tapping her foot.|idle_calm_1:0|idle_calm_1:0
-thing_draw_1|8|A woman draws in a sketchbook held in her left arm, then turns it around to show it proudly.|idle_calm_1:0|idle_calm_1:0
-thing_sign_1|5|A woman holds up a sign with both hands above her head, beaming.|idle_calm_1:0|idle_calm_1:0
-thing_hat_1|5|A woman puts a hat on her head and poses with a hand on her hip.|idle_calm_1:0|idle_calm_1:0
-thing_glasses_1|5|A woman puts on sunglasses and strikes a cool pose.|idle_calm_1:0|idle_calm_1:0
-thing_headphones_1|7|A woman puts on headphones and bobs her head to the music.|idle_calm_1:0|idle_calm_1:0
-thing_cookie_1|6|A woman eats a cookie, nibbling it happily.|idle_calm_1:0|idle_calm_1:0
-thing_offer_1|5|A woman holds a cookie out forward offering a bite, waits, then eats it herself.|idle_calm_1:0|idle_calm_1:0
-thing_umbrella_1|6|A woman twirls an umbrella resting on her shoulder.|idle_calm_1:0|idle_calm_1:0
+# -- (things in her hands were dropped 2026-11-03: their takes are in clips/aries/unused)
 # -- with his desktop and the glass
 glass_lean_1|8|A woman leans forward with both forearms against a window in front of her, chin resting on them, bored.|idle_calm_1:0|idle_calm_1:0
 glass_face_1|5|A woman presses her face and hands against a window in front of her, squishing her cheek, then laughs.|idle_calm_1:0|idle_calm_1:0

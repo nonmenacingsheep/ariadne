@@ -103,7 +103,7 @@ class AvatarAdapter(Adapter):
         doing = {"stand": "standing", "idle": "standing", "walk": "walking", "wander": "walking",
                  "fall": "in the air", "held": "being held by him", "pinned": "pinned in place",
                  "dance": "dancing", "sleep": "asleep", "sit": "sitting", "knocked": "knocked over",
-                 "fetch": "chasing the ball", "eat": "eating", "hug": "hugging a plush"}.get(
+                 "eat": "eating", "react": "playing"}.get(
             str(d.get("mode")), str(d.get("mode") or "standing"))
         if d.get("doing") and d["doing"] not in ("idle", "wander"):
             doing += f" ({str(d['doing']).replace('_', ' ')})"

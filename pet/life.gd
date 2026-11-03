@@ -1,7 +1,6 @@
 extends Node
-# Her life between jobs: needs that drift (energy, fun, affection), things you
-# can give her (a ring of items on right-click, and real files dropped on
-# her), and what she does with them. It nudges pet.gd's choices; pet.gd still
+# Her life between jobs: needs that drift (energy, fun, affection), real files
+# dropped on her, and what she holds. It nudges pet.gd's choices; pet.gd still
 # owns her body. Her needs are written to a small file the core reads, so when
 # you talk to her she knows how she feels; a dropped file is told to the core
 # through an inbox it watches (never as your words; see core/pet_inbox.py).
@@ -9,19 +8,6 @@ extends Node
 const STATE_FILE := "/.local/share/ariadne2/pet/state.json"
 const INBOX_FILE := "/.local/share/ariadne2/pet/inbox.jsonl"
 const SAVE_FILE := "user://needs.json"
-# His right-click ring: what he can hand her (the first four are the old ring).
-const ITEMS := ["cookie", "drink", "ball", "plush", "balloon", "flower", "guitar", "sketchbook",
-		"wand", "yoyo", "hoop", "rope", "hat", "sunglasses", "headphones", "umbrella"]
-# Her toys lie about her room's floor (saved where she last put them down);
-# smaller things come out of her pocket.
-const TOYS := ["plush", "guitar", "hoop", "balloon", "umbrella", "sketchbook"]
-# Where a thing sits on her while she has it: a bone and an offset (metres, her body's frame).
-const WORN := {"hat": ["Head", Vector3(0, 0.13, -0.01)], "sunglasses": ["Head", Vector3(0, 0.04, 0.09)],
-		"headphones": ["Head", Vector3(0, 0.06, 0)], "hoop": ["Hips", Vector3(0, 0.05, 0)],
-		"balloon": ["RightHand", Vector3(0, 0.55, 0)], "plush": ["LeftHand", Vector3(0, 0.02, 0.06)]}
-var toys := {}                             # toy -> where it lies on her floor (x, depth)
-var toy_nodes := {}
-const BALL_R := 0.09
 
 var pet                                   # pet.gd (her body)
 var needs := {"energy": 0.8, "fun": 0.6, "affection": 0.6, "hunger": 0.7,   # hunger: 1 = full
@@ -38,22 +24,12 @@ const THINGS := {"book": "shelf", "phone": "desk", "mug": "kitchen", "controller
 var left := {}                             # thing -> the spot it was left at
 var left_nodes := {}
 var holding_node: MeshInstance3D
-var ring: Control
-var ring_open := false
-var ball: MeshInstance3D
-var ball_pos := Vector2.ZERO
-var ball_vel := Vector2.ZERO
-var ball_live := false
 var home := OS.get_environment("HOME")
 
 
 func setup(body_owner) -> void:
 	pet = body_owner
 	_load()
-	_make_ring()
-	ball = _item_mesh("ball")
-	ball.visible = false
-	pet.add_child.call_deferred(ball)
 	get_window().files_dropped.connect(_on_files)
 	DirAccess.make_dir_recursive_absolute(home + "/.local/share/ariadne2/pet")
 
@@ -62,11 +38,7 @@ func setup(body_owner) -> void:
 # Per-minute drift while awake; sleep restores energy, music and play restore
 # fun, attention restores affection.
 func _process(delta: float) -> void:
-	_ball_frame(delta)
 	_hold_frame()
-	if toys.size() < TOYS.size() and pet.screen.x > 0.0:
-		lay_out_toys(pet.screen.x / pet.PPM, pet.room_depth)
-	show_toys()
 	tick_in -= delta
 	if tick_in > 0.0:
 		return
@@ -119,8 +91,7 @@ func _save() -> void:
 		f.store_string(JSON.stringify(data))
 	var g := FileAccess.open(SAVE_FILE, FileAccess.WRITE)
 	if g:
-		g.store_string(JSON.stringify(needs.merged({"_left": left,
-				"_toys": toys.keys().reduce(func(acc, k): acc[k] = [toys[k].x, toys[k].y]; return acc, {})})))
+		g.store_string(JSON.stringify(needs.merged({"_left": left})))
 
 
 func _load() -> void:
@@ -131,138 +102,10 @@ func _load() -> void:
 			for k in needs:
 				if d.has(k):
 					needs[k] = clampf(float(d[k]), 0.0, 1.0)
-			if d.get("_toys") is Dictionary:
-				for k in d["_toys"]:
-					if k in TOYS and d["_toys"][k] is Array and d["_toys"][k].size() == 2:
-						toys[k] = Vector2(float(d["_toys"][k][0]), float(d["_toys"][k][1]))
 			if d.get("_left") is Dictionary:
 				for k in d["_left"]:
 					if THINGS.has(k):
 						left[k] = str(d["_left"][k])
-
-
-# --- the item ring ----------------------------------------------------------
-# Right-click her: four items around her head; pick one and it's hers.
-func _make_ring() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	ring = Control.new()
-	ring.visible = false
-	layer.add_child(ring)
-	for i in ITEMS.size():
-		var b := Button.new()
-		b.text = ITEMS[i].to_upper()
-		b.custom_minimum_size = Vector2(88, 34)
-		b.add_theme_font_size_override("font_size", 13)
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.06, 0.04, 0.12, 0.9)
-		sb.border_color = Color(1.0, 0.16, 0.24)
-		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(0)
-		b.add_theme_stylebox_override("normal", sb)
-		var hov := sb.duplicate()
-		hov.bg_color = Color(0.35, 0.05, 0.1, 0.95)
-		b.add_theme_stylebox_override("hover", hov)
-		b.add_theme_stylebox_override("pressed", hov)
-		b.pressed.connect(give.bind(ITEMS[i]))
-		# Two rings of eight round her head: the old four on top of the inner one.
-		var inner := i < 8
-		var a := -PI / 2 + ((i - 1.5) if inner else (i - 8 + 0.5)) * TAU / 8.0
-		b.position = Vector2(cos(a), sin(a)) * (130.0 if inner else 230.0) - b.custom_minimum_size / 2
-		ring.add_child(b)
-
-
-func open_ring(at: Vector2) -> void:
-	ring.position = at
-	ring.visible = true
-	ring_open = true
-
-
-func close_ring() -> void:
-	ring.visible = false
-	ring_open = false
-
-
-# The click area pet.gd sets while the ring is open, so the buttons get clicks.
-func ring_rect() -> Rect2:
-	return Rect2(ring.position - Vector2(180, 180), Vector2(360, 300))
-
-
-func give(item: String) -> void:
-	close_ring()
-	pet._stir()
-	bump("affection", 0.15)
-	match item:
-		"cookie", "drink":
-			_hold(item)
-			pet._set_state("eat", 3.2)
-			pet._play("Consume", 0.25)
-			pet._feel("joy", 0.8, 3.0)
-			bump("energy", 0.12)
-			bump("hunger", 0.45 if item == "cookie" else 0.25)
-			get_tree().create_timer(3.0).timeout.connect(func(): _hold(""))
-		"plush":
-			_hold("plush")
-			pet._set_state("hug", 12.0)
-			pet._feel("joy", 0.9, 4.0)
-			bump("fun", 0.15)
-		"ball":
-			play_ball()
-		_:
-			# A new thing: she has a go with it at once (its interaction in play.json).
-			var ways: Array = pet.play.table.keys().filter(func(n): return str(pet.play.entry(n).get("hold", "")) == item \
-					or (item == "wand" and n == "bubbles"))
-			if not ways.is_empty():
-				pet.play.run(ways.pick_random())
-				pet._feel("joy", 0.9, 3.0)
-
-
-func play_ball() -> void:
-	_hold("ball")
-	pet._set_state("throw", 1.3)
-	pet._play("OverhandThrow", 0.2)
-	pet._feel("fun", 0.8, 3.0)
-	get_tree().create_timer(0.75).timeout.connect(_release_ball)
-
-
-func _release_ball() -> void:
-	_hold("")
-	var dir := -1.0 if pet.pos.x > pet.screen.x / pet.PPM / 2.0 else 1.0
-	ball_pos = pet.pos + Vector2(0.3 * dir, 1.4)
-	ball_vel = Vector2(dir * randf_range(3.0, 6.0), randf_range(2.5, 4.0))
-	ball_live = true
-	ball.visible = true
-
-
-# A bouncing ball she runs after, picks up, and is pleased about.
-func _ball_frame(delta: float) -> void:
-	if not ball_live:
-		return
-	ball_vel.y -= 9.0 * delta
-	ball_pos += ball_vel * delta
-	var right: float = pet.screen.x / pet.PPM - BALL_R
-	if ball_pos.x < BALL_R or ball_pos.x > right:
-		ball_pos.x = clampf(ball_pos.x, BALL_R, right)
-		ball_vel.x *= -0.7
-	if ball_pos.y < BALL_R:
-		ball_pos.y = BALL_R
-		ball_vel.y = absf(ball_vel.y) * 0.55
-		ball_vel.x *= 0.85
-		if ball_vel.y < 0.4:
-			ball_vel = Vector2.ZERO
-	ball.position = Vector3(ball_pos.x, ball_pos.y, 0.2)
-	ball.rotation.z -= ball_vel.x * delta / BALL_R
-	if ball_vel == Vector2.ZERO and pet.state not in ["fetch", "held", "fall", "knocked"]:
-		pet.fetch(ball_pos.x)
-
-
-func picked_up_ball() -> void:
-	ball_live = false
-	ball.visible = false
-	_hold("ball")
-	bump("fun", 0.25)
-	pet._feel("joy", 0.8, 2.0)
-	get_tree().create_timer(2.5).timeout.connect(func(): _hold(""))
 
 
 # --- holding things ---------------------------------------------------------
@@ -319,53 +162,10 @@ func _hold_frame() -> void:
 	if not holding_node:
 		return
 	var skel: Skeleton3D = pet.skel
-	var w: Array = WORN.get(holding, ["RightHand", Vector3(0, 0.02, 0.06)])
-	var h := skel.find_bone(w[0])
+	var h := skel.find_bone("RightHand")
 	if h >= 0:
-		var turn := Basis(Vector3.UP, pet.yaw)
-		holding_node.global_position = skel.global_transform * skel.get_bone_global_pose(h).origin + turn * (w[1] as Vector3)
-		if WORN.has(holding) and holding != "plush":
-			holding_node.global_basis = turn * Basis.from_euler(holding_node.get_meta("tilt", Vector3.ZERO))
-		if holding == "hoop":
-			holding_node.global_position += turn * Vector3(cos(pet.t * 9.0), 0, sin(pet.t * 9.0)) * 0.12   # round her waist
-
-
-# --- her toys on the floor --------------------------------------------------------
-# Laid about the back half of her room the first time; after that where she left them.
-func lay_out_toys(width: float, depth: float) -> void:
-	for i in TOYS.size():
-		var k: String = TOYS[i]
-		if not toys.has(k):
-			toys[k] = Vector2(width * (0.12 + 0.76 * i / float(TOYS.size() - 1)) + randf_range(-0.3, 0.3),
-					-depth * randf_range(0.55, 0.85))
-	show_toys()
-
-
-func show_toys() -> void:
-	for k in toys:
-		if not toy_nodes.has(k):
-			toy_nodes[k] = _item_mesh(k)
-			pet.add_child(toy_nodes[k])
-		var n: MeshInstance3D = toy_nodes[k]
-		n.visible = holding != k
-		var lie: float = {"balloon": 0.75, "umbrella": 0.06}.get(k, 0.03)   # the balloon bobs on its string
-		n.position = Vector3(toys[k].x, lie + (0.03 * sin(pet.t * 1.3) if k == "balloon" else 0.0), toys[k].y)
-		if k == "umbrella":
-			n.rotation = Vector3(0.0, toys[k].x * 3.0, PI / 2)          # on its side, furled
-			n.scale = Vector3(0.18, 2.3, 0.18)
-		elif k == "balloon" and n.get_child_count() > 0:
-			(n.get_child(0) as Node3D).scale = Vector3(1, 1.35, 1)     # its string down to the floor
-			(n.get_child(0) as Node3D).position = Vector3(0, -0.52, 0)
-		else:
-			n.rotation = Vector3(0.0 if k in ["balloon", "hoop"] else PI / 2, toys[k].x * 3.0, 0.0)
-
-
-# She puts the toy she's holding down where she stands.
-func put_toy_down() -> void:
-	if holding in TOYS:
-		toys[holding] = Vector2(pet.pos.x + sin(pet.yaw) * 0.3, pet.depth + cos(pet.yaw) * 0.3)
-		_hold("")
-	show_toys()
+		holding_node.global_position = skel.global_transform * skel.get_bone_global_pose(h).origin \
+				+ Basis(Vector3.UP, pet.yaw) * Vector3(0, 0.02, 0.06)
 
 
 func _item_mesh(item: String) -> MeshInstance3D:
@@ -373,22 +173,6 @@ func _item_mesh(item: String) -> MeshInstance3D:
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	match item:
-		"cookie":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.06; c.bottom_radius = 0.06; c.height = 0.02
-			m.mesh = c
-			m.rotation.x = PI / 2
-			mat.albedo_color = Color(0.72, 0.48, 0.25)
-		"drink":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.045; c.bottom_radius = 0.035; c.height = 0.13
-			m.mesh = c
-			mat.albedo_color = Color(1.0, 0.55, 0.7)
-		"ball":
-			var s := SphereMesh.new()
-			s.radius = BALL_R; s.height = BALL_R * 2
-			m.mesh = s
-			mat.albedo_color = Color(1.0, 0.16, 0.24)
 		"book", "phone", "controller":
 			var b := BoxMesh.new()
 			b.size = {"book": Vector3(0.15, 0.2, 0.03), "phone": Vector3(0.07, 0.14, 0.01),
@@ -396,87 +180,6 @@ func _item_mesh(item: String) -> MeshInstance3D:
 			m.mesh = b
 			mat.albedo_color = {"book": Color(0.25, 0.35, 0.6), "phone": Color(0.1, 0.1, 0.12),
 					"controller": Color(0.15, 0.15, 0.18)}[item]
-		"balloon":
-			var s := SphereMesh.new()
-			s.radius = 0.13; s.height = 0.3
-			m.mesh = s
-			var string := MeshInstance3D.new()
-			var cm := CylinderMesh.new()
-			cm.top_radius = 0.003; cm.bottom_radius = 0.003; cm.height = 0.55
-			string.mesh = cm
-			string.position = Vector3(0, -0.42, 0)
-			m.add_child(string)
-			mat.albedo_color = Color(0.95, 0.25, 0.45)
-		"hoop":
-			var tm := TorusMesh.new()
-			tm.inner_radius = 0.4; tm.outer_radius = 0.43
-			m.mesh = tm
-			mat.albedo_color = Color(0.3, 0.75, 0.6)
-		"hat", "umbrella":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.07 if item == "hat" else 0.01
-			c.bottom_radius = 0.16 if item == "hat" else 0.4
-			c.height = 0.1 if item == "hat" else 0.3
-			m.mesh = c
-			if item == "umbrella":
-				m.set_meta("tilt", Vector3(0, 0, 0.3))
-			mat.albedo_color = Color(0.85, 0.75, 0.5) if item == "hat" else Color(0.55, 0.2, 0.7)
-		"sunglasses":
-			var b := BoxMesh.new()
-			b.size = Vector3(0.15, 0.035, 0.012)
-			m.mesh = b
-			mat.albedo_color = Color(0.05, 0.05, 0.07)
-		"headphones":
-			var tm := TorusMesh.new()
-			tm.inner_radius = 0.09; tm.outer_radius = 0.11
-			m.mesh = tm
-			m.set_meta("tilt", Vector3(0, 0, PI / 2))
-			mat.albedo_color = Color(0.9, 0.15, 0.25)
-		"guitar":
-			var b := BoxMesh.new()
-			b.size = Vector3(0.3, 0.38, 0.08)
-			m.mesh = b
-			var neck := MeshInstance3D.new()
-			var nb := BoxMesh.new()
-			nb.size = Vector3(0.05, 0.4, 0.03)
-			neck.mesh = nb
-			neck.position = Vector3(0, 0.38, 0)
-			m.add_child(neck)
-			mat.albedo_color = Color(0.7, 0.4, 0.2)
-		"sketchbook", "sign":
-			var b := BoxMesh.new()
-			b.size = Vector3(0.22, 0.28, 0.015) if item == "sketchbook" else Vector3(0.45, 0.3, 0.015)
-			m.mesh = b
-			mat.albedo_color = Color(0.95, 0.93, 0.85)
-			if item == "sign":
-				var l := Label3D.new()
-				l.text = ["hi!", "<3", "!!", "hey you"].pick_random()
-				l.font_size = 64
-				l.pixel_size = 0.002
-				l.modulate = Color(0.85, 0.1, 0.2)
-				l.position = Vector3(0, 0, 0.01)
-				m.add_child(l)
-		"flower", "wand", "yoyo", "rope", "paper":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.006; c.bottom_radius = 0.006; c.height = 0.22 if item != "yoyo" else 0.02
-			if item == "yoyo":
-				c.top_radius = 0.035; c.bottom_radius = 0.035
-			elif item == "paper":
-				c.top_radius = 0.0; c.bottom_radius = 0.08; c.height = 0.02
-			m.mesh = c
-			mat.albedo_color = {"flower": Color(0.3, 0.6, 0.3), "wand": Color(0.6, 0.85, 1.0), "yoyo": Color(1.0, 0.5, 0.1),
-					"rope": Color(0.9, 0.85, 0.7), "paper": Color(1, 1, 1)}[item]
-			if item == "flower":
-				var head := MeshInstance3D.new()
-				var sm := SphereMesh.new()
-				sm.radius = 0.04; sm.height = 0.05
-				head.mesh = sm
-				head.position = Vector3(0, 0.12, 0)
-				var hm := StandardMaterial3D.new()
-				hm.albedo_color = Color(1.0, 0.75, 0.2)
-				hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-				head.material_override = hm
-				m.add_child(head)
 		"mug":
 			var c := CylinderMesh.new()
 			c.top_radius = 0.042; c.bottom_radius = 0.042; c.height = 0.1
@@ -492,11 +195,6 @@ func _item_mesh(item: String) -> MeshInstance3D:
 			c.top_radius = 0.07; c.bottom_radius = 0.07; c.height = 0.16
 			m.mesh = c
 			mat.albedo_color = Color(0.25, 0.5, 0.52)
-		"plush":
-			var s := CapsuleMesh.new()
-			s.radius = 0.07; s.height = 0.2
-			m.mesh = s
-			mat.albedo_color = Color(0.98, 0.75, 0.82)
 		_:
 			var b := BoxMesh.new()
 			b.size = Vector3(0.1, 0.1, 0.02)

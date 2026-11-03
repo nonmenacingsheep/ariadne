@@ -8,6 +8,17 @@ interactions with him, with his desktop, with things, and on her own.
 The furniture is off by default now (Avatar setting "Her furniture"); its
 code (places.gd, states.json) stays, unused, in case he wants it back.
 
+## Ronald, later the same day
+
+"She's too erratic and her animation transitions are too fast quite often.
+Remove all of her objects, they're goofy. She'll just act like a cute desktop
+pet doing goofy stuff." So: no props at all (the toys, the things in her
+hands, the gift ring and the ball are gone; their takes are set aside in
+clips/aries/unused), every clip change blends over at least 0.6 s (quicker
+only for falls, grabs, landings and steps: pet.gd _calm_blend), interactions
+play at 0.85 speed, and her brain idles longer and plays less often (one
+interaction about a minute, the same one not again for two).
+
 ## The engine
 
 **pet/play.json**: every interaction is a line of data: what sets it off (a
@@ -96,6 +107,7 @@ room, inspect a speck on the glass, draw on the floor with her finger.
 | 1 | Engine: play.json, emotes above her head, furniture off; brain picks interactions; avatar verb "do" | done: pet/play.gd + play.json (87 entries), drawn emotes, brain "play"/"play_more" |
 | 2 | With him: gesture reader (body parts from her bones, still / stroke / wiggle / circle / hold / double / scroll), all his rows | done: stroke, tickle, circle, still, clicks by part, away/back tested; hold, double-click, scroll, shake, throw, night wired |
 | 3 | On her own: ~30 clips, weighted by mood and time | done: 28 (kimodo_play.txt), brain "play"/"play_more" |
-| 4 | With things: props, a bigger gift ring, things kept in her room, ~20 clip sets | done: 22 things, 16-gift ring, toys on her floor (saved), worn hat/glasses/headphones/hoop |
+| 4 | With things: props, a bigger gift ring, things kept in her room, ~20 clip sets | dropped (he found them goofy): removed with the ring and the ball |
 | 5 | With his desktop: the glass (touch, knock, fog doodles, lean), widgets (hide, peek, point, read), music, Aries' work, chat | done: fog/heart/hand marks (premultiplied, drawn over her), behind widgets, music on/off/new song, wince, startle |
+| 7 | Calmer: slower blends, fewer and spaced-out interactions, no props | done |
 | 6 | Filmed check of every row, tuning by eye | done: PET_SNAPSHOT_SEQ=playall (every one, heights logged, a frame each) |

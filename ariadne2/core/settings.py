@@ -250,7 +250,6 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
             ("sit_on_widgets", "Sit on widgets", "Perch on the edges of widgets."),
             ("walk_off_edges", "Walk off edges", "Step off a widget and drop to the floor."),
             ("dance_to_music", "Dance to music", "Dance when Spotify is playing."),
-            ("play_ball", "Play ball", "Fetch the ball on her own when bored."),
             ("nap", "Nap", "Fall asleep when tired or left alone."),
             ("seek_cursor", "Come to the cursor", "Walk over to you when she is lonely."),
             ("react_to_work", "React to her work", "Hold the glowing slab while she works in an app."),

@@ -1,12 +1,13 @@
 extends Node
 # Her interactions (docs/PET_PLAY_PLAN.md): what she does when he pats her,
-# tickles her, waves, goes away and comes back; what she does on her own, with
-# her things, at the glass; how she takes his desktop's news. Each is a line
+# tickles her, waves, goes away and comes back; what she does on her own and
+# at the glass; how she takes his desktop's news. No props: just her. Each is a line
 # of pet/play.json; this runs them, reads his pointer against her body, and
 # floats a little emote over her head.
 
 const FILE := "res://play.json"
-const KINDS_SHE_PICKS := ["solo", "thing", "glass"]
+const KINDS_SHE_PICKS := ["solo", "glass"]
+const PLAYBACK := 0.85                     # Kimodo's takes are brisk: a touch slower reads cuter
 
 var pet
 var table := {}                            # name -> its entry in play.json
@@ -77,7 +78,7 @@ func run(name: String, from_brain := false) -> bool:
 	var e := entry(name)
 	if e.is_empty() or pet.t < float(cool_until.get(name, 0.0)) or not _has_clips(name):
 		return false
-	if pet.state in ["held", "fall", "knocked", "fetch", "throw"] or pet.perched != "":
+	if pet.state in ["held", "fall", "knocked"] or pet.perched != "":
 		return false
 	if pet.state == "react" and current == name and pet.t < pet.state_until:
 		return false                           # still at it (patting goes on while he strokes)
@@ -93,10 +94,11 @@ func run(name: String, from_brain := false) -> bool:
 		print("PLAY %.1f %s %s" % [pet.t, name, pick])
 	if not from_brain:
 		pet.brain.drop()
-	var secs: float = pet.ap.get_animation(pick).length
+	var secs: float = pet.ap.get_animation(pick).length / PLAYBACK
 	current = name
 	pet._set_state("react", secs)
-	pet._play_via(pick, "Idle", 0.25)
+	pet._play_via(pick, "Idle", 0.5)
+	pet.ap.speed_scale = PLAYBACK
 	if str(e.get("kind", "")) in ["you", "desk"] or e.get("glass", false):
 		pet._face_front(secs)
 	if e.has("face"):
@@ -109,15 +111,6 @@ func run(name: String, from_brain := false) -> bool:
 	if e.has("mark"):
 		var mk: Array = e["mark"]
 		get_tree().create_timer(secs * float(mk[2])).timeout.connect(mark.bind(str(mk[0]), str(mk[1])))
-	if e.has("hold"):
-		var item := str(e["hold"])
-		pet.life._hold(item)
-		get_tree().create_timer(secs).timeout.connect(func():
-			if pet.life.holding == item:
-				if item in pet.life.TOYS:
-					pet.life.put_toy_down()           # it stays on her floor where she was
-				else:
-					pet.life._hold(""))
 	return true
 
 
@@ -233,7 +226,7 @@ func _process(_delta: float) -> void:
 	trail = trail.filter(func(s): return t - float(s[0]) < 2.5)
 	_away_and_back(t)
 	_held_still(t)
-	if pet.state in ["held", "fall", "knocked", "fetch", "throw"]:
+	if pet.state in ["held", "fall", "knocked"]:
 		return
 	var free: bool = pet.state in pet.FREE or pet.state in ["rest", "react", "sleep"]
 	if not free or pet.cursor_at < -50.0:
@@ -256,7 +249,7 @@ func _process(_delta: float) -> void:
 		trail.clear()
 		run("dizzy")
 	# Racing about near her: she chases it.
-	elif moved and _speed(0.3) > 2600.0 and pet.cursor.distance_to(_chest()) < pet.PPM * 4.0:
+	elif moved and _speed(0.3) > 3500.0 and pet.cursor.distance_to(_chest()) < pet.PPM * 3.0:
 		run("chase")
 	# Held still near her for a while: she reaches out and touches the glass at it.
 	elif t - pet.cursor_at > 2.5 and t - pet.cursor_at < 3.0 and pet.depth > -0.7 and part == "" \

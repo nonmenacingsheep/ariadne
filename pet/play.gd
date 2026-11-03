@@ -18,6 +18,7 @@ var current := ""                          # what she's doing now, for her avata
 var trail: Array = []                      # [t, Vector2] for the last 2.5 s
 var last_cursor := Vector2.ZERO
 var seen_at := -99.0                       # when it last moved (pet.cursor_at, as of last frame)
+var seen_any := false
 var knocked_for_him := false               # knocked on the glass this time he's away
 var night_done := -1                       # the day she last said goodnight
 var holding_still := false                 # he's holding the button on her without dragging
@@ -105,12 +106,18 @@ func run(name: String, from_brain := false) -> bool:
 		show_emote(str(e["emote"]))
 	for k in e.get("gain", {}):
 		pet.life.bump(k, float(e["gain"][k]))
+	if e.has("mark"):
+		var mk: Array = e["mark"]
+		get_tree().create_timer(secs * float(mk[2])).timeout.connect(mark.bind(str(mk[0]), str(mk[1])))
 	if e.has("hold"):
 		var item := str(e["hold"])
 		pet.life._hold(item)
 		get_tree().create_timer(secs).timeout.connect(func():
 			if pet.life.holding == item:
-				pet.life._hold(""))
+				if item in pet.life.TOYS:
+					pet.life.put_toy_down()           # it stays on her floor where she was
+				else:
+					pet.life._hold(""))
 	return true
 
 
@@ -325,12 +332,13 @@ func _circled() -> bool:
 # He's been away (no pointer for ten minutes): she knocks on the glass once.
 # Back: hello (good morning, after a night). Late at night: goodnight, then bed.
 func _away_and_back(t: float) -> void:
-	if pet.cursor_at < -50.0:
+	if pet.cursor_at == -99.0:                 # no pointer from the desk yet (its first value)
 		return
 	if pet.cursor_at != seen_at:
 		var gap: float = pet.cursor_at - seen_at
 		seen_at = pet.cursor_at
-		if gap > 600.0 and seen_at > 0.0 and pet.state != "held":
+		seen_any = true
+		if gap > 600.0 and seen_any and pet.state != "held":
 			knocked_for_him = false
 			var h: int = Time.get_time_dict_from_system()["hour"]
 			run("morning" if gap > 4 * 3600.0 and h >= 5 and h < 12 else "hello")
@@ -370,6 +378,77 @@ func landed(hard: bool) -> void:
 		get_tree().create_timer(3.4 if hard else 0.8).timeout.connect(run.bind(n))
 
 
+# --- marks on the glass -------------------------------------------------------------
+# Her breath fogs the glass in front of her (a heart drawn in it, for "fog"),
+# a fingertip or a palm leaves a print; each fades over a few seconds.
+var marks: Array = []                      # [node, made at]
+
+
+func mark(kind: String, bone: String) -> void:
+	if pet.brain.logging:
+		print("MARK %s %s depth=%.2f state=%s" % [kind, bone, pet.depth, pet.state])
+	if pet.depth < -0.6 or pet.state != "react":
+		return                                 # not at the glass (or he picked her up): nothing to leave
+	var at := _bone(bone)
+	var q := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	var size: float = {"heart": 0.34, "fog": 0.26, "hand": 0.13, "dot": 0.06}.get(kind, 0.1)
+	quad.size = Vector2(size, size)
+	q.mesh = quad
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# premultiplied: over her transparent window a plain alpha blend leaves the
+	# window's alpha at zero, and the fog vanishes off her onto his desktop
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_PREMULT_ALPHA
+	m.albedo_texture = _fog_tex(kind)
+	m.no_depth_test = true                     # on the glass: in front of her, whatever her clip does
+	m.render_priority = 5
+	q.material_override = m
+	q.position = Vector3(at.x, at.y + (0.04 if kind == "heart" else 0.0), -0.01)
+	pet.add_child(q)
+	marks.append([q, pet.t])
+
+
+func marks_frame() -> void:
+	for mk in marks.duplicate():
+		var age: float = pet.t - float(mk[1])
+		var q: MeshInstance3D = mk[0]
+		(q.material_override as StandardMaterial3D).albedo_color.a = 1.0 - smoothstep(4.0, 12.0, age)
+		if age > 12.0:
+			q.queue_free()
+			marks.erase(mk)
+
+
+var fog_cache := {}
+func _fog_tex(kind: String) -> ImageTexture:
+	if fog_cache.has(kind):
+		return fog_cache[kind]
+	var n := 96
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for j in n:
+		for i in n:
+			var x := i / float(n - 1) * 2.0 - 1.0
+			var y := 1.0 - j / float(n - 1) * 2.0
+			var r := Vector2(x, y).length()
+			var a := clampf(1.0 - r, 0.0, 1.0)
+			a = a * a * (0.55 if kind in ["fog", "heart"] else 0.7)
+			if kind == "heart":
+				# the heart wiped through the fog with a fingertip
+				var hx := x * 1.7
+				var hy := y * 1.7 + 0.25
+				var f := pow(hx * hx + hy * hy - 1.0, 3.0) - hx * hx * pow(hy, 3.0)
+				if absf(f) < 0.12:
+					a *= 0.1
+			elif kind == "hand":                   # a palm and four fingers
+				var palm := Vector2(x, y + 0.25).length() < 0.45
+				var finger := y > 0.1 and y < 0.85 and absf(x) < 0.5 and fmod((x + 0.5) * 4.0, 1.0) < 0.6
+				a = 0.5 if palm or finger else 0.0
+			img.set_pixel(i, j, Color(0.92 * a, 0.95 * a, a, a))       # premultiplied
+	fog_cache[kind] = ImageTexture.create_from_image(img)
+	return fog_cache[kind]
+
+
 # --- emotes ----------------------------------------------------------------------
 # A little picture over her head for a second or two: a heart, a note, a
 # sparkle... drawn here (no emoji font where she runs).
@@ -383,6 +462,7 @@ func show_emote(kind: String) -> void:
 
 
 func emote_frame() -> void:
+	marks_frame()
 	if emote == null or not emote.visible:
 		return
 	var age: float = pet.t - emote_at

@@ -187,6 +187,7 @@ var play                                   # play.gd: her interactions (play.jso
 var pressing := false                      # his button down on her
 var press_at := 0.0
 var shakes := 0                            # back-and-forths while he dangles her
+var brain_quiet := false
 var pstate := ""                           # the one she's in (Bed_SitEdge ...), "" on her feet
 var furniture := false                     # Avatar setting (off: her room is an empty stage)
 var lift := 0.0                            # raised onto furniture (a cushion, the bed), metres
@@ -1487,6 +1488,10 @@ func _set_state(s: String, seconds: float) -> void:
 
 # What she does next when she's free: the brain's next step (brain.gd).
 func _choose() -> void:
+	if brain_quiet:                            # a test run driving her itself
+		_set_state("idle", 1.0)
+		_play("Idle", 0.4)
+		return
 	brain.next()
 
 
@@ -2312,6 +2317,40 @@ func _snapshot_seq(what: String) -> void:
 		depth = -0.3
 		_set_state("idle", 1.0)
 		get_tree().create_timer(0.5).timeout.connect(func(): play.run(what.substr(5)))
+	if what == "playall":                       # every interaction in turn: a frame from each, heights logged
+		Engine.time_scale = float(OS.get_environment("PET_TIME_SCALE")) if OS.get_environment("PET_TIME_SCALE") != "" else 3.0
+		brain_quiet = true
+		var only := OS.get_environment("PET_PLAY_ONLY")
+		for n in play.names():
+			if only != "" and not String(n).begins_with(only):
+				continue
+			pos.x = screen.x / PPM / 2.0
+			depth = -0.3
+			yaw = 0.0
+			_set_state("idle", 99.0)
+			play.cool_until.clear()
+			brain.plan.clear()
+			if not play.run(n, true):
+				print("PLAYALL %s did-not-run" % n)
+				continue
+			var secs := ap.get_animation(variant).length
+			var lo := 9.0
+			var hi := -9.0
+			var hd_lo := 9.0
+			for k in 6:
+				await get_tree().create_timer(secs / 7.0).timeout
+				var hd := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Head")).origin
+				var hp := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin
+				lo = minf(lo, hp.y)
+				hi = maxf(hi, hp.y)
+				hd_lo = minf(hd_lo, hd.y - hp.y)
+				if k == 2:
+					await RenderingServer.frame_post_draw
+					get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_all_%s.png" % n))
+			print("PLAYALL %s %s hips %.2f-%.2f head-over-hips min %.2f" % [n, variant, lo, hi, hd_lo])
+			await get_tree().create_timer(secs / 7.0 + 0.3).timeout
+		get_tree().quit()
+		return
 	if what.begins_with("gesture:"):             # his pointer doing something at her (play.gd reads it)
 		depth = -0.3
 		_set_state("idle", 99.0)
@@ -2403,7 +2442,7 @@ func _gesture(g: String) -> void:
 			"tickle": cursor = belly + Vector2(sin(a * 4.0) * r * 0.25, 0.0)
 			"circle": cursor = belly + Vector2(cos(a * 0.5), sin(a * 0.5)) * r * 2.2
 			"still": cursor = belly + Vector2(r * 0.9, -r * 0.2) if i == 0 else cursor
-			"away": cursor_at = t - 700.0 if i < 5 else cursor_at
+			"away": cursor_at = t - 700.0 if i == 2 else cursor_at
 		if g != "still" and g != "away":
 			cursor_at = t
 		elif i == 0:

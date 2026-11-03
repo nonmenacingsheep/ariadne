@@ -390,7 +390,19 @@ func _plan(a: String, on_widget: bool) -> Array:
 				var n: String = pet.play.pick()
 				if n == "":
 					break
-				if pet.play.entry(n).get("glass", false):
+				var toy := str(pet.play.entry(n).get("hold", ""))
+				if pet.life.toys.has(toy) and pet.life.holding != toy:
+					# Over to where it lies, and down to pick it up.
+					out.append({"go": pet.life.toys[toy] + Vector2(-0.35, 0.15)})
+					out.append({"play": "PickUp_Table", "state": "react", "for": 1.3})
+					out.append({"hold": toy})
+				var wid = pet.play.entry(n).get("widget", false)
+				var behind: Array = pet.widget_x.keys() if wid is bool else ([wid] if pet.widget_x.has(wid) else [])
+				if wid and not behind.is_empty():
+					# Behind a widget on the glass: hiding, peeking round it, reading it.
+					out.append({"go": Vector2(clampf(float(pet.widget_x[behind.pick_random()]) + randf_range(-0.3, 0.3), _x0(), _x1()),
+							-randf_range(0.15, 0.25))})
+				elif pet.play.entry(n).get("glass", false):
 					out.append({"go": Vector2(clampf(pet.pos.x + randf_range(-1.0, 1.0), _x0(), _x1()), -randf_range(0.12, 0.22))})
 				elif i > 0 and randf() < 0.5:
 					out.append({"go": _spot(randf_range(0.5, 1.5))})

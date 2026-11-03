@@ -70,6 +70,7 @@ var skel: Skeleton3D
 var ap: AnimationPlayer
 var face := {}                            # key -> [[mesh, index], ...]
 var body_path := ""                       # the model she's wearing (res://models/...)
+var fill: WorldEnvironment                # ambient light for GLB bodies (_toonify)
 var clip_lib: AnimationLibrary            # the humanoid clips, shared by every body
 var bones := {}
 var cam: Camera3D
@@ -193,6 +194,52 @@ func _load_body(path: String) -> void:
 	_sample_carry_pose()
 	clip = ""
 	body.visible = shown
+	# A VRM brings its own toon shader (MToon); a GLB body gets one here, and a
+	# flat fill light so its shade side isn't black.
+	var glb := path.ends_with(".glb")
+	if glb:
+		_toonify(body)
+	if fill:
+		fill.environment.ambient_light_energy = TOON_FILL if glb else 0.0
+
+
+# Anime look for GLB bodies: two-tone lighting, a soft rim, no gloss, both
+# sides of thin cloth drawn, and a thin dark outline (an inverted-hull pass).
+const TOON_FILL := 0.35
+const OUTLINE_M := 0.0016                   # outline thickness, metres
+func _toonify(root: Node) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if not mi.mesh:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var src := mi.get_active_material(i) as StandardMaterial3D
+			if src == null:
+				continue
+			var m := src.duplicate() as StandardMaterial3D
+			m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+			m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			m.metallic = 0.0
+			m.roughness = 1.0
+			var skin := \
+					String(src.resource_name).begins_with("Body") or String(src.resource_name).begins_with("Face")
+			m.cull_mode = BaseMaterial3D.CULL_BACK if skin else BaseMaterial3D.CULL_DISABLED
+			m.rim_enabled = not skin
+			m.rim = 0.25
+			m.rim_tint = 0.6
+			var line := StandardMaterial3D.new()
+			line.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			line.albedo_color = Color(0.13, 0.09, 0.12)
+			line.cull_mode = BaseMaterial3D.CULL_FRONT
+			line.grow = true
+			line.grow_amount = OUTLINE_M
+			if m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+				line.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+				line.alpha_scissor_threshold = m.alpha_scissor_threshold
+				line.albedo_texture = m.albedo_texture
+				line.albedo_color = Color(0.13, 0.09, 0.12, 1.0)
+			m.next_pass = line
+			mi.set_surface_override_material(i, m)
 
 
 # --- window and camera ------------------------------------------------------
@@ -224,6 +271,14 @@ func _camera() -> void:
 	light.rotation_degrees = Vector3(-30, 20, 0)
 	light.light_energy = 1.1
 	add_child(light)
+	# Ambient fill, on only for bodies without their own toon shader (_load_body).
+	fill = WorldEnvironment.new()
+	fill.environment = Environment.new()
+	fill.environment.background_mode = Environment.BG_CLEAR_COLOR
+	fill.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	fill.environment.ambient_light_color = Color(1.0, 0.96, 0.98)
+	fill.environment.ambient_light_energy = TOON_FILL if body_path.ends_with(".glb") else 0.0
+	add_child(fill)
 
 
 # --- the surfaces she can stand on ------------------------------------------

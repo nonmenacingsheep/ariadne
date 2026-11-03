@@ -25,6 +25,8 @@ const ACTIVITIES := {
 	"drink": [240.0, true], "water": [900.0, true], "tidy": [300.0, true],
 	# Staying where she is: another way of being at the same place (lying back, then onto her side).
 	"linger": [20.0, false],
+	# Her things anywhere (phase 9): her phone on her feet, a book on the floor.
+	"phone_about": [200.0, true], "read_floor": [240.0, true],
 }
 var watered_at := -1e9
 
@@ -67,12 +69,27 @@ func come_to_cursor() -> void:
 			{"play": "Idle", "front": true, "for": randf_range(3, 6)}]
 
 
+# Asked to be somewhere (her avatar tool): there, maybe with a thing fetched first.
+func be(st: String, thing: String, secs: float) -> void:
+	drop()
+	doing = "asked"
+	if pet.life.THINGS.has(thing):
+		plan += _fetch(thing)
+	plan += [_to(pet.places.spot(st)), {"play": st, "state": "rest", "for": secs}]
+	if pet.life.THINGS.has(thing):
+		plan.append({"done_with": thing})
+
+
 func plan_left() -> bool:
 	return not plan.is_empty()
 
 
 # Called when she's free: the next step of the plan, or a new plan.
 func next() -> void:
+	if pet.pending != "" and pet._is_state_role(pet.clip):
+		# Still on the way into a state (lying back, sitting up): its time starts when she's there.
+		pet._set_state(pet.state, maxf(0.1, pet.variant_until - pet.t) + 0.05)
+		return
 	if plan.is_empty():
 		_pick()
 	if plan.is_empty():
@@ -290,6 +307,8 @@ func _score(a: String, on_widget: bool) -> float:
 				return 0.0
 			return maxf(0.0, 0.75 - float(n.get("fitness", 0.6))) * 1.8 + joy * 0.1
 		"drink": return 0.2 + maxf(0.0, 0.6 - float(n["hunger"])) * 0.5 if _room("kitchen") and _has("drink_") else 0.0
+		"phone_about": return (0.1 + lonely * 0.2 + bored * 0.2) if _room("desk") and _has("stand_phone_") else 0.0
+		"read_floor": return (0.1 + bored * 0.2 + tired * 0.15) if _room("shelf") and _has("floor_front_read_") else 0.0
 		"linger":
 			if pet.pstate == "" or _stay_in().is_empty():
 				return 0.0
@@ -370,6 +389,16 @@ func _plan(a: String, on_widget: bool) -> Array:
 		"read": return _fetch("book") + _settle_with("book", randf_range(30, 60), {"fun": 0.15}) + [{"done_with": "book"}]
 		"phone": return _fetch("phone") + _settle_with("phone", randf_range(20, 40), {"fun": 0.1, "affection": 0.03}) \
 				+ [{"done_with": "phone"}]
+		"phone_about":
+			# Scrolling on her feet, wandering a little between looks.
+			return _fetch("phone") + [{"play": "Idle", "for": randf_range(8, 14), "gain": {"fun": 0.05}},
+					{"go": _spot(randf_range(0.8, 2.0))}, {"play": "Idle", "for": randf_range(8, 14)},
+					{"done_with": "phone"}]
+		"read_floor":
+			# Down on the floor wherever she is with a book: sitting, or on her stomach.
+			return _fetch("book") + [{"go": _spot(randf_range(0.5, 2.0))},
+					{"play": "FloorSit" if randf() < 0.5 else "LieDown", "state": "rest", "for": randf_range(25, 45),
+					"gain": {"fun": 0.12}}, {"done_with": "book"}]
 		"tidy":
 			var th: String = pet.life.left.keys().pick_random()
 			return _fetch(th) + _put_away(th)

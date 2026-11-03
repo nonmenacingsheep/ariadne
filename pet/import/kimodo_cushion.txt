@@ -1,18 +1,22 @@
 # The cushion by the low table (pet/states.json). Base poses: sitting
-# floor_sit_1:0 (eat_, read_, phone_ are pinned to it), kneeling and lying
-# propped on an elbow made by the first two moves (free ends, checked by height).
-cushion_kneel_1|3|A woman sitting on the floor gets up onto her knees and sits back on her heels, upright.|floor_sit_1:0|-
-cushion_lie_1|4|A woman sitting on the floor lies down on her side, propped up on one elbow.|floor_sit_1:0|-
-cushion_kneel_sit_1|3|A woman kneeling sitting back on her heels shifts to sit on the floor.|cushion_kneel_1:-1|floor_sit_1:0
-cushion_lie_sit_1|3|A woman lying on her side propped on one elbow sits back up.|cushion_lie_1:-1|floor_sit_1:0
+# floor_sit_1:0 (eat_, read_, phone_ are pinned to it); kneeling and lying
+# propped on an elbow are the last frames of the first two, made from text
+# alone (a free end from sitting stood her up, or never lay down); lying is
+# turned so her head is to her right, clear of the low table in front.
+cushion_kneel_src_1|4|A woman kneels down on both knees and sits back on her heels, hands resting on her thighs.|-|-
+cushion_side_src_1|5|A woman lies down on the floor on her side, propped up on one elbow with her head resting on her hand.|-|-
+cushion_kneel_1|3|A woman sitting on the floor gets up onto her knees and sits back on her heels, upright.|floor_sit_1:0|cushion_kneel_src_1:-1
+cushion_lie_1|4|A woman sitting on the floor lies down on her side, propped up on one elbow.|floor_sit_1:0|cushion_side_src_1:-1/-90
+cushion_kneel_sit_1|3|A woman kneeling sitting back on her heels shifts to sit on the floor.|cushion_kneel_src_1:-1|floor_sit_1:0
+cushion_lie_sit_1|3|A woman lying on her side propped on one elbow sits back up.|cushion_side_src_1:-1/-90|floor_sit_1:0
 cushion_sway_1|8|A woman sitting on the floor sways gently from side to side, humming.|floor_sit_1:0|floor_sit_1:0
 cushion_look_1|7|A woman sitting on the floor looks around the room and rests her chin on her knee.|floor_sit_1:0|floor_sit_1:0
 cushion_stretch_1|6|A woman sitting on the floor stretches her arms up and leans to each side.|floor_sit_1:0|floor_sit_1:0
 cushion_sip_1|6|A woman sitting on the floor holds a mug in both hands and sips from it.|floor_sit_1:0|floor_sit_1:0
 cushion_wave_1|4|A woman sitting on the floor looks up and waves.|floor_sit_1:0|floor_sit_1:0
-cushion_kneel_look_1|7|A woman kneeling sitting on her heels looks around, hands on her thighs.|cushion_kneel_1:-1|cushion_kneel_1:-1
-cushion_kneel_eat_1|8|A woman kneeling at a low table eats from a bowl in front of her with chopsticks.|cushion_kneel_1:-1|cushion_kneel_1:-1
-cushion_kneel_sip_1|6|A woman kneeling sitting on her heels sips tea from a cup held in both hands.|cushion_kneel_1:-1|cushion_kneel_1:-1
-cushion_lie_idle_1|8|A woman lying on her side propped on one elbow looks around lazily.|cushion_lie_1:-1|cushion_lie_1:-1
-cushion_lie_read_1|9|A woman lying on her side propped on one elbow reads a book on the floor in front of her.|cushion_lie_1:-1|cushion_lie_1:-1
-cushion_lie_phone_1|8|A woman lying on her side propped on one elbow scrolls on a phone in her free hand.|cushion_lie_1:-1|cushion_lie_1:-1
+cushion_kneel_look_1|7|A woman kneeling sitting on her heels looks around, hands on her thighs.|cushion_kneel_src_1:-1|cushion_kneel_src_1:-1
+cushion_kneel_eat_1|8|A woman kneeling at a low table eats from a bowl in front of her with chopsticks.|cushion_kneel_src_1:-1|cushion_kneel_src_1:-1
+cushion_kneel_sip_1|6|A woman kneeling sitting on her heels sips tea from a cup held in both hands.|cushion_kneel_src_1:-1|cushion_kneel_src_1:-1
+cushion_lie_idle_1|8|A woman lying on her side propped on one elbow looks around lazily.|cushion_side_src_1:-1/-90|cushion_side_src_1:-1/-90
+cushion_lie_read_1|9|A woman lying on her side propped on one elbow reads a book on the floor in front of her.|cushion_side_src_1:-1/-90|cushion_side_src_1:-1/-90
+cushion_lie_phone_1|8|A woman lying on her side propped on one elbow scrolls on a phone in her free hand.|cushion_side_src_1:-1/-90|cushion_side_src_1:-1/-90

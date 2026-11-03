@@ -62,7 +62,8 @@ def pinned_ok(path, want):
     if moved < 6:
         bad.append(f"static ({moved:.1f} deg)")
     lying = hips[0] < 0.35 and hips[-1] < 0.35
-    if pj[:, :, 1].min() < (-0.2 if lying else -0.12):          # a roll on the bed sinks an arm in a bit
+    floor = float(os.environ.get("KIMODO_FLOOR", "-0.12"))     # a run may allow more (kneeling down)
+    if pj[:, :, 1].min() < (min(floor, -0.2) if lying else floor):  # a roll on the bed sinks an arm in a bit
         bad.append(f"through the floor ({pj[:, :, 1].min():.2f})")
     if (head < hips - 0.3).any():
         bad.append("upside down")

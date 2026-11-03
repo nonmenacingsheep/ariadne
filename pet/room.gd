@@ -8,7 +8,6 @@ extends Node3D
 
 const PROPS := "res://models/props.glb"
 const BED_TOP := 0.47                      # props_build.py BED: chair height, so she sits on its edge
-const LIE_UP := 0.12                       # lying clips have her hips at the floor: up onto the mattress by her back's depth
 const CUSHION_TOP := 0.05
 const MARGIN := 0.22                       # how close she walks past furniture
 
@@ -44,6 +43,10 @@ func has(piece: String) -> bool:
 	return visible and items.has(piece)
 
 
+func has_spot(name: String) -> bool:
+	return spots.has(name)
+
+
 func spot(name: String) -> Dictionary:
 	return spots.get(name, {}) if visible else {}
 
@@ -66,7 +69,7 @@ func arrange() -> void:
 	var by := Vector2(f.x - 0.1, f.y + 0.95)
 	var on_bed := Vector3(f.x + 0.55, BED_TOP + 0.02, f.y + 0.15)              # where she leaves things
 	spots["bed_edge"] = {"approach": by, "at": Vector3(f.x - 0.1, 0.0, f.y + 0.36), "yaw": 0.0, "drop": on_bed}
-	spots["bed_lie"] = {"approach": by, "at": Vector3(f.x - 0.35, BED_TOP + LIE_UP, f.y + 0.12), "yaw": 0.0, "drop": on_bed}
+	spots["bed_lie"] = {"approach": by, "at": Vector3(f.x - 0.35, BED_TOP, f.y + 0.12), "yaw": 0.0, "drop": on_bed}
 	spots["bed_situp"] = {"approach": by, "at": Vector3(f.x - 0.42, BED_TOP, f.y), "yaw": 0.0, "drop": on_bed}
 	# Workout mat across the room, left of centre, halfway back.
 	var m := _place("mat", Vector2(3.3, -rd * 0.4), PI / 2, Vector2.ZERO)

@@ -106,12 +106,22 @@ About 25 states, 4-6 idles each plus item idles and exits: roughly 150 clips.
 | 2 | Clip pipeline: middle keyframes in kimodo_keyed.py, prone base pose, per-clip checker (ends vs base pose, heights, head direction), auto re-roll, contact sheets | done: kimodo_keyed.py (turned poses, free ends, middle keys, kimodo_check.pinned_ok + 3 re-rolls), import/film_states.sh; prone = lie_idle_1 turned |
 | 3 | Bed: raised bed prop, its 6 states, idles, exits, book/phone/mug idles (the Sitting_On_Bed example end to end first) | done: 41 clips (kimodo_bed.txt), all 6 states filmed with a book |
 | 4 | Items: homes, pick up / carry / put down / leave behind (saved), carry walks | done: life.gd THINGS/where/take/leave (saved), brain _fetch/_put_away/done_with/tidy, carry walk for bowl+mug |
-| 5 | Desk: 4 states, idles, mug/controller/book | todo |
-| 6 | Cushion and low table: 4 states, bowl/book/phone | todo |
-| 7 | Kitchen: 2 states, cooking and tea | todo |
-| 8 | Mat: 4 states, a real routine (warm-up, floor work, cool-down) | todo |
-| 9 | Floor anywhere: items in today's stances | todo |
-| 10 | Brain: goals, chaining states within a place, state-fitting interruptions | in progress: linger, wake in bed, talk states, mat routine written |
+| 5 | Desk: 4 states, idles, mug/controller/book | done: Sit, LeanBack, Slouch, Doze; chair spin; 20 clips |
+| 6 | Cushion and low table: 4 states, bowl/book/phone | done: Sit, Kneel, Lie (on her side); 17 clips |
+| 7 | Kitchen: 2 states, cooking and tea | done: Stand (cook, stir, chop, tea), Lean (back to the counter); 11 clips |
+| 8 | Mat: 4 states, a real routine (warm-up, floor work, cool-down) | done: Stand, Sit, Meditate, Lie, Plank; routine in brain.gd |
+| 9 | Floor anywhere: items in today's stances | done: pet.gd ROLE_ITEMS; phone_about, read_floor |
+| 10 | Brain: goals, chaining states within a place, state-fitting interruptions | done: linger, wake in bed, talk states, waits for moves; avatar verb "be" |
+
+## Learned on the way
+
+- A free end from a sitting or lying pose often doesn't do the move (the
+  sit-up stayed lying, "kneel" stood up, the plank never pushed up). New base
+  poses come from text alone, from standing, and the clips pin to that last
+  frame. Turned poses (clip:frame/degrees) lay her along the bed and the mat.
+- Kimodo's lying and kneeling poses sink her back or shins to the floor:
+  pet.gd _ground() lifts her body until no joint is under its flesh depth,
+  on whatever she's on (floor, mattress, cushion).
 
 ## Ronald's answers (2026-11-03)
 

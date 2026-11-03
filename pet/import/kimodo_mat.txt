@@ -1,9 +1,10 @@
 # Her workout mat (pet/states.json): a routine across four states. Base poses:
 # standing idle_calm_1:0, sitting floor_sit_1:0, lying on her back along the
-# mat lie_idle_2:0/90, plank made by the first move (from on her stomach).
-mat_plank_1|3|A woman lying on her stomach pushes up into a straight plank on her forearms.|lie_idle_1:0/-90|-
-mat_plank_down_1|3|A woman holding a plank lowers herself down onto her stomach and rolls onto her back.|mat_plank_1:-1|lie_idle_2:0/90
-mat_lie_plank_1|4|A woman lying on her back rolls over onto her stomach and pushes up into a plank on her forearms.|lie_idle_2:0/90|mat_plank_1:-1
+# mat lie_idle_2:0/90, plank the last frame of the first (text alone; a free
+# end from lying on her stomach never pushed up), turned to lie along the mat.
+mat_plank_src_1|5|A woman gets down on the floor into a forearm plank, body straight, and holds it.|-|-
+mat_plank_down_1|3|A woman holding a plank lowers herself down onto her stomach and rolls onto her back.|mat_plank_src_1:-1/-90|lie_idle_2:0/90
+mat_lie_plank_1|4|A woman lying on her back rolls over onto her stomach and pushes up into a plank on her forearms.|lie_idle_2:0/90|mat_plank_src_1:-1/-90
 mat_sit_lie_1|3|A woman sitting on the floor lies back down onto her back, turning to lie along the mat.|floor_sit_1:0|lie_idle_2:0/90
 mat_lie_sit_1|3|A woman lying on her back sits up and turns to sit facing forward.|lie_idle_2:0/90|floor_sit_1:0
 mat_warmup_1|7|A woman does arm circles and rolls her shoulders, warming up.|idle_calm_1:0|idle_calm_1:0
@@ -12,4 +13,4 @@ mat_toes_1|7|A woman sitting on the floor with legs out leans forward to touch h
 mat_crunch_1|8|A woman lying on her back with knees bent does crunches, lifting her shoulders up.|lie_idle_2:0/90|lie_idle_2:0/90
 mat_legraise_1|8|A woman lying on her back raises both straight legs up and lowers them slowly, again and again.|lie_idle_2:0/90|lie_idle_2:0/90
 mat_bridge_1|7|A woman lying on her back lifts her hips up into a bridge and lowers them, again and again.|lie_idle_2:0/90|lie_idle_2:0/90
-mat_plank_hold_1|8|A woman holds a forearm plank, body straight and steady, breathing hard.|mat_plank_1:-1|mat_plank_1:-1
+mat_plank_hold_1|8|A woman holds a forearm plank, body straight and steady, breathing hard.|mat_plank_src_1:-1/-90|mat_plank_src_1:-1/-90

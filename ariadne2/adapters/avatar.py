@@ -21,6 +21,7 @@ FRESH_S = 5.0
 LOOKS = ("smile", "stars", "hearts", "blush", "angry", "tears", "eyeroll", "gloom", "wide", "sleepy",
          "dizzy", "soft", "smirk", "thoughtful", "blood")
 SIDES = ("left", "center", "right", "floor")
+THINGS = ("book", "phone", "mug", "controller", "bowl")          # pet/life.gd THINGS
 
 
 def status_path() -> Path:
@@ -58,6 +59,12 @@ class AvatarAdapter(Adapter):
                  "which widget it's standing on, what it's up to, its face.", {}, self._status),
             Verb("go", "Move your body: walk along where it stands, or go to a widget (the Live2D body "
                  "jumps onto its top; the 3D body lives in a room behind the screen and walks up behind it).", {"properties": {"to": target}, "required": ["to"]}, self._go),
+            Verb("be", "3D body: settle at your furniture one way (Bed_SitEdge, Bed_LieFront, Desk_LeanBack...; "
+                 "status lists them), maybe with one of your things in hand.",
+                 {"properties": {"state": {"type": "string", "description": "one of the ways status lists"},
+                                 "holding": {"type": "string", "enum": list(THINGS)},
+                                 "seconds": {"type": "number", "description": "default 60"}},
+                  "required": ["state"]}, self._be),
             Verb("dance", "Dance (with or without music) for a while.",
                  {"properties": {"seconds": {"type": "number", "description": "default 20"}}}, self._dance),
             Verb("stop", "Stop what your body is doing (a dance, a walk) and stand.", {}, self._stop),
@@ -97,6 +104,10 @@ class AvatarAdapter(Adapter):
             str(d.get("mode")), str(d.get("mode") or "standing"))
         if d.get("doing") and d["doing"] not in ("idle", "wander"):
             doing += f" ({str(d['doing']).replace('_', ' ')})"
+        if d.get("state"):
+            doing += f", {_words(d['state'])}"
+        if d.get("holding"):
+            doing += f", holding her {d['holding']}"
         if d.get("dancing") and "danc" not in doing:
             doing += ", dancing"
         if d.get("asleep") and "asleep" not in doing:
@@ -109,7 +120,8 @@ class AvatarAdapter(Adapter):
             rest = [x for x in d["looks"] if x not in own]
             faces = (f" Faces it can pull (feel): its own {', '.join(own)}" if own else " Faces it can pull (feel):") \
                 + (f"; generic {', '.join(rest)}" if rest else "") + "."
-        return f"Your body, {body}: {doing}, {where}, {side} of the screen (x {round(x)} of {round(w)} px){face}.{faces}"
+        ways = f" Ways to be at your furniture (be): {', '.join(d['states'])}." if d.get("states") else ""
+        return f"Your body, {body}: {doing}, {where}, {side} of the screen (x {round(x)} of {round(w)} px){face}.{faces}{ways}"
 
     async def _status(self) -> str:
         d = await asyncio.to_thread(self.read)
@@ -157,6 +169,18 @@ class AvatarAdapter(Adapter):
         return await self._after(f"Walking up behind the {match} widget." if d and d.get("kind") == "3d"
                                  else f"Jumping onto the {match} widget.")
 
+    async def _be(self, state: str, holding=None, seconds=None) -> str:
+        d = await asyncio.to_thread(self.read)
+        ways = (d or {}).get("states") or []
+        st = next((w for w in ways if w.lower() == str(state).strip().lower()), None)
+        if st is None:
+            raise AdapterError(f"no way to be called {state!r}; there's {', '.join(ways) or 'none (a 3D body with furniture has them)'}")
+        if holding is not None and holding not in THINGS:
+            raise AdapterError(f"holding is one of: {', '.join(THINGS)}")
+        s = max(5.0, min(1800.0, float(seconds or 60)))
+        await self._cmd("be", state=st, holding=holding or "", seconds=s)
+        return f"Off to be {_words(st)}" + (f" with your {holding}" if holding else "") + f" for {round(s)} seconds."
+
     async def _dance(self, seconds=None) -> str:
         s = max(3.0, min(300.0, float(seconds or 20)))
         await self._cmd("dance", seconds=s)
@@ -191,3 +215,10 @@ class AvatarAdapter(Adapter):
             raise AdapterError("I can't reach the Avatar settings")
         self.settings.set("avatar", "pinned", on)
         return "Pinned where she stands." if on else "Unpinned; she'll move about again."
+
+
+def _words(state: str) -> str:
+    """Bed_SitEdge -> 'bed: sit edge' (a place state, for her to read)."""
+    place, _, way = str(state).partition("_")
+    spaced = "".join(" " + c.lower() if c.isupper() else c for c in way).strip()
+    return f"{place.lower()}: {spaced}" if spaced else place.lower()

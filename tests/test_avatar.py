@@ -96,5 +96,18 @@ class AvatarTests(unittest.IsolatedAsyncioTestCase):
         self.a.settings.set.assert_called_with("avatar", "pinned", True)
 
 
+    async def test_be_somewhere_at_her_furniture(self):
+        self.body(kind="3d", on="floor", state="Bed_LieBack", holding="book",
+                  states=["Bed_SitEdge", "Bed_LieBack", "Desk_Sit"])
+        out = await self.a.run("status", {})
+        self.assertIn("bed: lie back, holding her book", out)
+        self.assertIn("(be): Bed_SitEdge, Bed_LieBack, Desk_Sit", out)
+        out = await self.a.run("be", {"state": "bed_sitedge", "holding": "phone"})
+        self.assertIn("bed: sit edge with your phone", out)
+        self.assertEqual(self.cmds()[-1], {"t": "body", "cmd": "be", "state": "Bed_SitEdge", "holding": "phone",
+                                           "seconds": 60.0})
+        with self.assertRaisesRegex(AdapterError, "Desk_Sit"):
+            await self.a.run("be", {"state": "on the roof"})
+
 if __name__ == "__main__":
     unittest.main()

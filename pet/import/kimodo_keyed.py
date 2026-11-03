@@ -8,7 +8,8 @@ Run with Kimodo's Python and its text encoder server up:
 Lines: name|seconds|prompt|start pose|end pose[|middle poses]
   a pose: clip:frame from clips/aries (frame -1 = the last), optionally
   turned about the vertical, clip:frame/degrees (lying along the bed);
-  "-" leaves that end free (a clip that makes a new base pose);
+  "-" leaves that end free (a clip that makes a new base pose; both free
+  is text alone, from standing: "kneels down" ends in a kneeling pose);
   middle poses: pose@fraction, comma separated ("lie_idle_2:0/90@0.5"),
   so a big move (sitting up) can't be skipped by lying there.
 Each clip is checked (kimodo_check.py's pinned_ok): its ends match the pinned
@@ -96,8 +97,9 @@ def make(name, secs, prompt, a, b, mids):
         want = {"start": None if a == "-" else pose(a), "end": None if b == "-" else pose(b)}
         for seed in range(1, TRIES + 1):
             stem = f"{OUT}/{name}_try"
+            pin = ["--constraints", cpath] if a != "-" or b != "-" or mids else []     # both free: text alone
             subprocess.run([f"{K}/.venv/bin/kimodo_gen", prompt, "--duration", secs, "--seed", str(seed),
-                            "--constraints", cpath, "--output", stem, "--bvh", "--bvh_standard_tpose"],
+                            *pin, "--output", stem, "--bvh", "--bvh_standard_tpose"],
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             ok, why = pinned_ok(f"{stem}.npz", want)
             print(f"{'ok ' if ok else 'BAD'} {name} seed {seed}: {why}", flush=True)

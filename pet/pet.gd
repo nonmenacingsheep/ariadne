@@ -706,6 +706,12 @@ func _command(msg: Dictionary) -> void:
 		"wake":
 			if state == "sleep":
 				_wake()
+		"be":                                  # her avatar tool: a way to be at her furniture
+			var st := str(msg.get("state", ""))
+			if places.reachable(st):
+				_set_state("idle", 0.0)
+				brain.be(st, str(msg.get("holding", "")), float(msg.get("seconds", 60)))
+				_choose()
 
 
 # A jump that peaks a little above both ends and lands on (tx, ty): onto a
@@ -736,11 +742,22 @@ func _tell(delta: float) -> void:
 			mood = k
 	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
 		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
-		"dancing": state == "dance", "doing": brain.doing, "at": perched, "state": pstate, "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
+		"dancing": state == "dance", "doing": brain.doing, "at": perched, "state": pstate, "states": _ways(),
+		"holding": life.holding if life and life.holding in life.THINGS else "", "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
 		"own": ["smile", "angry", "tears", "wide", "smirk"], "looks": LOOK_FACE.keys()}
 	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(data))
+
+
+# The place states she has clips for (for her avatar tool), worked out once.
+var ways_cache: Array = []
+func _ways() -> Array:
+	if ways_cache.is_empty() and places and furniture:
+		for s in places.table:
+			if places.can(s) and room.has_spot(places.spot(s)):
+				ways_cache.append(s)
+	return ways_cache if furniture else []
 
 
 func _stir() -> void:
@@ -1327,7 +1344,38 @@ func _gait_speed() -> float:
 	return WALK_SPEED * _stride() * ease
 
 
+# Nothing of her sinks into what she's on: Kimodo's lying and kneeling poses
+# put her back or her shins about level with the floor, so her body is lifted
+# until every bone's joint is at least its flesh's depth above the surface
+# (the floor, the mattress, the cushion: whatever her lift stands her on).
+const FLESH := {"Hips": 0.1, "Spine": 0.1, "Chest": 0.1, "UpperChest": 0.1, "Neck": 0.07, "Head": 0.1,
+		"LeftUpperLeg": 0.07, "RightUpperLeg": 0.07, "LeftLowerLeg": 0.05, "RightLowerLeg": 0.05,
+		"LeftFoot": 0.04, "RightFoot": 0.04, "LeftUpperArm": 0.045, "RightUpperArm": 0.045,
+		"LeftLowerArm": 0.04, "RightLowerArm": 0.04, "LeftHand": 0.025, "RightHand": 0.025}
+var flesh: Array = []                      # [bone index, depth] for this body
+var ground_lift := 0.0
+
+
+func _ground() -> float:
+	if state in ["held", "fall"] or floor_y > 0.01 or flesh.is_empty():
+		ground_lift = 0.0                      # dangling, flying, on a widget's edge: no floor under her
+		return 0.0
+	var origin := body.global_position.y
+	var need := 0.0
+	for f in flesh:
+		var y: float = (skel.global_transform * skel.get_bone_global_pose(f[0]).origin).y - origin
+		need = maxf(need, float(f[1]) - y)
+	# up at once (no sinking), down gently (no drop when she sits up)
+	ground_lift = need if need > ground_lift else lerpf(ground_lift, need, 0.15)
+	return ground_lift
+
+
 func _measure_legs() -> void:
+	flesh.clear()
+	for b in FLESH:
+		var i := skel.find_bone(b)
+		if i >= 0:
+			flesh.append([i, FLESH[b] * (skel.motion_scale / 0.795 if skel.motion_scale > 0.1 else 1.0)])
 	leg_length = 0.0
 	var ids := ["LeftUpperLeg", "LeftLowerLeg", "LeftFoot"].map(func(b): return skel.find_bone(b))
 	if ids.has(-1):
@@ -1808,7 +1856,7 @@ func _place_body() -> void:
 			sit = 1.0 - smoothstep(0.15, 0.75, _progress())
 	# SIT_DROP was measured on Aries (hips 0.795 m); a taller body sits lower.
 	var drop := SIT_DROP * (skel.motion_scale / 0.795 if skel and skel.motion_scale > 0.1 else 1.0)
-	body.position = Vector3(pos.x, pos.y + lift - drop * sit, depth)
+	body.position = Vector3(pos.x, pos.y + lift - drop * sit + _ground(), depth)
 	if shadow:
 		# On the room's floor only (a ledge is a thin edge); fainter the higher she's up.
 		shadow.visible = shown and floor_y < 0.01 and pos.y < 2.0
@@ -2198,6 +2246,8 @@ func _snapshot_seq(what: String) -> void:
 		var hold := float(OS.get_environment("PET_SEQ_HOLD")) if OS.get_environment("PET_SEQ_HOLD") != "" else 6.0
 		for i in chain.size():
 			get_tree().create_timer(0.3 + hold * i).timeout.connect(_play.bind(chain[i], 0.4))
+		if OS.get_environment("PET_SEQ_TALK") != "":      # he talks to her that many seconds in
+			get_tree().create_timer(float(OS.get_environment("PET_SEQ_TALK"))).timeout.connect(_attend)
 	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
 		depth = -0.4
 		var act := what.substr(3)

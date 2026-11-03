@@ -217,6 +217,9 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     # ---- avatar (the pet) ----
     s.append(_entry("avatar", "model", "Model", "choice", "aries",
                     "Which body she wears on the desktop.", options=_choices(bodies())))
+    s.append(_entry("avatar", "room_depth", "Room depth", "number", 8,
+                    "How far back her room goes behind the screen (3D bodies); she walks around in it.",
+                    min=5, max=10, step=0.5, unit=" ft"))
     s.append(_entry("avatar", "jacket", "Jacket", "bool", True,
                     "Her jacket on (3D bodies that have one, like Jane)."))
     s.append(_entry("avatar", "weapon", "Weapon", "bool", False,

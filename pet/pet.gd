@@ -118,6 +118,16 @@ var screen := Vector2(3440, 1366)
 
 # Where she is (metres, origin bottom-left of the window) and what she's doing.
 var pos := Vector2(3.0, 0.0)
+# The room (docs/PET_AI_PLAN.md): the desk floor runs back from the screen
+# into the room, room_depth metres (Avatar: room depth, in feet). depth is how
+# far back she is, 0 at the front plane where the widgets' ledges are, down
+# to -room_depth. target_z is where she's headed in it.
+var depth := 0.0
+var target_z := 0.0
+var jump_dz := 0.0                         # forward speed of a jump onto a ledge
+var room_depth := 2.44
+const CAM_DIST := 5.0                      # metres from the front plane: how strongly the room recedes
+var shadow: MeshInstance3D
 var vel := Vector2.ZERO
 var floor_y := 0.0
 var floor_span := Vector2(0, 11.4)        # x range of the surface she's on
@@ -452,12 +462,48 @@ func _cover_ultrawide() -> void:
 		get_window().size = best.size
 
 
+# Perspective, looking straight into the room from CAM_DIST in front of the
+# screen: the front plane (depth 0) shows at exactly PPM pixels a metre, as the
+# flat camera had it, so ledges, clicks and the cursor line up; further back
+# she's smaller.
+func _frame_camera() -> void:
+	if not cam:
+		return
+	var h := screen.y / PPM
+	cam.projection = Camera3D.PROJECTION_PERSPECTIVE
+	cam.keep_aspect = Camera3D.KEEP_HEIGHT
+	cam.fov = rad_to_deg(2.0 * atan(h / 2.0 / CAM_DIST))
+	cam.position = Vector3(screen.x / PPM / 2.0, h / 2.0, CAM_DIST)
+
+
+# A soft round shadow on the floor under her, so the depth reads.
+func _make_shadow() -> void:
+	shadow = MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.7, 0.45)
+	quad.orientation = PlaneMesh.FACE_Y
+	shadow.mesh = quad
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	for y in 64:
+		for x in 64:
+			var r := Vector2(x - 31.5, y - 31.5).length() / 31.5
+			img.set_pixel(x, y, Color(0, 0, 0, 0.45 * clampf(1.0 - r * r, 0.0, 1.0)))
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = ImageTexture.create_from_image(img)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	shadow.material_override = mat
+	add_child(shadow)
+
+
 func _camera() -> void:
 	cam = Camera3D.new()
-	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	cam.size = screen.y / PPM                 # orthographic: one metre is PPM pixels
-	cam.position = Vector3(screen.x / PPM / 2.0, screen.y / PPM / 2.0, 10.0)
+	cam.near = 0.05
+	cam.far = 60.0
 	add_child(cam)
+	_frame_camera()
+	_make_shadow()
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-30, 20, 0)
 	light.light_energy = 1.1
@@ -507,7 +553,8 @@ func _land() -> void:
 	# The highest surface at or below her feet that she's over.
 	var best := [0.0, 0.0, screen.x / PPM, "floor"]
 	for fl in floors:
-		if pos.x >= fl[1] and pos.x <= fl[2] and fl[0] <= pos.y + 0.05 and fl[0] >= best[0]:
+		if pos.x >= fl[1] and pos.x <= fl[2] and fl[0] <= pos.y + 0.05 and fl[0] >= best[0] \
+				and (fl[0] < 0.01 or depth > -0.25):     # widget ledges are at the front of the room
 			best = fl
 	on_name = str(best[3]) if best.size() > 3 else "floor"
 	floor_y = best[0]
@@ -620,6 +667,7 @@ func _command(msg: Dictionary) -> void:
 			tx = clampf(tx, 0.4, screen.x / PPM - 0.4)
 			if widget == "" and floor_y < 0.01 and state != "fall":
 				target_x = tx                          # walking along the floor
+				target_z = depth
 				_set_off(30.0)
 			else:
 				_jump(tx, ty)
@@ -647,6 +695,8 @@ func _jump(tx: float, ty: float) -> void:
 	var t_up := up / GRAVITY
 	var t_down := sqrt(2.0 * maxf(0.05, peak - ty) / GRAVITY)
 	vel = Vector2((tx - pos.x) / (t_up + t_down), up)
+	# Up onto a ledge (they're at the front of the room): the jump carries her forward to it.
+	jump_dz = (0.0 - depth) / (t_up + t_down) if ty > 0.01 else 0.0
 	spin = 0.0
 	_set_state("fall", 99.0)
 	_play("Jump", 0.15)
@@ -1003,24 +1053,43 @@ var gait_from := 0.0                      # when she set off: speed eases in wit
 func _set_off(seconds: float) -> void:
 	_set_state("wander", seconds)
 	gait_from = t
-	var d := target_x - pos.x
-	var facing := signf(yaw) if absf(yaw) > 0.3 else 0.0
-	if absf(d) < 0.9:
-		gait = "back" if facing != 0.0 and signf(d) != facing and randf() < 0.6 else "strafe"
-	elif randf() < 0.55:
+	if floor_y > 0.01:
+		target_z = 0.0                         # on a ledge: along it
+	var to := _to_target()
+	var m := to.normalized()
+	var ahead := m.dot(_facing())              # 1 = straight ahead, -1 = behind her
+	var side := absf(m.dot(_left()))
+	if to.length() < 0.9:
+		gait = "back" if ahead < -0.5 and randf() < 0.6 else ("strafe" if side > 0.6 else "walk")
+	elif side > 0.6 and randf() < 0.55:
 		gait = "lead"
 		gait_turn_at = t + randf_range(0.5, 0.9)
 	else:
 		gait = "walk"
+	if gait != "walk":
+		yaw_target = yaw                       # side steps and backing up keep the way she faces
 	_gait_clip()
 
 
+# Where she's headed, on the floor: (x, depth) from her.
+func _to_target() -> Vector2:
+	return Vector2(target_x - pos.x, target_z - depth)
+
+
+# Which way she faces on the floor (x, depth) and her left. Yaw 0 faces you.
+func _facing() -> Vector2:
+	return Vector2(sin(yaw), cos(yaw))
+
+
+func _left() -> Vector2:
+	return Vector2(cos(yaw), -sin(yaw))
+
+
 func _gait_clip() -> void:
-	var d := signf(target_x - pos.x)
+	var m := _to_target().normalized()
 	match gait:
 		"strafe", "lead":
-			# Facing you, her left is the screen's right.
-			_play("Strafe_Left" if d > 0.0 else "Strafe_Right", 0.3, GAIT_PLAYBACK)
+			_play("Strafe_Left" if m.dot(_left()) > 0.0 else "Strafe_Right", 0.3, GAIT_PLAYBACK)
 		"back":
 			_play("Walk_Back", 0.3, GAIT_PLAYBACK)
 		_:
@@ -1031,13 +1100,13 @@ func _gait_clip() -> void:
 # begun when the distance left is the clip's stopping distance and followed
 # along its slowing curve, so she arrives on her feet instead of sliding.
 var stop_name := ""
-var stop_from := 0.0
-var stop_dir := 1.0
+var stop_from := Vector2.ZERO
+var stop_dir := Vector2.RIGHT
 var stop_scale := 1.0
-func _stop_clip(dir: float) -> String:
+func _stop_clip(m: Vector2) -> String:
 	match gait:
 		"strafe", "lead":
-			return _variant_of("stop_strafe_left_" if dir > 0.0 else "stop_strafe_right_")
+			return _variant_of("stop_strafe_left_" if m.dot(_left()) > 0.0 else "stop_strafe_right_")
 		"back":
 			return _variant_of("stop_back_")
 	return _variant_of("stop_walk_")
@@ -1049,12 +1118,12 @@ func _stop_length(stop: String) -> float:
 	return (stop_curve[stop]["d"] as PackedFloat32Array)[-1] * (leg_length / SOMA_LEG)
 
 
-func _begin_stop(stop: String, dir: float) -> void:
+func _begin_stop(stop: String, m: Vector2) -> void:
 	var length := _stop_length(stop)
 	stop_name = stop
-	stop_from = pos.x
-	stop_dir = dir
-	stop_scale = (absf(target_x - pos.x) / length if length > 0.0 else 1.0) * (leg_length / SOMA_LEG)
+	stop_from = Vector2(pos.x, depth)
+	stop_dir = m
+	stop_scale = (_to_target().length() / length if length > 0.0 else 1.0) * (leg_length / SOMA_LEG)
 	_set_state("stopping", 6.0)
 	_play_via(stop, "Idle", 0.25)
 	ap.speed_scale = GAIT_PLAYBACK
@@ -1157,7 +1226,8 @@ func _choose() -> void:
 		"find_him":
 			var cursor := DisplayServer.mouse_get_position() - get_window().position
 			target_x = clampf(cursor.x / PPM, floor_span.x, floor_span.y)
-			if absf(target_x - pos.x) > 0.3:
+			target_z = -0.2                        # to the front, by you
+			if _to_target().length() > 0.3:
 				_set_off(20.0)
 				return
 			_set_state("react", 2.0)
@@ -1177,7 +1247,8 @@ func _choose() -> void:
 		_play("Dance", 0.4, 0.9)
 	elif r < 0.55 and allow["wander"]:
 		target_x = clampf(pos.x + randf_range(-2.5, 2.5), floor_span.x, floor_span.y)
-		if absf(target_x - pos.x) > 0.3:
+		target_z = randf_range(-room_depth, 0.0) if floor_y < 0.01 else 0.0
+		if _to_target().length() > 0.3:
 			_set_off(20.0)
 			return
 		_set_state("idle", 3.0)
@@ -1223,6 +1294,9 @@ func _read_settings() -> void:
 		FPS_IDLE = maxi(10, FPS_BUSY / 2)
 	if av.has("sleep_after"):
 		SLEEP_AFTER = clampf(float(av["sleep_after"]), 1, 120) * 60.0
+	if av.has("room_depth"):
+		room_depth = clampf(float(av["room_depth"]), 5.0, 10.0) * 0.3048
+		depth = clampf(depth, -room_depth, 0.0)
 	if av.has("size") and absf(float(av["size"]) - PPM) > 0.5:
 		PPM = clampf(float(av["size"]), 200, 840)
 		screen = Vector2.ZERO                 # forces the camera to re-fit
@@ -1249,8 +1323,7 @@ func _sync_screen() -> void:
 	var v := get_viewport().get_visible_rect().size
 	if v != screen and v.x > 0:
 		screen = v
-		cam.size = screen.y / PPM
-		cam.position = Vector3(screen.x / PPM / 2.0, screen.y / PPM / 2.0, 10.0)
+		_frame_camera()
 		_read_layout()
 		_land()
 		pos.x = clampf(pos.x, 0.4, maxf(0.4, screen.x / PPM - 0.4))   # a smaller screen than assumed: keep her on it
@@ -1326,24 +1399,23 @@ func _think(_delta: float) -> void:
 func _move(delta: float) -> void:
 	match state:
 		"wander":
-			var dir := signf(target_x - pos.x)
+			var to := _to_target()
+			var m := to.normalized() if to.length() > 0.001 else Vector2.ZERO
+			var dir := signf(m.x)
 			if gait == "lead" and t > gait_turn_at:
 				gait = "walk"                      # done side-stepping: turn and walk straight
 				_gait_clip()
 			# Close enough that the stop's own slowing carries her the rest of the way.
-			var stop := _stop_clip(dir)
-			if stop != "" and absf(target_x - pos.x) <= _stop_length(stop):
-				_begin_stop(stop, dir)
+			var stop := _stop_clip(m)
+			if stop != "" and to.length() <= _stop_length(stop):
+				_begin_stop(stop, m)
 				return
-			pos.x += dir * _gait_speed() * delta
-			match gait:
-				"strafe", "lead":
-					yaw_target = 0.0               # facing you
-				"back":
-					yaw_target = -dir * 1.2        # facing away from where she's going
-				_:
-					yaw_target = dir * 1.2
-			if absf(target_x - pos.x) < 0.05:
+			var step := _gait_speed() * delta
+			pos.x += m.x * step
+			depth = clampf(depth + m.y * step, -room_depth, 0.0)
+			if gait == "walk":
+				yaw_target = atan2(m.x, m.y)       # facing where she's going (strafing and backing keep it)
+			if to.length() < 0.05:
 				_set_state("idle", randf_range(2, 5))
 				_play("Idle", 0.3)
 				yaw_target = 0.0
@@ -1359,7 +1431,9 @@ func _move(delta: float) -> void:
 		"stopping":
 			var c: Dictionary = stop_curve.get(variant, {})
 			if variant == stop_name and not c.is_empty():
-				pos.x = stop_from + stop_dir * _curve_at(c, ap.current_animation_position) * stop_scale
+				var at := stop_from + stop_dir * _curve_at(c, ap.current_animation_position) * stop_scale
+				pos.x = at.x
+				depth = at.y
 			else:                                  # stopped: the idle took over
 				_set_state("idle", randf_range(2, 5))
 				yaw_target = 0.0
@@ -1367,6 +1441,7 @@ func _move(delta: float) -> void:
 			var before := pos.y
 			vel.y -= GRAVITY * delta
 			pos += vel * delta
+			depth = clampf(depth + jump_dz * delta, -room_depth, 0.0)
 			roll += spin * delta
 			# Screen edges are walls and a ceiling: she bounces off them.
 			var right := screen.x / PPM - 0.3
@@ -1379,13 +1454,15 @@ func _move(delta: float) -> void:
 				vel.y = -absf(vel.y) * 0.4
 			var landed := false
 			for fl in floors:
-				if pos.x >= fl[1] and pos.x <= fl[2] and pos.y <= fl[0] and before >= fl[0] - 0.02:
+				if pos.x >= fl[1] and pos.x <= fl[2] and pos.y <= fl[0] and before >= fl[0] - 0.02 \
+						and (fl[0] < 0.01 or depth > -0.25):
 					pos.y = fl[0]
 					landed = true
 			if pos.y <= 0.0:
 				pos.y = 0.0
 				landed = true
 			if landed:
+				jump_dz = 0.0
 				var impact := -vel.y
 				vel = Vector2.ZERO
 				spin = 0.0
@@ -1411,6 +1488,7 @@ func _move(delta: float) -> void:
 				_play("PickUp_Table", 0.2)
 				get_tree().create_timer(0.8).timeout.connect(func(): life.picked_up_ball())
 		"held":
+			depth = lerpf(depth, 0.0, clampf(delta * 8.0, 0.0, 1.0))   # picked up: pulled to the front
 			# Dangling from your cursor: she sways behind the way you move her.
 			roll = lerpf(roll, clampf(-held_vel.x * 0.09, -0.7, 0.7), clampf(delta * 6.0, 0.0, 1.0))
 		"knocked":
@@ -1422,7 +1500,7 @@ func _move(delta: float) -> void:
 	if state not in ["fall", "held"]:
 		roll = lerpf(roll, 0.0, clampf(delta * 8.0, 0.0, 1.0))
 	pos.x = clampf(pos.x, 0.3, screen.x / PPM - 0.3)
-	if t > look_until and state != "wander":
+	if t > look_until and state not in ["wander", "stopping"]:
 		yaw_target = sin(t * 0.17) * 0.25
 	yaw = lerp_angle(yaw, yaw_target, clampf(delta * 5.0, 0.0, 1.0))
 
@@ -1440,7 +1518,12 @@ func _place_body() -> void:
 			sit = 1.0 - smoothstep(0.15, 0.75, _progress())
 	# SIT_DROP was measured on Aries (hips 0.795 m); a taller body sits lower.
 	var drop := SIT_DROP * (skel.motion_scale / 0.795 if skel and skel.motion_scale > 0.1 else 1.0)
-	body.position = Vector3(pos.x, pos.y - drop * sit, 0.0)
+	body.position = Vector3(pos.x, pos.y - drop * sit, depth)
+	if shadow:
+		# On the room's floor only (a ledge is a thin edge); fainter the higher she's up.
+		shadow.visible = shown and floor_y < 0.01 and pos.y < 2.0
+		shadow.position = Vector3(pos.x, 0.004, depth)
+		shadow.scale = Vector3.ONE * (1.0 - clampf(pos.y / 2.5, 0.0, 0.6))
 	# Roll about the point she's held by (her upper chest), not her feet.
 	var pivot := Vector3(0, 1.3, 0)
 	body.rotation = Vector3(0, yaw, roll)
@@ -1567,9 +1650,10 @@ func _update_click_area() -> void:
 	if snapshot_path != "":
 		return
 	var sitting := clip.begins_with("Sitting") and floor_y > 0.01
-	var feet := cam.unproject_position(Vector3(pos.x, pos.y - (SIT_DROP if sitting else 0.0), 0))
-	var head := cam.unproject_position(Vector3(pos.x, pos.y + 1.62, 0))
-	var r := Rect2(Vector2(feet.x - 70, head.y - 10), Vector2(140, feet.y - head.y + 20))
+	var feet := cam.unproject_position(Vector3(pos.x, pos.y - (SIT_DROP if sitting else 0.0), depth))
+	var head := cam.unproject_position(Vector3(pos.x, pos.y + 1.62, depth))
+	var wide := (feet.y - head.y) * 0.3                  # narrower further back
+	var r := Rect2(Vector2(feet.x - wide / 2.0, head.y - 10), Vector2(wide, feet.y - head.y + 20))
 	if life != null and life.ring_open:
 		r = r.merge(life.ring_rect())
 	if r.position.distance_to(last_rect.position) < 3 and r.size.distance_to(last_rect.size) < 3:
@@ -1584,7 +1668,7 @@ func _input(event: InputEvent) -> void:
 		if life.ring_open:
 			life.close_ring()
 		else:
-			life.open_ring(cam.unproject_position(Vector3(pos.x, pos.y + 1.7, 0)))
+			life.open_ring(cam.unproject_position(Vector3(pos.x, pos.y + 1.7, depth)))
 		return
 	if life.ring_open and event is InputEventMouseButton and event.pressed:
 		if not life.ring.get_global_rect().has_point(event.position):
@@ -1790,8 +1874,15 @@ func _snapshot_seq(what: String) -> void:
 			_play("Crouch_Idle", 0.0, 0.6)
 			await get_tree().create_timer(0.5).timeout
 			_wake()
+		"deep":
+			target_x = pos.x + 2.5
+			target_z = -room_depth                 # into the back of the room
+			_set_off(99.0)
+			gait = "walk"
+			_gait_clip()
 		"walk", "strafe", "back", "lead":
 			target_x = pos.x + (0.7 if what in ["strafe", "back"] else 3.0)
+			target_z = depth
 			if what == "back":
 				yaw = -1.2                         # facing left, backing to the right
 			_set_off(99.0)

@@ -1,0 +1,31 @@
+# role|seconds|prompt   (one clip per line; variations of a role share its name: idle_happy_1, _2 ...)
+# Idle life (docs/JANE_3D_PLAN.md decision: idle life first). Kimodo reads a
+# plain description of a person; her mood and style come through in it.
+idle_calm_1|8|A woman stands relaxed, shifting her weight from one foot to the other and breathing slowly.
+idle_calm_2|8|A woman stands at ease with her hands loosely at her sides, glancing left and then right.
+idle_calm_3|8|A woman stands and casually tucks her hair behind her ear, then rests her hands on her hips.
+idle_happy_1|7|A cheerful woman stands and sways side to side happily, bouncing lightly on her toes.
+idle_happy_2|7|A happy woman stands and hums to herself, swinging her arms a little and tilting her head.
+idle_bored_1|8|A bored woman stands, sighs, slumps her shoulders and taps her foot impatiently.
+idle_bored_2|8|A bored woman stands and looks around, then crosses her arms and leans her weight on one leg.
+idle_sad_1|8|A sad woman stands with her head lowered and her arms wrapped around herself.
+idle_tired_1|8|A tired woman stands, rubs her eyes and lets her head droop.
+stretch_1|6|A woman raises both arms high above her head and stretches her whole body, then relaxes.
+stretch_2|6|A woman stretches her arms out in front of her, interlocking her fingers, then rolls her shoulders.
+yawn_1|5|A woman yawns widely, covering her mouth with one hand, then blinks sleepily.
+look_around_1|6|A curious woman looks around, leaning forward slightly as if noticing something interesting.
+look_around_2|6|A woman turns her head to look behind her over her shoulder, then turns back.
+wave_1|4|A woman smiles and waves hello with her right hand.
+cheer_1|4|An excited woman pumps her fist and does a small happy hop.
+sit_down_1|4|A woman sits down onto a ledge behind her, letting her legs dangle.
+sit_idle_1|8|A woman sits on a high ledge with her legs dangling, swinging her feet back and forth.
+sit_idle_2|8|A woman sits on a ledge, leaning back on her hands and looking up.
+sit_idle_3|8|A woman sits on a ledge hugging one knee to her chest.
+lie_down_1|5|A woman lies down on her side on the floor and rests her head on her arm.
+lie_idle_1|8|A woman lies on her stomach on the floor, propped up on her elbows, kicking her feet in the air.
+nap_1|10|A woman curls up on the floor and sleeps peacefully, breathing slowly.
+get_up_1|4|A woman gets up from lying on the floor and stands.
+dance_1|8|A woman dances happily to upbeat music, bouncing and swaying her hips.
+dance_2|8|A woman does a cute dance, stepping side to side and waving her arms.
+think_1|6|A woman stands thinking, with one hand on her chin, tapping her foot.
+shy_1|5|A shy woman fidgets, looking down and rubbing her arm.

@@ -10,6 +10,7 @@ var pet                                    # pet.gd
 var plan: Array = []                       # steps left: {go}, {play}, {hop_down}, {jump_up}, {call}
 var doing := ""                            # the activity the plan belongs to
 var last_done := {}                        # activity -> when it last started (pet.t)
+var follow_until := 0.0                    # following his pointer about until then
 var logging := OS.get_environment("PET_BRAIN_LOG") != ""
 
 # name: [cooldown seconds, needs the floor (hops down first)]
@@ -17,7 +18,7 @@ const ACTIVITIES := {
 	"idle": [10.0, false], "wander": [12.0, false], "look_around": [25.0, false], "stretch": [60.0, false],
 	"think": [30.0, false], "explore": [40.0, true], "sit_floor": [60.0, true], "lie": [90.0, true],
 	"nap": [300.0, true], "sit_ledge": [60.0, false], "dance": [20.0, false], "ball": [90.0, true],
-	"watch_him": [45.0, true], "find_him": [60.0, true], "cheer": [60.0, false],
+	"watch_him": [45.0, true], "find_him": [60.0, true], "cheer": [60.0, false], "follow": [90.0, true],
 }
 
 
@@ -28,6 +29,29 @@ func _init(owner) -> void:
 # He grabbed her, gave her an order, or woke her: whatever she meant to do is off.
 func drop() -> void:
 	plan.clear()
+	follow_until = 0.0
+
+
+# He's talking to her: she stops what she's doing, turns, and comes up to the front.
+func attend() -> void:
+	if doing == "attend" and plan_left():
+		return
+	drop()
+	doing = "attend"
+	if pet.floor_y < 0.01 and pet.depth < -0.5:
+		plan.append({"go": Vector2(clampf(pet.pos.x, _x0(), _x1()), -randf_range(0.15, 0.35))})
+	plan.append({"play": "Idle", "front": true, "for": randf_range(8, 14)})
+
+
+# He wiggled the pointer at her: over she comes, and follows it about a while.
+func come_to_cursor() -> void:
+	drop()
+	doing = "follow"
+	last_done["find_him"] = pet.t
+	plan = [{"go": Vector2(clampf(_cursor_x(), _x0(), _x1()), -0.25)},
+			{"play": "Interact", "state": "react", "front": true, "for": 1.8},
+			{"follow": pet.t + randf_range(10, 16)},
+			{"play": "Idle", "front": true, "for": randf_range(3, 6)}]
 
 
 func plan_left() -> bool:
@@ -43,7 +67,7 @@ func next() -> void:
 		pet._play("Idle", 0.4)
 		return
 	var step: Dictionary = plan[0]
-	if step.has("go") or step.has("hop_down") or step.has("jump_up"):
+	if step.has("go") or step.has("hop_down") or step.has("jump_up") or step.has("follow"):
 		if pet._stance(pet.variant) != "stand" or pet.pending != "":
 			# Up off the floor or the ledge first: the stance move plays, then the step.
 			pet._set_state("idle", maxf(0.3, pet.variant_until - pet.t) + 0.1)
@@ -63,6 +87,20 @@ func next() -> void:
 		pet._jump(x, 0.0)
 	elif step.has("jump_up"):
 		pet._jump(float(step["jump_up"].x), float(step["jump_up"].y))
+	elif step.has("follow"):
+		# Trailing his pointer along the front of the room until the time's up.
+		follow_until = float(step["follow"])
+		if pet.t >= follow_until:
+			next()
+			return
+		plan.push_front(step)
+		pet.target_x = clampf(_cursor_x(), _x0(), _x1())
+		pet.target_z = -0.3
+		if pet._to_target().length() > 0.6:
+			pet._set_off(30.0)
+		else:
+			pet._set_state("idle", 0.8)
+			pet._face_front(0.8)
 	elif step.has("call"):
 		pet.call(step["call"])
 	else:
@@ -144,6 +182,7 @@ func _score(a: String, on_widget: bool) -> float:
 				return 0.0
 			return (1.5 if float(n["affection"]) < 0.3 else lonely * 0.3) + (0.2 if near else 0.0)
 		"cheer": return joy * 0.25 if _has("cheer_") else 0.0
+		"follow": return (0.3 + lonely * 0.4) if near and allow["seek_cursor"] else 0.0
 	return 0.0
 
 
@@ -186,6 +225,7 @@ func _plan(a: String, on_widget: bool) -> Array:
 					{"play": "Interact", "state": "react", "front": true, "for": 2.0},
 					{"play": "Idle", "front": true, "for": randf_range(4, 8)}]
 		"cheer": return [{"play": "Cheer", "for": 3.0}]
+		"follow": return [{"follow": pet.t + randf_range(8, 14)}, {"play": "Idle", "front": true, "for": 3.0}]
 	return []
 
 
@@ -232,6 +272,9 @@ func _x1() -> float:
 	return pet.screen.x / pet.PPM - 0.6
 
 
+# His pointer, from the desktop's relay (pet.cursor) or, without it, the window system.
 func _cursor_x() -> float:
+	if pet.cursor_at > -50.0:
+		return pet.cursor.x / pet.PPM
 	var c: Vector2 = Vector2(DisplayServer.mouse_get_position() - pet.get_window().position)
 	return c.x / pet.PPM

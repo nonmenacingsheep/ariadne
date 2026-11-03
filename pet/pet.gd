@@ -98,6 +98,10 @@ const GAZE_UDP := 47121
 var gaze_in := PacketPeerUDP.new()
 var cursor := Vector2.ZERO
 var cursor_at := -99.0
+var cursor_dx := 0.0                       # the pointer's last sideways move, for wiggles
+var wiggles: Array[float] = []             # when it doubled back near her
+var noticed_at := -99.0
+var clicks: Array[float] = []
 var inbox := ""
 var retry_in := 0.0
 var said_hello := false
@@ -615,6 +619,7 @@ func _on_message(msg: Dictionary) -> void:
 		"ears":
 			if msg.get("listening", false):
 				_stir()
+				_attend()
 				_feel("surprised", 0.5, 0.9)
 				_face_front(2.0)
 		"action":
@@ -639,8 +644,10 @@ func _on_message(msg: Dictionary) -> void:
 			_command(msg)
 		"chat":
 			_stir()
-			if msg.get("role", "") == "you" and msg.get("done", false):
-				life.bump("affection", 0.03)
+			if msg.get("role", "") == "you":
+				_attend()
+				if msg.get("done", false):
+					life.bump("affection", 0.03)
 		"state":
 			if msg.get("widget", "") == "spotify" and msg.get("data") is Dictionary:
 				spotify_playing = msg["data"].get("status", "") == "playing"
@@ -925,6 +932,7 @@ const ROLES := {
 	"FloorSit": [["floor_sit_", 1.0], ["Crouch_Idle", 0.01]],
 	"LieDown": [["lie_idle_", 1.0], ["Crouch_Idle", 0.01]],
 	"Cheer": [["cheer_", 1.0], ["wave_", 0.5], ["Yes", 0.01]],
+	"Shy": [["shy_", 1.0], ["Idle_FoldArms", 0.01]],
 }
 const GAIT_PLAYBACK := 0.8                 # a touch slower than Kimodo's brisk takes; speed follows
 # Played once and held at their end (a nod, being knocked over), not re-picked.
@@ -1352,7 +1360,9 @@ func _think(_delta: float) -> void:
 		return
 	if state == "fetch":
 		return
-	if speaking and state in ["idle", "wander"]:
+	if speaking and state in ["rest", "sit"]:
+		yaw_target = 0.0                       # seated, she turns to him to talk
+	if speaking and state in ["idle", "wander"] and not (state == "wander" and brain.doing == "attend"):
 		if state == "wander":
 			_set_state("idle", 2.0)
 		_play("Idle_Talking", 0.3)
@@ -1371,6 +1381,8 @@ func _think(_delta: float) -> void:
 func _move(delta: float) -> void:
 	match state:
 		"wander":
+			if t < brain.follow_until:
+				target_x = clampf(brain._cursor_x(), 0.6, screen.x / PPM - 0.6)   # his pointer moves; so does she
 			var to := _to_target()
 			var m := to.normalized() if to.length() > 0.001 else Vector2.ZERO
 			var dir := signf(m.x)
@@ -1477,6 +1489,54 @@ func _move(delta: float) -> void:
 	yaw = lerp_angle(yaw, yaw_target, clampf(delta * 5.0, 0.0, 1.0))
 
 
+# --- reacting to him (docs/PET_AI_PLAN.md, phase 4) ---------------------------
+const FREE := ["idle", "wander", "stopping", "rest", "dance"]
+
+# He's talking to her (typing to her or speaking): she comes to the front and faces him.
+func _attend() -> void:
+	if state in FREE:
+		brain.attend()
+		_choose()
+
+
+# A wiggle of his pointer near her: she notices, and comes over to it.
+func _noticed() -> void:
+	if state == "sleep" or not allow["seek_cursor"]:
+		return
+	_stir()
+	_feel("joy", 0.6, 2.0)
+	if state in FREE and floor_y < 0.01:
+		brain.come_to_cursor()
+		_choose()
+
+
+# Clicked: how she takes it depends on how she feels; poked over and over, she's had enough.
+func _clicked() -> void:
+	brain.drop()
+	clicks = clicks.filter(func(c): return t - c < 4.0)
+	clicks.append(t)
+	life.bump("affection", 0.06 if clicks.size() < 3 else 0.0)
+	_set_state("react", 2.0)
+	_face_front(2.4)
+	if clicks.size() >= 4:
+		_feel("angry", 0.6, 2.0)
+		_play("Idle_No", 0.2)
+	elif _feeling("tired") > 0.9:
+		_play("Stretch", 0.3)                  # half awake: a stretch and a yawn
+	elif _feeling("shy") > 0.7:
+		_feel(_look_key("blush"), 0.8, 2.2)
+		_play("Shy", 0.3)
+	elif _feeling("sorrow") > 0.6:
+		_feel("joy", 0.5, 2.0)                 # cheered up a little
+		_play("Yes", 0.3, 0.8)
+	elif _feeling("light") > 0.9 or randf() < 0.2:
+		_feel("joy", 0.9, 2.0)
+		_play("Cheer", 0.2)
+	else:
+		_feel("joy", 0.7, 1.5)
+		_play("Yes" if randf() < 0.6 else "Interact", 0.2)
+
+
 # Arrived: a moment's pause, short when her plan has more to do there.
 func _pause() -> float:
 	return 0.25 if brain.plan_left() else randf_range(2, 5)
@@ -1515,7 +1575,18 @@ func _head() -> void:
 			var c := Vector2(float(xy[0]), float(xy[1]))
 			if c.distance_to(cursor) > 2.0:
 				cursor_at = t
+			var dx := c.x - cursor.x
+			if absf(dx) > 6.0:
+				if cursor_dx != 0.0 and signf(dx) != signf(cursor_dx) and cam \
+						and c.distance_to(cam.unproject_position(Vector3(pos.x, pos.y + 1.0, depth))) < PPM * 1.3:
+					wiggles.append(t)
+				cursor_dx = dx
 			cursor = c
+	wiggles = wiggles.filter(func(w): return t - w < 1.2)
+	if wiggles.size() >= 4 and t - noticed_at > 8.0:
+		wiggles.clear()
+		noticed_at = t
+		_noticed()
 	if t - cursor_at < 2.5 and state != "sleep" and cam and bones.has("Head"):
 		# Toward the pointer, from where her head is on screen; held a moment after it stops.
 		var head := skel.global_transform * skel.get_bone_global_pose(bones["Head"]).origin
@@ -1669,12 +1740,8 @@ func _input(event: InputEvent) -> void:
 				_play("Jump", 0.15)
 				if vel.length() > 4.0:
 					_feel("surprised", 0.8, 1.2)
-			else:                              # a click, not a drag: she nods at you
-				life.bump("affection", 0.06)
-				_set_state("react", 1.6)
-				_play("Yes", 0.2)
-				_feel("joy", 0.7, 1.5)
-				_face_front(2.0)
+			else:                              # a click, not a drag
+				_clicked()
 	elif event is InputEventMouseMotion and state == "held":
 		if event.position.distance_to(drag_from) > 4:
 			if not drag_moved:
@@ -1855,6 +1922,17 @@ func _snapshot_seq(what: String) -> void:
 		"brain":                                   # her own choices, sped up (PET_TIME_SCALE)
 			Engine.time_scale = float(OS.get_environment("PET_TIME_SCALE")) if OS.get_environment("PET_TIME_SCALE") != "" else 1.0
 			_set_state("idle", 0.5)
+		"attend", "follow":                        # he talks to her / wiggles his pointer, she's at the back
+			depth = -room_depth * 0.8
+			yaw = 2.6
+			_set_state("idle", 99.0)
+			await get_tree().create_timer(0.3).timeout
+			if what == "attend":
+				_attend()
+			else:
+				cursor_at = t
+				cursor = Vector2(screen.x * 0.75, screen.y * 0.7)
+				_noticed()
 		"deep":
 			target_x = pos.x + 2.5
 			target_z = -room_depth                 # into the back of the room

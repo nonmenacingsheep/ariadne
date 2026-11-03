@@ -53,4 +53,4 @@ what to do, reacting to him.
 | 1 | Room: perspective camera matched at the front plane, depth setting, (x, depth) position, shadow, click area and grabbing in 3D, ledges only at the front | done |
 | 2 | Getting around in 3D: targets on the floor, facing/turning, gait choice by direction, stops; walking to the front before climbing | done |
 | 3 | Utility brain: activities scored from needs/moods/context/recency, plans per activity (pet/brain.gd: 15 activities, cooldowns, hop down / walk up and jump onto a ledge, back corners to lie and nap, front to watch him; PET_SNAPSHOT_SEQ=brain PET_BRAIN_LOG=1 PET_TIME_SCALE=5 logs her choices) | done |
-| 4 | Reacting to him: talk, cursor, clicks | todo |
+| 4 | Reacting to him: talk, cursor, clicks (his chat or voice brings her to the front facing him, and she keeps walking there while she answers; a pointer wiggle near her brings her over to follow it a while; clicks get a nod, cheer, shy look, stretch or a head shake when poked over and over, by mood) | done |

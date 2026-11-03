@@ -217,6 +217,10 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     # ---- avatar (the pet) ----
     s.append(_entry("avatar", "model", "Model", "choice", "aries",
                     "Which body she wears on the desktop.", options=_choices(bodies())))
+    s.append(_entry("avatar", "jacket", "Jacket", "bool", True,
+                    "Her jacket on (3D bodies that have one, like Jane)."))
+    s.append(_entry("avatar", "weapon", "Weapon", "bool", False,
+                    "Her weapon in her hand (3D bodies that come with one, like Jane's dagger)."))
     s.append(_entry("avatar", "live2d_core", "Live2D support", "bool", False,
                     "Live2D's Cubism Core, free under Live2D's licence (live2d.com/eula). Downloading accepts it.",
                     action=True, button="Download"))

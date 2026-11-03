@@ -108,6 +108,8 @@ var ap: AnimationPlayer
 var face := {}                            # key -> [[mesh, index, weight], ...]
 var face_slots := {}                      # [mesh, index] -> this frame's summed weight
 var body_path := ""                       # the model she's wearing (res://models/...)
+var outfit := {"jacket": true, "weapon": false}   # Avatar settings: jacket on, weapon in hand
+var weapon: Node3D
 var fill: WorldEnvironment                # ambient light for GLB bodies (_toonify)
 var clip_lib: AnimationLibrary            # the humanoid clips, shared by every body
 var bones := {}
@@ -176,6 +178,9 @@ func _ready() -> void:
 	# PET_MODEL picks the 3D body for a test run (PET_SNAPSHOT); otherwise
 	# the Avatar "Model" setting does (_read_settings), Aries until it's read.
 	var forced := OS.get_environment("PET_MODEL")
+	var dressed := OS.get_environment("PET_OUTFIT")          # a test shot's outfit: "nojacket,weapon"
+	if dressed != "":
+		outfit = {"jacket": not dressed.contains("nojacket"), "weapon": dressed.contains("weapon")}
 	_load_body(forced if forced != "" else MODEL)
 	for k in moods:
 		mood_target[k] = moods[k]
@@ -254,6 +259,38 @@ func _load_body(path: String) -> void:
 	_add_jiggle()
 	if fill:
 		fill.environment.ambient_light_energy = TOON_FILL if glb else 0.0
+	weapon = null                              # went with the old body
+	_dress()
+
+
+# Jacket and weapon (Avatar settings), for bodies that have them. Without
+# the jacket, the top it was squeezing ("Shrink_forJacket") fills out again.
+# The weapon is <model>_weapon.glb (pet/import/jane_export.py), gripped in
+# her right hand.
+var WEAPON_GRIP := Transform3D(Basis.from_euler(Vector3(0, 0, -PI / 2)), Vector3(0.0, 0.07, 0.02))
+func _dress() -> void:
+	if not body:
+		return
+	var jacket: Node = body.find_child("Jacket", true, false)
+	if jacket:
+		jacket.visible = outfit["jacket"]
+	for m in body.find_children("*", "MeshInstance3D", true, false):
+		var idx := (m as MeshInstance3D).find_blend_shape_by_name("Shrink_forJacket")
+		if idx >= 0:
+			(m as MeshInstance3D).set_blend_shape_value(idx, 1.0 if outfit["jacket"] else 0.0)
+	var wpath := body_path.replace(".glb", "_weapon.glb")
+	if outfit["weapon"] and weapon == null and body_path.ends_with(".glb") and ResourceLoader.exists(wpath) \
+			and skel and skel.find_bone("RightHand") >= 0:
+		var hold := BoneAttachment3D.new()
+		hold.bone_name = "RightHand"
+		skel.add_child(hold)
+		weapon = (load(wpath) as PackedScene).instantiate()
+		weapon.transform = WEAPON_GRIP
+		hold.add_child(weapon)
+		_toonify(weapon)
+	elif not outfit["weapon"] and weapon != null:
+		weapon.get_parent().queue_free()
+		weapon = null
 
 
 # --- secondary motion ----------------------------------------------------------
@@ -905,6 +942,8 @@ func _read_settings() -> void:
 			and ResourceLoader.exists(want_path):
 		_load_body(want_path)
 		_play("Idle")
+	outfit = {"jacket": bool(av.get("jacket", true)), "weapon": bool(av.get("weapon", false))}
+	_dress()
 	var want_shown: bool = bool(desk.get("body", true)) and want_path != ""
 	if want_shown != shown:
 		shown = want_shown

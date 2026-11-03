@@ -104,3 +104,26 @@ bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", use_selection=True,
                           export_skins=True, export_morph=True, export_morph_normal=False,
                           export_animations=False, export_yup=True, export_image_format="AUTO")
 print("EXPORTED", out, "meshes:", [o.name for o in keep])
+
+# Her weapon, on its own (the toggle in Avatar settings): a static mesh with
+# its origin at the grip (Weapon_Root), as she holds it.
+wpn, wrig = bpy.data.objects.get("Weapon"), bpy.data.objects.get("[ZZZ]_JaneDoe_Basic_Weapon")
+if wpn is not None and wrig is not None:
+    grip = wrig.matrix_world @ wrig.data.bones["Weapon_Root"].head_local
+    for m in list(wpn.modifiers):
+        wpn.modifiers.remove(m)
+    world = wpn.matrix_world.copy()
+    wpn.parent = None
+    wpn.matrix_world = world
+    wpn.data.transform(mathutils.Matrix.Translation(-(wpn.matrix_world.inverted() @ grip)))
+    wpn.location = (0, 0, 0)
+    wpn.rotation_euler = (0, 0, 0)
+    wpn.scale = (1, 1, 1)
+    wpn.data.materials.clear()
+    wpn.data.materials.append(bpy.data.materials["Clothes1_mat"])     # its texture; the outline slot goes
+    for o in bpy.data.objects:
+        o.select_set(o == wpn)
+    wout = out.replace(".glb", "_weapon.glb")
+    bpy.ops.export_scene.gltf(filepath=wout, export_format="GLB", use_selection=True, export_apply=False,
+                              export_skins=False, export_animations=False, export_yup=True)
+    print("EXPORTED", wout)

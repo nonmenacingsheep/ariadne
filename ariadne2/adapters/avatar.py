@@ -56,8 +56,8 @@ class AvatarAdapter(Adapter):
         self.verbs = [
             Verb("status", "Where your body is and what it's doing: which body, where on the screen, "
                  "which widget it's standing on, what it's up to, its face.", {}, self._status),
-            Verb("go", "Move your body: walk along where it stands, or jump onto a widget's top or down "
-                 "to the floor.", {"properties": {"to": target}, "required": ["to"]}, self._go),
+            Verb("go", "Move your body: walk along where it stands, or go to a widget (the Live2D body "
+                 "jumps onto its top; the 3D body lives in a room behind the screen and walks up behind it).", {"properties": {"to": target}, "required": ["to"]}, self._go),
             Verb("dance", "Dance (with or without music) for a while.",
                  {"properties": {"seconds": {"type": "number", "description": "default 20"}}}, self._dance),
             Verb("stop", "Stop what your body is doing (a dance, a walk) and stand.", {}, self._stop),
@@ -86,11 +86,17 @@ class AvatarAdapter(Adapter):
         side = "left" if x < w / 3 else "right" if x > 2 * w / 3 else "middle"
         on = d.get("on") or "floor"
         where = "on the floor" if on == "floor" else "in mid-air" if on == "air" else f"on top of the {on} widget"
+        if d.get("kind") == "3d" and on != "air":
+            back = float(d.get("depth") or 0)
+            where = "in your room behind the screen, " + (
+                "up at the glass" if back < 0.2 else "at the back" if back > 0.7 else "partway back")
         doing = {"stand": "standing", "idle": "standing", "walk": "walking", "wander": "walking",
                  "fall": "in the air", "held": "being held by him", "pinned": "pinned in place",
                  "dance": "dancing", "sleep": "asleep", "sit": "sitting", "knocked": "knocked over",
                  "fetch": "chasing the ball", "eat": "eating", "hug": "hugging a plush"}.get(
             str(d.get("mode")), str(d.get("mode") or "standing"))
+        if d.get("doing") and d["doing"] not in ("idle", "wander"):
+            doing += f" ({str(d['doing']).replace('_', ' ')})"
         if d.get("dancing") and "danc" not in doing:
             doing += ", dancing"
         if d.get("asleep") and "asleep" not in doing:
@@ -147,7 +153,9 @@ class AvatarAdapter(Adapter):
         if match is None:
             raise AdapterError(f"no widget called {t!r} on the desk to stand on (there's {', '.join(names) or 'none'})")
         await self._cmd("go", widget=match)
-        return await self._after(f"Jumping onto the {match} widget.")
+        d = await asyncio.to_thread(self.read)
+        return await self._after(f"Walking up behind the {match} widget." if d and d.get("kind") == "3d"
+                                 else f"Jumping onto the {match} widget.")
 
     async def _dance(self, seconds=None) -> str:
         s = max(3.0, min(300.0, float(seconds or 20)))

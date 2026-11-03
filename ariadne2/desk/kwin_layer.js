@@ -23,6 +23,10 @@ function layer() {
 // Godot adds " (DEBUG)" to the title when run from the editor binary.
 function isPet(w) { return String(w.caption).indexOf(PET) === 0; }
 
+// Her 3D body lives in a room behind the screen, so the widgets (on the
+// glass) stack in front of it; her Live2D body stands on the widgets, over them.
+function behind(w) { return isPet(w) && String(w.caption).indexOf(PET + "-l2d") !== 0; }
+
 // Her bodies: the 3D one (pet/, Godot) and the Live2D one (ariadne2/pet2d);
 // both windows exist, whichever is hidden draws nothing.
 function pets() {
@@ -96,10 +100,11 @@ function raise(w) {
     w.keepBelow = false;
     w.keepAbove = true;
     workspace.activeWindow = w;
-    pets().forEach(function (p) {   // she comes up with the desk, in front of it
+    pets().forEach(function (p) {   // she comes up with the desk
         p.keepBelow = false; p.keepAbove = true;
         try { workspace.raiseWindow(p); } catch (e) {}
     });
+    petsAroundDesk();
     tell(true);
 }
 
@@ -156,21 +161,27 @@ function hold(w) {
     });
 }
 
-// Her body always sits above the desk's widgets, or she can end up behind a
-// slab where she can't be grabbed. Whenever the stacking changes, put her
-// back on top of the desk (both stay below his windows unless raised).
-function petOverDesk() {
+// Whenever the stacking changes, put her bodies back where they belong: the
+// 3D one just under the desk (the widgets in front of her; the desk only
+// takes clicks on its widgets, so she can still be grabbed between them),
+// the Live2D one on top of it. All stay below his windows unless raised.
+function petsAroundDesk() {
     var w = layer();
     if (!w) return;
     var order = workspace.stackingOrder;
+    var under = pets().filter(behind);
+    if (under.some(function (p) { return order.indexOf(p) > order.indexOf(w); })) {
+        try { workspace.raiseWindow(w); } catch (e) {}
+        order = workspace.stackingOrder;
+    }
     pets().forEach(function (p) {
-        if (order.indexOf(p) < order.indexOf(w)) {
+        if (!behind(p) && order.indexOf(p) < order.indexOf(w)) {
             try { workspace.raiseWindow(p); } catch (e) {}
         }
     });
 }
-try { workspace.stackingOrderChanged.connect(petOverDesk); } catch (e) {}
-workspace.windowActivated.connect(function () { petOverDesk(); });
+try { workspace.stackingOrderChanged.connect(petsAroundDesk); } catch (e) {}
+workspace.windowActivated.connect(function () { petsAroundDesk(); });
 
 workspace.windowAdded.connect(function (w) {
     if (w.caption === TITLE) { pin(w); hold(w); settleSoon(w); }
@@ -182,3 +193,4 @@ workspace.windowAdded.connect(function (w) {
 var existing = layer();
 if (existing) { pin(existing); hold(existing); }
 pets().forEach(settlePet);
+petsAroundDesk();

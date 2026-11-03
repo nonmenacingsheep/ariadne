@@ -551,8 +551,9 @@ func _read_layout() -> void:
 		var x0 := float(r[0]) / PPM
 		var x1 := float(r[0] + r[2]) / PPM
 		widget_x[name] = (x0 + x1) / 2.0
-		if name != "core":
-			floors.append([(screen.y - float(r[1])) / PPM, x0 + 0.15, x1 - 0.15, str(name)])
+	# The widgets are on the glass and she lives behind it (KWin stacks her
+	# window under the desk's): they're not ledges in her room, she walks
+	# around behind them.
 
 
 func _land() -> void:
@@ -663,21 +664,18 @@ func _command(msg: Dictionary) -> void:
 			var ty := 0.0
 			var widget := str(msg.get("widget", ""))
 			if widget != "":
-				for fl in floors:
-					if fl.size() > 3 and fl[3] == widget:
-						ty = fl[0]
-						tx = clampf(pos.x, fl[1] + 0.2, fl[2] - 0.2)
-				if ty == 0.0:
+				if not widget_x.has(widget):
 					return
+				tx = widget_x[widget]                  # up behind it, at the glass
 			elif msg.has("side"):
 				var w := screen.x / PPM
 				tx = {"left": w * 0.15, "right": w * 0.85, "center": w * 0.5}.get(str(msg["side"]), pos.x)
 			elif msg.has("x"):
 				tx = float(msg["x"]) / PPM
 			tx = clampf(tx, 0.4, screen.x / PPM - 0.4)
-			if widget == "" and floor_y < 0.01 and state != "fall":
+			if floor_y < 0.01 and state != "fall":
 				target_x = tx                          # walking along the floor
-				target_z = depth
+				target_z = -0.2 if widget != "" else depth
 				_set_off(30.0)
 			else:
 				_jump(tx, ty)
@@ -725,7 +723,7 @@ func _tell(delta: float) -> void:
 			mood = k
 	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
 		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
-		"dancing": state == "dance", "doing": brain.doing, "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
+		"dancing": state == "dance", "doing": brain.doing, "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
 		"own": ["smile", "angry", "tears", "wide", "smirk"], "looks": LOOK_FACE.keys()}
 	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
 	if f:

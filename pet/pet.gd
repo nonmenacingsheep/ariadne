@@ -957,7 +957,9 @@ func _move(delta: float) -> void:
 
 func _place_body() -> void:
 	var sitting := clip.begins_with("Sitting") and floor_y > 0.01
-	body.position = Vector3(pos.x, pos.y - (SIT_DROP if sitting else 0.0), 0.0)
+	# SIT_DROP was measured on Aries (hips 0.795 m); a taller body sits lower.
+	var drop := SIT_DROP * (skel.motion_scale / 0.795 if skel and skel.motion_scale > 0.1 else 1.0)
+	body.position = Vector3(pos.x, pos.y - (drop if sitting else 0.0), 0.0)
 	# Roll about the point she's held by (her upper chest), not her feet.
 	var pivot := Vector3(0, 1.3, 0)
 	body.rotation = Vector3(0, yaw, roll)

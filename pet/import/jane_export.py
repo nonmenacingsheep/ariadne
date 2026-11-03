@@ -32,6 +32,14 @@ eb = rig.data.edit_bones
 for name in [b.name for b in eb if b.name.startswith(("IK_", "Leg_Upper", "Leg_Lower", "Foot.", "Foot_tip"))
              or b.name.startswith(("_dummy", "_shadow"))]:
     eb.remove(eb[name])
+# MMD's Center and Groove sit ~0.8 m up between Root and the hips. A clip sets
+# the hips' height relative to their parent, so with those in between she
+# floated that far above the floor. The hips hang straight off Root instead.
+for name in ("Center", "Groove"):
+    if name in eb:
+        for child in [c for c in eb if c.parent == eb[name]]:
+            child.parent = eb[name].parent
+        eb.remove(eb[name])
 bpy.ops.object.mode_set(mode="OBJECT")
 
 keep = []

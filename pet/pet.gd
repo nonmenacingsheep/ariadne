@@ -92,6 +92,12 @@ const LOOK_FACE := {
 const BODY_FILE := "/.local/share/ariadne2/pet/body.json"
 
 var tcp := StreamPeerTCP.new()
+# The pointer anywhere on screen, relayed by the Live2D host from KWin
+# (ariadne2/pet2d kwin_gaze.js): her window only hears it over herself.
+const GAZE_UDP := 47121
+var gaze_in := PacketPeerUDP.new()
+var cursor := Vector2.ZERO
+var cursor_at := -99.0
 var inbox := ""
 var retry_in := 0.0
 var said_hello := false
@@ -185,6 +191,7 @@ func _ready() -> void:
 	if snapshot_path != "":
 		_snapshot.call_deferred()
 	else:
+		gaze_in.bind(GAZE_UDP, "127.0.0.1")
 		_connect()
 
 
@@ -1083,7 +1090,19 @@ func _place_body() -> void:
 
 
 func _head() -> void:
-	if t > look_until:
+	while gaze_in.get_available_packet_count() > 0:
+		var xy := gaze_in.get_packet().get_string_from_ascii().split(" ")
+		if xy.size() == 2:
+			var c := Vector2(float(xy[0]), float(xy[1]))
+			if c.distance_to(cursor) > 2.0:
+				cursor_at = t
+			cursor = c
+	if t - cursor_at < 2.5 and state != "sleep" and cam and bones.has("Head"):
+		# Toward the pointer, from where her head is on screen; held a moment after it stops.
+		var head := skel.global_transform * skel.get_bone_global_pose(bones["Head"]).origin
+		var d := cursor - cam.unproject_position(head)
+		look_target = Vector2(clampf(d.x / (PPM * 1.5), -1.0, 1.0), clampf(-d.y / (PPM * 1.0), -0.8, 0.8))
+	elif t > look_until:
 		look_target = Vector2(sin(t * 0.21) * 0.3, sin(t * 0.13) * 0.12)
 	look = look.lerp(look_target, 0.12)
 	_turn_head("Neck", look * 0.35)

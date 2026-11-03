@@ -1,11 +1,11 @@
-// Tells her Live2D body where the pointer is, anywhere on the screen.
+// Tells her body where the pointer is, anywhere on the screen.
 //
 // Under Wayland a window only hears the pointer while it's over it, and her
 // window takes input only in the box around her body, so she couldn't follow
 // it anywhere else. KWin knows; this reads it 20 times a second and, when it
 // moved, sends it to the body (ariadne2/pet2d) relative to her window.
 
-var PET = "ariadne2-pet-l2d";
+var PET = "ariadne2-pet";                // her Live2D window or her 3D one (both cover the same area)
 var last = "";
 
 function body() {

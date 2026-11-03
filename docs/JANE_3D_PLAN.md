@@ -62,7 +62,7 @@ the Live2D Jane). Friends bring their own.
 | 3 | Kimodo locally: installed at /var/mnt/games/AI/Kimodo (.venv shares ComfyUI's torch 2.11/cu128 via a .pth; system cmake for its C++ part). Run with HF_HOME=/var/mnt/games/AI/hf TEXT_ENCODER_DEVICE=cpu (the Llama-3-8B text encoder needs ~17 GB VRAM on GPU; on CPU ~16 GB RAM, Kimodo itself <3 GB VRAM). `kimodo_gen "prompt" --duration N --seed S --output X --bvh --bvh_standard_tpose`. Waiting on: Meta's gated Llama access + his HF token (`hf auth login`), and disk (games drive 31 GB free). Then: prompt list per state, batch variations | blocked (his HF access) |
 | 4 | MotionBricks locally: install, TensorRT plan, record locomotion clips (walk/run/strafe/crouch x styles, starts/stops/turns) | todo |
 | 5 | State graph in pet.gd: ROLES pools (Idle, Idle_FoldArms, Sitting_Idle, Crouch_Idle, Dance) = base clip + generated variants by prefix, weighted by feelings (joy/sorrow/bored/tired/shy from moods + needs), re-picked when a variant ends, no repeats. Left: transitions (sit down/get up/lie down clips), lie-on-widget stance, distance-matched starts/stops | in progress |
-| 6 | Live layers: gaze, spring bones, TTS faces, lip sync, foot IK | todo |
+| 6 | Live layers: spring bones, TTS faces, lip sync, and gaze (pointer anywhere on screen via KWin -> pet2d -> UDP 47121, head turned from where it is on screen) done; foot IK left | in progress |
 | 7 | Her control: the avatar tool gains the new states (sit, lie, stretch, wave...) | todo |
 | 8 | ~~Live MotionBricks sidecar~~ | dropped |
 

@@ -114,16 +114,21 @@ def jobs_dir() -> Path:
 
 
 _jobs: dict[int, subprocess.Popen] = {}     # kept so poll() reaps them: no zombies, and we can tell if one died
-# Every command she runs gets its own session; its id (the shell's pid) is
-# kept with a label so core/downloads.py can find downloads her commands start,
-# however they redirect their output.
-SESSIONS: dict[int, str] = {}
+# Every command she runs carries ARIADNE2_JOB=<token> in its environment,
+# which everything it starts inherits (through nohup, setsid, a double fork),
+# so core/downloads.py can find the downloads her commands start, however
+# they're launched or wherever their output goes.
+JOB_ENV = "ARIADNE2_JOB"
+SESSIONS: dict[str, str] = {}
+_tokens = __import__("itertools").count(1)
 
 
-def _note_session(pid: int, command: str) -> None:
-    SESSIONS[pid] = _label(command)
+def _job_env(command: str) -> dict:
+    token = f"{os.getpid()}-{next(_tokens)}"
+    SESSIONS[token] = _label(command)
     while len(SESSIONS) > 200:
         del SESSIONS[next(iter(SESSIONS))]
+    return dict(os.environ, **{JOB_ENV: token})
 
 
 def start_background(command: str, workdir: Path) -> tuple[int, str]:
@@ -138,9 +143,8 @@ def start_background(command: str, workdir: Path) -> tuple[int, str]:
             # $? is the command's, not the echo's (1.x always logged [exit 0]).
             ["bash", "-c", 'bash -o pipefail -c "$1"; rc=$?; echo; echo "[exit $rc]"', "_", command],
             cwd=str(workdir), stdout=fh, stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL, start_new_session=True)
+            stdin=subprocess.DEVNULL, start_new_session=True, env=_job_env(command))
     _jobs[proc.pid] = proc
-    _note_session(proc.pid, command)
     for pid in [p for p, j in _jobs.items() if j.poll() is not None and p != proc.pid]:
         del _jobs[pid]
     return proc.pid, str(log)
@@ -213,8 +217,8 @@ def run(command: str, background: bool, cwd: str | None, his_words: str | None) 
         try:
             child = subprocess.Popen(["bash", "-o", "pipefail", "-c", command], stdout=fout,
                                      stderr=ferr, text=True, cwd=str(workdir),
-                                     stdin=subprocess.DEVNULL, start_new_session=True)
-            _note_session(child.pid, command)
+                                     stdin=subprocess.DEVNULL, start_new_session=True,
+                                     env=_job_env(command))
             try:
                 code = child.wait(timeout=limit)
             except subprocess.TimeoutExpired:

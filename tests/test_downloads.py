@@ -124,11 +124,13 @@ class HerJobs(unittest.TestCase):
                   "  sys.stdout.write(f'\\rFetching 3 files: {i}%|##  | 1/3 [00:01<00:02, 2.0MB/s]'); sys.stdout.flush()\n"
                   "  time.sleep(0.1)\n")
         log = open(d / "job.log", "w")
-        p = subprocess.Popen([sys.executable, "-c", script], stdout=log, stderr=subprocess.STDOUT,
-                             start_new_session=True)
+        import os
+        # setsid inside: a new session, as her 'setsid ... &' starts things; the token still follows it
+        p = subprocess.Popen(["setsid", sys.executable, "-c", script], stdout=log, stderr=subprocess.STDOUT,
+                             env=dict(os.environ, ARIADNE2_JOB="t-1"))
         self.addCleanup(lambda: (p.kill(), p.wait(), log.close()))
         t = [0.0]
-        w = DownloadWatch(None, steam=None, home=d, clock=lambda: t[0], sessions={p.pid: "python download"})
+        w = DownloadWatch(None, steam=None, home=d, clock=lambda: t[0], sessions={"t-1": "python download"})
         _t.sleep(0.6)
         w.collect()
         t[0] += 1

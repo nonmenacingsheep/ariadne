@@ -15,7 +15,8 @@ import time
 from pathlib import Path
 
 HOME = Path.home()
-STEAM_ROOTS = (".local/share/Steam", ".steam/steam", ".var/app/com.valvesoftware.Steam/data/Steam")
+STEAM_ROOTS = (".local/share/Steam", ".steam/steam", ".var/app/com.valvesoftware.Steam/data/Steam",
+               "snap/steam/common/.local/share/Steam")
 # A drive remounted elsewhere leaves libraryfolders.vdf pointing at nothing, and
 # this machine's atomic desktop mounts under /var/mnt, so sweep the usual roots too.
 MOUNT_ROOTS = ("/var/mnt", "/run/media", "/media", "/mnt")

@@ -18,8 +18,8 @@ under her name while she's quiet, and as rows in the chat where her steps go):
   growing (curl, wget, an app writing straight to its file). Those have no
   known total, so their bar runs without a percentage.
 
-- Her commands (core/tools/shell.py SESSIONS): the processes in each session
-  she started, wherever they write. A download is a file one of them is
+- Her commands (core/tools/shell.py): every process carrying the
+  ARIADNE2_JOB token one of her commands set, wherever they write. A download is a file one of them is
   writing that keeps growing and looks like one (.incomplete, .part, a
   Hugging Face blob, ...), or a progress line in the log it writes to (tqdm,
   pip, wget, git). These are hers by definition.
@@ -66,7 +66,8 @@ def browser_profiles(home: Path | None = None) -> list[Path]:
     """Every Chromium-family profile folder (one holding a History file)."""
     home = home or _home()
     roots = [home / ".config" / b for b in _BROWSERS]
-    roots += [Path(p) for p in glob.glob(str(home / ".var/app/*/config/*"))]
+    roots += [Path(p) for p in glob.glob(str(home / ".var/app/*/config/*"))]       # Flatpak
+    roots += [Path(p) for p in glob.glob(str(home / "snap/*/common/*"))]           # Snap (chromium, brave...)
     out = []
     for root in roots:
         for hist in glob.glob(str(root / "*" / "History")):
@@ -124,27 +125,38 @@ def browser_downloads(profiles) -> dict[str, dict]:
     return out
 
 
-def _session_of(pid: str, proc: str = "/proc") -> int | None:
+def _job_of(pid: str, proc: str = "/proc") -> str | None:
+    """The ARIADNE2_JOB token a process inherited from one of her commands, if any."""
     try:
-        stat = open(f"{proc}/{pid}/stat").read()
-        return int(stat[stat.rindex(")") + 2:].split()[3])
-    except (OSError, ValueError, IndexError):
+        env = open(f"{proc}/{pid}/environ", "rb").read()
+    except OSError:
         return None
+    i = env.find(b"ARIADNE2_JOB=")
+    if i < 0 or (i and env[i - 1] != 0):
+        return None
+    return env[i + 13: env.find(b"\0", i) if env.find(b"\0", i) >= 0 else None].decode("ascii", "replace")
 
 
-def session_files(sessions, proc: str = "/proc") -> dict[int, dict]:
-    """sid -> {"writing": paths open for writing, "logs": where stdout/stderr go}."""
-    out: dict[int, dict] = {}
-    want = set(sessions)
+def session_files(sessions, proc: str = "/proc") -> dict[str, dict]:
+    """job token -> {"writing": paths open for writing, "logs": where stdout/stderr go},
+    for every process carrying one of her commands' tokens."""
+    out: dict[str, dict] = {}
+    want = {str(k) for k in sessions}
     if not want:
         return out
+    me = os.getuid()
     for pid in os.listdir(proc):
         if not pid.isdigit():
             continue
-        sid = _session_of(pid, proc)
-        if sid not in want:
+        try:
+            if os.stat(f"{proc}/{pid}").st_uid != me:
+                continue
+        except OSError:
             continue
-        got = out.setdefault(sid, {"writing": set(), "logs": set()})
+        job = _job_of(pid, proc)
+        if job not in want:
+            continue
+        got = out.setdefault(job, {"writing": set(), "logs": set()})
         try:
             fds = os.listdir(f"{proc}/{pid}/fd")
         except OSError:
@@ -210,7 +222,7 @@ class DownloadWatch:
         self._acted = -1e9                   # when she last ran a tool
         self._steam_asked = -1e9             # when she last asked Steam to install
         self._hers: dict[str, bool] = {}     # download id -> hers, decided when first seen
-        self.sessions = sessions             # sid -> label; None = her shell's own (tools/shell.py)
+        self.sessions = sessions             # job token -> label; None = her shell's own (tools/shell.py)
         self.proc = proc
         self._grew: dict[str, tuple[int, float]] = {}       # her jobs' files: size, when it last grew
 
@@ -314,7 +326,7 @@ class DownloadWatch:
         else:
             sessions = dict(self.sessions)
         now, items, seen = self.clock(), [], set()
-        for sid, files in session_files(sessions, self.proc).items():
+        for job, files in session_files(sessions, self.proc).items():
             growing, done = [], 0
             for path in files["writing"]:
                 if not DL_FILE.search(path):
@@ -341,10 +353,10 @@ class DownloadWatch:
                     line = p
             if not growing and not line:
                 continue
-            name = nice_name(growing[0]) if growing else (line["desc"] or sessions[sid])
+            name = nice_name(growing[0]) if growing else (line["desc"] or sessions.get(job, "a download"))
             if line and line["desc"] and growing:
                 name = f"{name} ({line['desc']})"
-            key = f"job:{sid}"
+            key = f"job:{job}"
             items.append({"id": key, "name": name, "source": "job", "done": done or None, "total": None,
                           "progress": round(line["pct"] / 100, 4) if line else None,
                           "rate": (line or {}).get("rate") or (self._rate(key, done, now) if done else None),
@@ -399,3 +411,40 @@ class DownloadWatch:
     def stop(self) -> None:
         if self._task:
             self._task.cancel()
+
+
+def main() -> None:
+    """`python -m ariadne2.core.downloads`: what the download bars can see on this
+    machine, for when they show nothing. Watches for 20 seconds; start a
+    download meanwhile."""
+    from ..adapters.steam_files import SteamFiles
+    sf = SteamFiles()
+    profiles = browser_profiles()
+    print("Steam libraries:", sf.libraries() or "none found")
+    print("Browser profiles (Chrome/Chromium/Opera/Brave/Edge/Vivaldi):", [str(p) for p in profiles] or "none")
+    print("Download folders:", [str(d) for d in download_dirs(profiles=profiles)] or "none")
+
+    class _Steam:
+        def state(self):
+            man = sf.manifests()
+            live = sf.content_states()
+            from ..adapters.steam import download_state
+            return {"downloads": [{"appid": a, "name": m["name"], "progress": 0, "bytes_done": m["bytes_done"],
+                                   "bytes_total": m["bytes_total"], "rate_bps": None,
+                                   "state": download_state(m, live.get(a))}
+                                  for a, m in man.items() if download_state(m, live.get(a))]}
+    w = DownloadWatch(None, steam=_Steam(), sessions={})
+    w._acted = w._steam_asked = w.clock()          # count everything as hers, for the check
+    for i in range(10):
+        items = w.collect()
+        print(f"[{i * 2:>2}s] " + ("; ".join(f"{d['name']} ({d['source']}, "
+                                            f"{'?' if d['progress'] is None else round(d['progress'] * 100)}%)"
+                                            for d in items) or "no downloads seen"))
+        time.sleep(2)
+    print("Bars show only downloads Aries started: within 90 s of something she did, or 15 min of a "
+          "Steam install she asked for, or anything her own commands download.")
+
+
+if __name__ == "__main__":
+    main()
+

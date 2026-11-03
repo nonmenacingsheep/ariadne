@@ -51,6 +51,7 @@ _subresources={
 "retarget/remove_tracks/unmapped_bones": false,
 "retarget/rest_fixer/apply_node_transforms": true,
 "retarget/rest_fixer/fix_silhouette/enable": true,
+"retarget/rest_fixer/fix_silhouette/filter": [&"Hips", &"Spine", &"Chest", &"UpperChest", &"Neck", &"Head"],
 "retarget/rest_fixer/normalize_position_tracks": true,
 "retarget/rest_fixer/retarget_method": 1
 }

@@ -12,6 +12,7 @@ morph targets for her faces. The .blend itself is never saved.
 import sys
 
 import bpy
+import mathutils
 
 out = sys.argv[sys.argv.index("--") + 1]
 rig = bpy.data.objects["[ZZZ]_JaneDoe_Basic"]
@@ -40,6 +41,21 @@ for name in ("Center", "Groove"):
         for child in [c for c in eb if c.parent == eb[name]]:
             child.parent = eb[name].parent
         eb.remove(eb[name])
+# MMD splits the hips: a non-deforming hub ("Spine") with the upper body
+# (Waist) and the lower body (Pelvis) hanging off it side by side. A humanoid
+# rig wants one Hips that carries both, so Pelvis becomes the hips, the upper
+# body and the bag hang off it, and the hub goes. (Mapping Hips to the hub
+# tilted every clip back from the hips.)
+if "Spine" in eb and "Pelvis" in eb:
+    hub, pelvis = eb["Spine"], eb["Pelvis"]
+    pelvis.parent = hub.parent
+    for child in [c for c in eb if c.parent == hub and c != pelvis]:
+        child.parent = pelvis
+    eb.remove(hub)
+    # MMD's pelvis points down its legs; a humanoid's hips point up the spine
+    # (Godot's rest fixer otherwise tips the whole upper body back to match).
+    pelvis.tail = pelvis.head + mathutils.Vector((0.0, 0.0, 0.1))
+    pelvis.roll = 0.0
 bpy.ops.object.mode_set(mode="OBJECT")
 
 keep = []

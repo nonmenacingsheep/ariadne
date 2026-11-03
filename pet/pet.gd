@@ -313,8 +313,11 @@ func _add_jiggle() -> void:
 			col.bone_name = c[0]
 			col.radius = c[1]
 			sim.add_child(col)
+	# Only hair and tail bump into her; a chain that sits on the body (chest,
+	# hips, belts) would be pushed out by the very sphere it rests on.
 	for i in chains.size():
-		sim.set_enable_all_child_collisions(i, true)
+		var root: String = chains[i][0]
+		sim.set_enable_all_child_collisions(i, root.begins_with("Hair") or root.begins_with("Tail"))
 	for i in 8:
 		var b := skel.find_bone("Tail_%d" % i)
 		if b < 0:

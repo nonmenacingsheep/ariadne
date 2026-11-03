@@ -5,7 +5,7 @@
 [resource]
 profile = SubResource("1")
 bone_map/Root = &"Root"
-bone_map/Hips = &"Spine"
+bone_map/Hips = &"Pelvis"
 bone_map/Spine = &"Waist"
 bone_map/Chest = &"Chest"
 bone_map/Neck = &"Neck"

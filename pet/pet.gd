@@ -716,15 +716,95 @@ func _in_place(src: Animation) -> Animation:
 	return anim
 
 
+# GASP-style variety: a role ("Idle", "Sitting_Idle", ...) is a pool of clips,
+# its base clip plus any generated ones whose names start with a listed
+# prefix (assets/anims/kimodo, pet/import/kimodo_prompts.txt). Each entry's
+# weight is a number or a feeling, read off her moods and needs, so a bored
+# her picks bored idles. When a variant ends (or a looping one completes a
+# cycle) another is picked, never the same one twice running.
+const ROLES := {
+	"Idle": [["Idle", 1.0], ["idle_calm_", 1.2], ["idle_happy_", "joy"], ["idle_bored_", "bored"],
+			["idle_sad_", "sorrow"], ["idle_tired_", "tired"], ["stretch_", 0.25], ["yawn_", "tired"],
+			["look_around_", 0.35], ["think_", 0.15]],
+	"Idle_FoldArms": [["Idle_FoldArms", 1.0], ["think_", 0.8], ["shy_", "shy"]],
+	"Sitting_Idle": [["Sitting_Idle", 1.0], ["sit_idle_", 1.5]],
+	"Crouch_Idle": [["Crouch_Idle", 1.0], ["nap_", 1.5]],
+	"Dance": [["Dance", 1.0], ["dance_", 1.5]],
+}
+var variant := ""                          # the clip actually playing for the role in `clip`
+var variant_until := 0.0
+
+
+func _feeling(f: String) -> float:
+	var n: Dictionary = life.needs if life else {}
+	match f:
+		"joy": return 0.2 + 2.5 * float(moods.get("joy", 0.0)) + float(moods.get("stars", 0.0))
+		"sorrow": return 0.05 + 2.5 * float(moods.get("sorrow", 0.0)) + maxf(0.0, 0.4 - float(n.get("affection", 0.6)))
+		"bored": return maxf(0.0, 0.7 - float(n.get("fun", 0.6))) * 2.0 + float(moods.get("bored", 0.0))
+		"tired": return maxf(0.0, 0.6 - float(n.get("energy", 0.8))) * 2.5 + float(moods.get("sleepy", 0.0))
+		"shy": return 0.2 + 2.0 * float(moods.get("blush", 0.0))
+	return 0.0
+
+
+func _variant(role: String) -> String:
+	if not ROLES.has(role):
+		return role if ap.has_animation(role) else ""
+	var pool := []
+	var weights := []
+	for entry in ROLES[role]:
+		var w: float = entry[1] if (entry[1] is float or entry[1] is int) else _feeling(entry[1])
+		if w <= 0.0:
+			continue
+		var names: Array = [entry[0]] if ap.has_animation(entry[0]) else []
+		if entry[0].ends_with("_"):
+			names = Array(ap.get_animation_list()).filter(func(a): return String(a).begins_with(entry[0]))
+		for a in names:
+			pool.append(a)
+			weights.append(w / names.size())        # a prefix's weight is shared by its variants
+	if pool.size() > 1 and variant in pool:
+		weights[pool.find(variant)] = 0.0             # not the same one twice running
+	var total := 0.0
+	for w in weights:
+		total += w
+	if total <= 0.0:
+		return pool[0] if pool.size() > 0 else ""
+	var r := randf() * total
+	for i in pool.size():
+		r -= weights[i]
+		if r <= 0.0:
+			return pool[i]
+	return pool[-1]
+
+
 func _play(name: String, blend := 0.3, speed := 1.0) -> void:
-	if not ap.has_animation(name):
-		return
 	if clip == name and ap.is_playing():
 		ap.speed_scale = speed
 		return
+	var pick := _variant(name)
+	if pick == "":
+		return
 	clip = name
-	ap.play(name, blend)
+	_play_variant(pick, blend)
 	ap.speed_scale = speed
+
+
+func _play_variant(pick: String, blend: float) -> void:
+	variant = pick
+	ap.play(pick, blend)
+	var a := ap.get_animation(pick)
+	# A looping clip gets a cycle or three before a change; a one-shot plays out.
+	variant_until = t + (a.length * randi_range(1, 3) if a.loop_mode != Animation.LOOP_NONE else a.length) - minf(0.4, a.length * 0.3)
+
+
+# Called each frame: a role whose variant has had its time moves on to another.
+func _vary() -> void:
+	if not ROLES.has(clip) or t < variant_until:
+		return
+	var pick := _variant(clip)
+	if pick != "" and (pick != variant or ap.get_animation(pick).loop_mode == Animation.LOOP_NONE):
+		_play_variant(pick, 0.4)
+	else:
+		variant_until = t + 2.0
 
 
 func _set_state(s: String, seconds: float) -> void:
@@ -867,6 +947,7 @@ func _process(delta: float) -> void:
 		return
 	_think(delta)
 	_move(delta)
+	_vary()
 	ap.advance(delta)                       # clips first, then her arms, head and face on top
 	_tail_frame()
 	_carry_frame(delta)

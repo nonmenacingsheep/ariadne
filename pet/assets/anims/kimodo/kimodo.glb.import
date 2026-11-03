@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://dyme5xg2nou2"
-path="res://.godot/imported/kimodo.glb-2373558da027d91c2c9a6723b4c2f3a7.scn"
+path="res://.godot/imported/kimodo.glb-1a6d53aef4522ff38f8d8d6f73e31603.scn"
 
 [deps]
 
 source_file="res://assets/anims/kimodo/kimodo.glb"
-dest_files=["res://.godot/imported/kimodo.glb-2373558da027d91c2c9a6723b4c2f3a7.scn"]
+dest_files=["res://.godot/imported/kimodo.glb-1a6d53aef4522ff38f8d8d6f73e31603.scn"]
 
 [params]
 

@@ -10,12 +10,22 @@ K=/var/mnt/games/AI/Kimodo; OUT=$K/clips/aries; mkdir -p "$OUT"
 LIST=${1:-$HERE/kimodo_prompts.txt}; SEEDS=${2:-1}
 export HF_HOME=/var/mnt/games/AI/hf TEXT_ENCODER_DEVICE=cpu
 GATE=$HOME/.local/bin/godot-gate.sh; [ -x "$GATE" ] || GATE=
+# Llama (16 GB) loads once, in Kimodo's text-encoder server on this machine
+# only, with a share of the CPU; each kimodo_gen then just asks it.
+OMP_NUM_THREADS=${KIMODO_THREADS:-8} GRADIO_SERVER_NAME=127.0.0.1 "$K/.venv/bin/kimodo_textencoder" > "$OUT/../encoder.log" 2>&1 &
+ENC=$!; trap 'kill $ENC 2>/dev/null' EXIT
+echo "loading the text encoder..."
+for i in $(seq 1 180); do
+  curl -s -o /dev/null http://127.0.0.1:9550/ && break
+  kill -0 $ENC 2>/dev/null || { echo "the text encoder didn't start; see $OUT/../encoder.log"; exit 1; }
+  sleep 5
+done
 grep -v '^\s*#' "$LIST" | grep '|' | while IFS='|' read -r role secs prompt; do
   for s in $(seq 1 "$SEEDS"); do
     name=$role; [ "$SEEDS" -gt 1 ] && name="${role}_s$s"
     [ -f "$OUT/$name.bvh" ] && continue                     # already made: keep it
     echo "== $name: $prompt"
-    $GATE "$K/.venv/bin/kimodo_gen" "$prompt" --duration "$secs" --seed "$s" --output "$OUT/$name" --bvh --bvh_standard_tpose
+    OMP_NUM_THREADS=${KIMODO_THREADS:-8} $GATE "$K/.venv/bin/kimodo_gen" "$prompt" --duration "$secs" --seed "$s" --output "$OUT/$name" --bvh --bvh_standard_tpose
   done
 done
 $GATE blender -b --python "$HERE/bvh_to_glb.py" -- "$PET/assets/anims/kimodo/kimodo.glb" "$OUT"/*.bvh

@@ -58,8 +58,8 @@ the Live2D Jane). Friends bring their own.
 | # | Step | STATUS |
 |---|------|--------|
 | 1 | Jane into the 3D body: pet/import/jane_export.py -> pet/models/jane.glb + jane_bonemap.tres (humanoid), picked in Avatar > Model as 'Jane (3D)' and swapped live; toon shading + outlines; spring-bone jiggle (hair, ponytail, ears, chest, hips, belts, tie, bag, tassels) with a dragon tail; MMD faces blended per mood plus accents (hearts, blush, smirk, tears, gloom, sleepy, thoughtful, bored, dizzy, stars, sweat) for her looks and voice emotions | done |
-| 2 | Retarget pipeline: SOMA BVH -> Jane in Blender (bone map + rest-pose fix), bake, export clips; check against her current Quaternius set | todo |
-| 3 | Kimodo locally (ComfyUI nodes or its own runner): VRAM check on the 4070, a prompt list per state, batch-generate variations | todo |
+| 2 | Retarget pipeline: Kimodo BVH (standard T-pose rest) -> Blender BVH import -> GLB clip; a soma_bonemap.tres maps SOMA joints to Godot's humanoid, so clips play on every body like the Quaternius set | todo (needs a first clip) |
+| 3 | Kimodo locally: installed at /var/mnt/games/AI/Kimodo (.venv shares ComfyUI's torch 2.11/cu128 via a .pth; system cmake for its C++ part). Run with HF_HOME=/var/mnt/games/AI/hf TEXT_ENCODER_DEVICE=cpu (the Llama-3-8B text encoder needs ~17 GB VRAM on GPU; on CPU ~16 GB RAM, Kimodo itself <3 GB VRAM). `kimodo_gen "prompt" --duration N --seed S --output X --bvh --bvh_standard_tpose`. Waiting on: Meta's gated Llama access + his HF token (`hf auth login`), and disk (games drive 31 GB free). Then: prompt list per state, batch variations | blocked (his HF access) |
 | 4 | MotionBricks locally: install, TensorRT plan, record locomotion clips (walk/run/strafe/crouch x styles, starts/stops/turns) | todo |
 | 5 | State graph in pet.gd: states, transitions, variation picking, mood weights, distance-matched starts/stops, sit/lie on widgets | todo |
 | 6 | Live layers: gaze, spring bones, TTS faces, lip sync, foot IK | todo |

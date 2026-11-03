@@ -66,6 +66,15 @@ the Live2D Jane). Friends bring their own.
 | 7 | Her control: the avatar tool gains the new states (sit, lie, stretch, wave...) | todo |
 | 8 | ~~Live MotionBricks sidecar~~ | dropped |
 
+## Next (Ronald, 2026-11-02)
+
+- A cutesy walk when she feels light (a mood-picked walk role: skip-walk,
+  bouncy steps) beside the normal one.
+- Her own furniture: a bed she sleeps in, a computer she uses, and other
+  props like that, placed on the desk, with clips for using them.
+- First: get her looking professional (polish pass: transitions, no foot
+  sliding, tail at rest when she's down, soft variant swaps).
+
 ## Open questions
 
 - Clothing: the default outfit, and whether the jacket/weapon are toggles.

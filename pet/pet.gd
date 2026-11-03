@@ -384,8 +384,10 @@ func _tail_frame() -> void:
 	if tail_bones.is_empty():
 		return
 	var pace := 0.6 if state == "sleep" else (1.8 if state in ["dance", "held", "fall", "react"] else 1.0)
+	# Sitting or asleep, it lies along the ground instead of curling up.
+	var lift := 0.25 if state in ["sit", "sleep"] else 1.0
 	for i in tail_bones.size():
-		var curl := 0.22 + 0.06 * sin(t * 0.7 * pace - i * 0.9)          # lifts it off the floor, S-shaped
+		var curl := (0.22 + 0.06 * sin(t * 0.7 * pace - i * 0.9)) * lift  # lifts it off the floor, S-shaped
 		var side := (0.35 if i == 0 else 0.05) * sin(t * 1.3 * pace - i * 0.6)
 		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
 		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
@@ -631,11 +633,10 @@ func _command(msg: Dictionary) -> void:
 			_feel(_look_key(str(msg.get("look", ""))), 0.8, float(msg.get("seconds", 4)))
 		"sleep":
 			_set_state("sleep", 1e9)
-			_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)
+			_settle_to_sleep()
 		"wake":
 			if state == "sleep":
-				_set_state("idle", 2.0)
-				_play("Idle", 0.5)
+				_wake()
 
 
 # A jump that peaks a little above both ends and lands on (tx, ty): onto a
@@ -674,8 +675,7 @@ func _tell(delta: float) -> void:
 func _stir() -> void:
 	last_activity = t
 	if state == "sleep":
-		_set_state("idle", 2.0)
-		_play("Idle")
+		_wake()
 
 
 # --- feelings and glances ---------------------------------------------------
@@ -840,13 +840,63 @@ func _play_variant(pick: String, blend: float) -> void:
 	variant_until = t + (a.length * randi_range(1, 3) if a.loop_mode != Animation.LOOP_NONE else a.length) - minf(0.4, a.length * 0.3)
 
 
+# A one-shot transition into a role: sitting down onto a widget, getting up
+# off the floor. The role's pool takes over when it ends (_vary).
+func _play_via(first: String, role: String, blend := 0.3) -> void:
+	if not ap.has_animation(first):
+		_play(role, blend)
+		return
+	clip = role
+	_play_variant(first, blend)
+	ap.speed_scale = 1.0
+
+
+# Longer legs take longer strides: WALK_SPEED was set for Aries' (hips 0.795 m),
+# so a taller body moves faster at the same step rate, or her feet slide.
+func _stride() -> float:
+	return skel.motion_scale / 0.795 if skel and skel.motion_scale > 0.1 else 1.0
+
+
+# How far into the current clip (0-1).
+func _progress() -> float:
+	var len := ap.current_animation_length
+	return clampf(ap.current_animation_position / len, 0.0, 1.0) if len > 0.0 else 1.0
+
+
+# Falling asleep: on a widget she sits down first (unless already seated),
+# on the floor she settles into a nap.
+func _settle_to_sleep() -> void:
+	if floor_y > 0.01:
+		if clip.begins_with("Sitting"):
+			_play("Sitting_Idle", 1.0, 0.6)
+		else:
+			_play_via(_variant_of("sit_down_"), "Sitting_Idle", 0.5)
+	else:
+		_play("Crouch_Idle", 1.0, 0.6)
+
+
+# Waking: from a floor nap she gets up (get_up_*), from a widget seat she
+# just comes to.
+func _wake() -> void:
+	_set_state("idle", 2.5)
+	if clip == "Crouch_Idle" and floor_y < 0.01:
+		_play_via(_variant_of("get_up_"), "Idle", 0.4)
+	else:
+		_play("Idle", 0.5)
+
+
+func _variant_of(prefix: String) -> String:
+	var names := Array(ap.get_animation_list()).filter(func(a): return String(a).begins_with(prefix))
+	return names.pick_random() if not names.is_empty() else ""
+
+
 # Called each frame: a role whose variant has had its time moves on to another.
 func _vary() -> void:
 	if not ROLES.has(clip) or t < variant_until:
 		return
 	var pick := _variant(clip)
 	if pick != "" and (pick != variant or ap.get_animation(pick).loop_mode == Animation.LOOP_NONE):
-		_play_variant(pick, 0.4)
+		_play_variant(pick, 0.6)                # a long blend: a swap, not a snap
 	else:
 		variant_until = t + 2.0
 
@@ -896,7 +946,7 @@ func _choose() -> void:
 		_set_state("idle", 3.0)
 	elif r < 0.7 and on_widget and allow["sit_on_widgets"]:
 		_set_state("sit", randf_range(10, 25))
-		_play("Sitting_Idle", 0.5)
+		_play_via(_variant_of("sit_down_"), "Sitting_Idle", 0.4)
 	elif r < 0.78:
 		_set_state("idle", randf_range(4, 8))
 		_play("Idle_FoldArms", 0.4)
@@ -1013,7 +1063,7 @@ func _think(_delta: float) -> void:
 		_play("Idle_FoldArms", 0.4)          # arms round the plush
 	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit"]:
 		_set_state("sleep", 1e9)
-		_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)
+		_settle_to_sleep()
 		return
 	if state == "fetch":
 		return
@@ -1037,7 +1087,7 @@ func _move(delta: float) -> void:
 	match state:
 		"wander":
 			var dir := signf(target_x - pos.x)
-			pos.x += dir * WALK_SPEED * delta
+			pos.x += dir * WALK_SPEED * _stride() * delta
 			yaw_target = dir * 1.2
 			if absf(target_x - pos.x) < 0.05:
 				_set_state("idle", randf_range(2, 5))
@@ -1050,7 +1100,7 @@ func _move(delta: float) -> void:
 			elif pos.x < floor_span.x or pos.x > floor_span.y:
 				# Walked off the edge of a widget: down she goes.
 				_set_state("fall", 99.0)
-				vel = Vector2(dir * WALK_SPEED, 0.0)
+				vel = Vector2(dir * WALK_SPEED * _stride(), 0.0)
 				_play("Jump", 0.15)
 		"fall":
 			var before := pos.y
@@ -1091,7 +1141,7 @@ func _move(delta: float) -> void:
 					_play("Jump_Land", 0.1)
 		"fetch":
 			var fdir := signf(target_x - pos.x)
-			pos.x += fdir * WALK_SPEED * 2.4 * delta
+			pos.x += fdir * WALK_SPEED * 2.4 * _stride() * delta
 			yaw_target = fdir * 1.3
 			pos.y = floor_y
 			if absf(target_x - pos.x) < 0.1:
@@ -1117,10 +1167,19 @@ func _move(delta: float) -> void:
 
 
 func _place_body() -> void:
-	var sitting := clip.begins_with("Sitting") and floor_y > 0.01
+	# Seated on a widget, her body drops by the seat height; sitting down and
+	# getting up, it follows the clip's hips so she lowers onto the edge and
+	# rises off it instead of popping.
+	var sit := 0.0
+	if clip.begins_with("Sitting") and floor_y > 0.01:
+		sit = 1.0
+		if variant.begins_with("sit_down_"):
+			sit = smoothstep(0.38, 0.72, _progress())
+		elif variant == "Sitting_Exit":
+			sit = 1.0 - smoothstep(0.15, 0.75, _progress())
 	# SIT_DROP was measured on Aries (hips 0.795 m); a taller body sits lower.
 	var drop := SIT_DROP * (skel.motion_scale / 0.795 if skel and skel.motion_scale > 0.1 else 1.0)
-	body.position = Vector3(pos.x, pos.y - (drop if sitting else 0.0), 0.0)
+	body.position = Vector3(pos.x, pos.y - drop * sit, 0.0)
 	# Roll about the point she's held by (her upper chest), not her feet.
 	var pivot := Vector3(0, 1.3, 0)
 	body.rotation = Vector3(0, yaw, roll)
@@ -1447,9 +1506,43 @@ func _find_shapes(n: Node, shape: String) -> Array:
 	return found
 
 
+# PET_SNAPSHOT_SEQ=sit|wake|walk: film one behaviour over time, a frame every
+# 0.4 s (path_seq_00.png ...), with the body running as it does live.
+func _snapshot_seq(what: String) -> void:
+	for i in 3:
+		await get_tree().process_frame
+	_sync_screen()
+	var on_widget := what == "sit"
+	pos = Vector2(screen.x / PPM / 2.0, 0.9 if on_widget else 0.0)
+	floor_y = pos.y
+	floor_span = Vector2(0.0, 99.0)
+	yaw = 0.0
+	match what:
+		"sit":
+			_set_state("sit", 99.0)
+			_play_via(_variant_of("sit_down_"), "Sitting_Idle", 0.4)
+		"wake":
+			_set_state("sleep", 1e9)
+			_play("Crouch_Idle", 0.0, 0.6)
+			await get_tree().create_timer(0.5).timeout
+			_wake()
+		"walk":
+			target_x = pos.x + 3.0
+			_set_state("wander", 99.0)
+			_play("Walk", 0.3, 0.75)
+	for i in 14:
+		await get_tree().create_timer(0.4).timeout
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_seq_%02d.png" % i))
+	get_tree().quit()
+
+
 # PET_SNAPSHOT=path: render her in a few clips, one image each, then quit.
 func _snapshot() -> void:
 	floors.append([0.9, 0.0, 99.0])
+	if OS.get_environment("PET_SNAPSHOT_SEQ") != "":
+		await _snapshot_seq(OS.get_environment("PET_SNAPSHOT_SEQ"))
+		return
 	var shots := [["Idle", 0.0, 0.0, "idle"], ["Walk", 1.2, 0.0, "walk"], ["Sitting_Idle", 0.0, 0.9, "sit"],
 			["Dance", 0.0, 0.0, "dance"], ["Idle_Talking", 0.0, 0.0, "talk"], ["Idle", 0.0, 0.0, "slab"],
 			["Jump", 0.0, 0.6, "thrown"]]

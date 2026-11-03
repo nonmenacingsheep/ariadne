@@ -84,21 +84,6 @@ func mood() -> String:
 	return "content"
 
 
-# What she'd like to do now, if anything: pet.gd asks before choosing.
-func wish() -> String:
-	var allow: Dictionary = pet.allow
-	if needs["energy"] < 0.15 and allow["nap"]:
-		return "sleep"
-	if needs["affection"] < 0.25 and randf() < 0.5 and allow["seek_cursor"]:
-		return "find_him"
-	if needs["fun"] < 0.3 and randf() < 0.4:
-		if pet.spotify_playing and allow["dance_to_music"]:
-			return "dance"
-		if allow["play_ball"]:
-			return "ball"
-	return ""
-
-
 func _save() -> void:
 	var data := {"needs": needs, "mood": mood(), "holding": holding, "state": pet.state,
 		"updated": Time.get_unix_time_from_system()}

@@ -175,6 +175,7 @@ var slab_label: Label3D
 var carry_pose := {}                       # arm bones -> rotation, sampled from Walk_Carry
 var crumbs: CPUParticles3D
 var life                                   # life.gd: needs, items, dropped files
+var brain                                  # brain.gd: what she does with her time
 var drag_from := Vector2.ZERO
 var drag_moved := false
 var last_rect := Rect2()
@@ -199,6 +200,7 @@ func _ready() -> void:
 	life = load("res://life.gd").new()
 	add_child(life)
 	life.setup(self)
+	brain = load("res://brain.gd").new(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
 	_land()
@@ -647,6 +649,7 @@ func _on_message(msg: Dictionary) -> void:
 # Her avatar tool (adapters/avatar.py): go somewhere, dance, stop, a face, sleep, wake.
 func _command(msg: Dictionary) -> void:
 	_stir()
+	brain.drop()                               # his order (through her) comes before her plans
 	match str(msg.get("cmd", "")):
 		"go":
 			var tx := pos.x
@@ -715,7 +718,7 @@ func _tell(delta: float) -> void:
 			mood = k
 	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
 		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
-		"dancing": state == "dance", "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
+		"dancing": state == "dance", "doing": brain.doing, "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
 		"own": ["smile", "angry", "tears", "wide", "smirk"], "looks": LOOK_FACE.keys()}
 	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
 	if f:
@@ -916,6 +919,12 @@ const ROLES := {
 	"Strafe_Left": [["strafe_left_", 1.0], ["Walk", 0.01]],
 	"Strafe_Right": [["strafe_right_", 1.0], ["Walk", 0.01]],
 	"Walk_Back": [["walk_back_", 1.0], ["Walk", 0.01]],
+	# The brain's activities (brain.gd): a look round, a stretch, sitting or lying on the floor, a cheer.
+	"LookAround": [["look_around_", 1.0], ["Idle", 0.01]],
+	"Stretch": [["stretch_", 1.0], ["yawn_", "tired"], ["Idle", 0.01]],
+	"FloorSit": [["floor_sit_", 1.0], ["Crouch_Idle", 0.01]],
+	"LieDown": [["lie_idle_", 1.0], ["Crouch_Idle", 0.01]],
+	"Cheer": [["cheer_", 1.0], ["wave_", 0.5], ["Yes", 0.01]],
 }
 const GAIT_PLAYBACK := 0.8                 # a touch slower than Kimodo's brisk takes; speed follows
 # Played once and held at their end (a nod, being knocked over), not re-picked.
@@ -1176,6 +1185,7 @@ func _settle_to_sleep() -> void:
 # Waking: from a floor nap she gets up (get_up_*), from a widget seat she
 # just comes to.
 func _wake() -> void:
+	brain.drop()
 	# Getting up from wherever she was comes first (the stance moves); off
 	# the floor, now and then she comes up through a crouch, stretching awake.
 	if floor_y < 0.01 and randf() < 0.35 and _variant_of("crouch_idle_") != "":
@@ -1214,56 +1224,18 @@ func _set_state(s: String, seconds: float) -> void:
 	state_until = t + seconds
 
 
-# What she does next when she's free: mostly idle and wandering, sometimes
-# sitting on a widget's edge, folding her arms, or dancing if music is on.
+# What she does next when she's free: the brain's next step (brain.gd).
 func _choose() -> void:
-	var on_widget := floor_y > 0.01
-	match life.wish():
-		"sleep":
-			_set_state("sleep", 1e9)
-			_play("Sitting_Idle" if on_widget else "Crouch_Idle", 1.0, 0.6)
-			return
-		"find_him":
-			var cursor := DisplayServer.mouse_get_position() - get_window().position
-			target_x = clampf(cursor.x / PPM, floor_span.x, floor_span.y)
-			target_z = -0.2                        # to the front, by you
-			if _to_target().length() > 0.3:
-				_set_off(20.0)
-				return
-			_set_state("react", 2.0)
-			_play("Interact", 0.3)
-			_face_front(2.5)
-			return
-		"ball":
-			life.play_ball()
-			return
-		"dance":
-			_set_state("dance", randf_range(8, 14))
-			_play("Dance", 0.4, 0.9)
-			return
-	var r := randf()
-	if spotify_playing and r < 0.3 and allow["dance_to_music"]:
-		_set_state("dance", randf_range(6, 12))
-		_play("Dance", 0.4, 0.9)
-	elif r < 0.55 and allow["wander"]:
-		target_x = clampf(pos.x + randf_range(-2.5, 2.5), floor_span.x, floor_span.y)
-		target_z = randf_range(-room_depth, 0.0) if floor_y < 0.01 else 0.0
-		if _to_target().length() > 0.3:
-			_set_off(20.0)
-			return
-		_set_state("idle", 3.0)
-	elif r < 0.7 and on_widget and allow["sit_on_widgets"]:
-		_set_state("sit", randf_range(10, 25))
-		_play("Sitting_Idle", 0.4)
-	elif r < 0.62 and not on_widget and _variant_of("crouch_idle_") != "" and randf() < 0.4:
-		_set_state("idle", randf_range(4, 8))         # crouches to look at something on the floor
-		_play("Crouching", 0.4)
-	elif r < 0.78:
-		_set_state("idle", randf_range(4, 8))
-		_play("Idle_FoldArms", 0.4)
-	else:
-		_set_state("idle", randf_range(3, 7))
-		_play("Idle", 0.4)
+	brain.next()
+
+
+func _nap() -> void:
+	_set_state("sleep", 1e9)
+	_settle_to_sleep()
+
+
+func _play_ball() -> void:
+	life.play_ball()
 
 
 # --- every frame ------------------------------------------------------------
@@ -1374,7 +1346,7 @@ func _think(_delta: float) -> void:
 		return
 	if state == "hug":
 		_play("Idle_FoldArms", 0.4)          # arms round the plush
-	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit"]:
+	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit", "rest"]:
 		_set_state("sleep", 1e9)
 		_settle_to_sleep()
 		return
@@ -1416,7 +1388,7 @@ func _move(delta: float) -> void:
 			if gait == "walk":
 				yaw_target = atan2(m.x, m.y)       # facing where she's going (strafing and backing keep it)
 			if to.length() < 0.05:
-				_set_state("idle", randf_range(2, 5))
+				_set_state("idle", _pause())
 				_play("Idle", 0.3)
 				yaw_target = 0.0
 			elif (pos.x < floor_span.x or pos.x > floor_span.y) and not allow["walk_off_edges"]:
@@ -1435,7 +1407,7 @@ func _move(delta: float) -> void:
 				pos.x = at.x
 				depth = at.y
 			else:                                  # stopped: the idle took over
-				_set_state("idle", randf_range(2, 5))
+				_set_state("idle", _pause())
 				yaw_target = 0.0
 		"fall":
 			var before := pos.y
@@ -1503,6 +1475,11 @@ func _move(delta: float) -> void:
 	if t > look_until and state not in ["wander", "stopping"]:
 		yaw_target = sin(t * 0.17) * 0.25
 	yaw = lerp_angle(yaw, yaw_target, clampf(delta * 5.0, 0.0, 1.0))
+
+
+# Arrived: a moment's pause, short when her plan has more to do there.
+func _pause() -> float:
+	return 0.25 if brain.plan_left() else randf_range(2, 5)
 
 
 func _place_body() -> void:
@@ -1680,6 +1657,7 @@ func _input(event: InputEvent) -> void:
 			drag_moved = false
 			held_vel = Vector2.ZERO
 			_stir()
+			brain.drop()
 			_set_state("held", 1e9)
 			_feel("surprised", 0.4, 1.0)
 		else:
@@ -1874,6 +1852,9 @@ func _snapshot_seq(what: String) -> void:
 			_play("Crouch_Idle", 0.0, 0.6)
 			await get_tree().create_timer(0.5).timeout
 			_wake()
+		"brain":                                   # her own choices, sped up (PET_TIME_SCALE)
+			Engine.time_scale = float(OS.get_environment("PET_TIME_SCALE")) if OS.get_environment("PET_TIME_SCALE") != "" else 1.0
+			_set_state("idle", 0.5)
 		"deep":
 			target_x = pos.x + 2.5
 			target_z = -room_depth                 # into the back of the room

@@ -10,3 +10,4 @@ phone_1|8|A woman sits cross-legged on the floor scrolling on a phone held in he
 meditate_1|10|A woman sits cross-legged on the floor meditating with her hands resting on her knees, breathing slowly.|floor_sit_1:0|floor_sit_1:0
 sleep_bed_1|10|A woman lies on her back asleep, breathing slowly and shifting a little.|lie_idle_1:0|lie_idle_1:0
 sleep_bed_2|10|A woman lies asleep and rolls onto her side, curling up.|lie_idle_1:0|lie_idle_2:0
+# workout_situp_2 (pinned lying both ends) came out static: Kimodo only lay there. Not used.

@@ -247,6 +247,7 @@ func _load_body(path: String) -> void:
 		if i >= 0:
 			bones[b] = i
 	_load_clips()
+	_measure_legs()
 	carry_pose = {}
 	_sample_carry_pose()
 	clip = ""
@@ -619,8 +620,7 @@ func _command(msg: Dictionary) -> void:
 			tx = clampf(tx, 0.4, screen.x / PPM - 0.4)
 			if widget == "" and floor_y < 0.01 and state != "fall":
 				target_x = tx                          # walking along the floor
-				_set_state("wander", 30.0)
-				_play("Walk", 0.3, 0.75)
+				_set_off(30.0)
 			else:
 				_jump(tx, ty)
 		"dance":
@@ -731,10 +731,37 @@ func _load_clips() -> void:
 					if not clip_lib.has_animation(name):
 						var anim := player.get_animation(name)
 						if String(path).begins_with(KIMODO_DIR):
+							if GAIT_PREFIXES.any(func(px): return String(name).begins_with(px)):
+								gait_velocity[name] = _ground_velocity(anim)
+								anim = anim.duplicate(true)
+								anim.loop_mode = Animation.LOOP_LINEAR
 							anim = _in_place(anim)
 						clip_lib.add_animation(name, anim)
 			src.free()
 	ap.add_animation_library("", clip_lib)
+
+
+# Locomotion loops (pet/import/kimodo_loop.py): each one's ground velocity,
+# measured off its hips before the travel is taken out, in hip-heights per
+# second, clip space (x her left, z forward). Her body moves her exactly that
+# fast (times her hip height and the playback speed), so her feet stay planted.
+const GAIT_PREFIXES := ["walk_", "stroll_", "strafe_", "walk_back_"]
+var gait_velocity := {}
+
+
+func _ground_velocity(anim: Animation) -> Vector2:
+	for tr in anim.get_track_count():
+		if anim.track_get_type(tr) == Animation.TYPE_POSITION_3D and String(anim.track_get_path(tr)).ends_with(":Hips"):
+			var n := anim.track_get_key_count(tr)
+			if n < 2:
+				break
+			var a: Vector3 = anim.track_get_key_value(tr, 0)
+			var b: Vector3 = anim.track_get_key_value(tr, n - 1)
+			var span := anim.track_get_key_time(tr, n - 1) - anim.track_get_key_time(tr, 0)
+			# A loop's last key is one frame short of the cycle: travel per frame times the frames.
+			var per := span / maxf(n - 1, 1)
+			return Vector2(b.x - a.x, b.z - a.z) / maxf(span, 0.001) * (span / (span + per))
+	return Vector2.ZERO
 
 
 # Kimodo clips travel (a walk goes somewhere); her body moves her itself, so
@@ -774,7 +801,15 @@ const ROLES := {
 	"Sitting_Idle": [["Sitting_Idle", 1.0], ["sit_idle_", 1.5]],
 	"Crouch_Idle": [["Crouch_Idle", 1.0], ["nap_", 1.5], ["floor_sit_", 1.0]],   # on the floor (asleep)
 	"Dance": [["Dance", 1.0], ["dance_", 1.5]],
+	# Getting about: her walks (a cute bouncy one when she feels light), side
+	# steps facing you, and backing up. The old stock walk only if none exist.
+	"Walk": [["walk_1", 1.0], ["walk_2", 1.0], ["walk_3", 1.0], ["stroll_", 1.2], ["walk_cute_", "light"],
+			["Walk", 0.01]],
+	"Strafe_Left": [["strafe_left_", 1.0], ["Walk", 0.01]],
+	"Strafe_Right": [["strafe_right_", 1.0], ["Walk", 0.01]],
+	"Walk_Back": [["walk_back_", 1.0], ["Walk", 0.01]],
 }
+const GAIT_PLAYBACK := 0.8                 # a touch slower than Kimodo's brisk takes; speed follows
 var variant := ""                          # the clip actually playing for the role in `clip`
 var variant_until := 0.0
 
@@ -787,6 +822,8 @@ func _feeling(f: String) -> float:
 		"bored": return maxf(0.0, 0.7 - float(n.get("fun", 0.6))) * 2.0 + float(moods.get("bored", 0.0))
 		"tired": return maxf(0.0, 0.6 - float(n.get("energy", 0.8))) * 2.5 + float(moods.get("sleepy", 0.0))
 		"shy": return 0.2 + 2.0 * float(moods.get("blush", 0.0))
+		"light": return 0.15 + 3.0 * float(moods.get("joy", 0.0)) + 2.0 * float(moods.get("stars", 0.0)) \
+				+ 2.0 * float(moods.get("hearts", 0.0)) + maxf(0.0, float(n.get("energy", 0.8)) - 0.6) * 2.0
 	return 0.0
 
 
@@ -849,6 +886,65 @@ func _play_via(first: String, role: String, blend := 0.3) -> void:
 	clip = role
 	_play_variant(first, blend)
 	ap.speed_scale = 1.0
+
+
+# Setting off toward target_x. A short hop sideways she side-steps, still
+# facing you; one behind the way she faces, sometimes she backs up; a longer
+# trip starts with a couple of side steps and turns into a straight walk.
+var gait := "walk"                         # walk | strafe | back | lead (side steps, then turning to walk)
+var gait_turn_at := 0.0
+var gait_from := 0.0                      # when she set off: speed eases in with the clip's blend
+func _set_off(seconds: float) -> void:
+	_set_state("wander", seconds)
+	gait_from = t
+	var d := target_x - pos.x
+	var facing := signf(yaw) if absf(yaw) > 0.3 else 0.0
+	if absf(d) < 0.9:
+		gait = "back" if facing != 0.0 and signf(d) != facing and randf() < 0.6 else "strafe"
+	elif randf() < 0.55:
+		gait = "lead"
+		gait_turn_at = t + randf_range(0.5, 0.9)
+	else:
+		gait = "walk"
+	_gait_clip()
+
+
+func _gait_clip() -> void:
+	var d := signf(target_x - pos.x)
+	match gait:
+		"strafe", "lead":
+			# Facing you, her left is the screen's right.
+			_play("Strafe_Left" if d > 0.0 else "Strafe_Right", 0.3, GAIT_PLAYBACK)
+		"back":
+			_play("Walk_Back", 0.3, GAIT_PLAYBACK)
+		_:
+			_play("Walk", 0.35, GAIT_PLAYBACK)
+
+
+# How fast her body moves for the clip playing: its measured stride if it's
+# a locomotion loop, else the old fixed pace.
+# Stride is set by leg length, not hip height: the clips' source skeleton
+# (Kimodo's SOMA) has hips at 1 m and 0.855 m from hip joint to ankle, and the
+# velocity is in its hip-heights, so her legs over SOMA's give her pace.
+# (Scaling by hip height left Jane 13% fast: her feet slid forward.)
+const SOMA_LEG := 0.855
+var leg_length := 0.0
+func _gait_speed() -> float:
+	# Easing in over the first 0.35 s, while the walk blends in from standing
+	# (at full speed at once, her planted feet skated those first frames).
+	var ease := smoothstep(0.0, 0.35, t - gait_from)
+	if gait_velocity.has(variant) and leg_length > 0.1:
+		return (gait_velocity[variant] as Vector2).length() * (leg_length / SOMA_LEG) * ap.speed_scale * ease
+	return WALK_SPEED * _stride() * ease
+
+
+func _measure_legs() -> void:
+	leg_length = 0.0
+	var ids := ["LeftUpperLeg", "LeftLowerLeg", "LeftFoot"].map(func(b): return skel.find_bone(b))
+	if ids.has(-1):
+		return
+	var p: Array = ids.map(func(i): return skel.get_bone_global_rest(i).origin)
+	leg_length = (p[0] as Vector3).distance_to(p[1]) + (p[1] as Vector3).distance_to(p[2])
 
 
 # Longer legs take longer strides: WALK_SPEED was set for Aries' (hips 0.795 m),
@@ -919,8 +1015,7 @@ func _choose() -> void:
 			var cursor := DisplayServer.mouse_get_position() - get_window().position
 			target_x = clampf(cursor.x / PPM, floor_span.x, floor_span.y)
 			if absf(target_x - pos.x) > 0.3:
-				_set_state("wander", 20.0)
-				_play("Walk", 0.3, 0.75)
+				_set_off(20.0)
 				return
 			_set_state("react", 2.0)
 			_play("Interact", 0.3)
@@ -940,8 +1035,7 @@ func _choose() -> void:
 	elif r < 0.55 and allow["wander"]:
 		target_x = clampf(pos.x + randf_range(-2.5, 2.5), floor_span.x, floor_span.y)
 		if absf(target_x - pos.x) > 0.3:
-			_set_state("wander", 20.0)
-			_play("Walk", 0.3, 0.75)
+			_set_off(20.0)
 			return
 		_set_state("idle", 3.0)
 	elif r < 0.7 and on_widget and allow["sit_on_widgets"]:
@@ -1087,8 +1181,17 @@ func _move(delta: float) -> void:
 	match state:
 		"wander":
 			var dir := signf(target_x - pos.x)
-			pos.x += dir * WALK_SPEED * _stride() * delta
-			yaw_target = dir * 1.2
+			if gait == "lead" and t > gait_turn_at:
+				gait = "walk"                      # done side-stepping: turn and walk straight
+				_gait_clip()
+			pos.x += dir * _gait_speed() * delta
+			match gait:
+				"strafe", "lead":
+					yaw_target = 0.0               # facing you
+				"back":
+					yaw_target = -dir * 1.2        # facing away from where she's going
+				_:
+					yaw_target = dir * 1.2
 			if absf(target_x - pos.x) < 0.05:
 				_set_state("idle", randf_range(2, 5))
 				_play("Idle", 0.3)
@@ -1100,7 +1203,7 @@ func _move(delta: float) -> void:
 			elif pos.x < floor_span.x or pos.x > floor_span.y:
 				# Walked off the edge of a widget: down she goes.
 				_set_state("fall", 99.0)
-				vel = Vector2(dir * WALK_SPEED * _stride(), 0.0)
+				vel = Vector2(dir * _gait_speed(), 0.0)
 				_play("Jump", 0.15)
 		"fall":
 			var before := pos.y
@@ -1506,7 +1609,7 @@ func _find_shapes(n: Node, shape: String) -> Array:
 	return found
 
 
-# PET_SNAPSHOT_SEQ=sit|wake|walk: film one behaviour over time, a frame every
+# PET_SNAPSHOT_SEQ=sit|wake|walk|strafe|back|lead: film one behaviour over time, a frame every
 # 0.4 s (path_seq_00.png ...), with the body running as it does live.
 func _snapshot_seq(what: String) -> void:
 	for i in 3:
@@ -1526,13 +1629,23 @@ func _snapshot_seq(what: String) -> void:
 			_play("Crouch_Idle", 0.0, 0.6)
 			await get_tree().create_timer(0.5).timeout
 			_wake()
-		"walk":
-			target_x = pos.x + 3.0
-			_set_state("wander", 99.0)
-			_play("Walk", 0.3, 0.75)
+		"walk", "strafe", "back", "lead":
+			target_x = pos.x + (0.7 if what in ["strafe", "back"] else 3.0)
+			if what == "back":
+				yaw = -1.2                         # facing left, backing to the right
+			_set_off(99.0)
+			gait = what
+			gait_turn_at = t + 0.8
+			_gait_clip()
+	var dt := float(OS.get_environment("PET_SEQ_DT")) if OS.get_environment("PET_SEQ_DT") != "" else 0.4
+	var feet := OS.get_environment("PET_SEQ_FEET") != ""      # log where her feet are, for slide checks
 	for i in 14:
-		await get_tree().create_timer(0.4).timeout
+		await get_tree().create_timer(dt).timeout
 		await RenderingServer.frame_post_draw
+		if feet:
+			for b in ["LeftToes", "RightToes"]:
+				var g := skel.global_transform * skel.get_bone_global_pose(skel.find_bone(b)).origin
+				print("FOOT %d %s %.3f %.3f" % [i, b, g.x, g.y])
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_seq_%02d.png" % i))
 	get_tree().quit()
 

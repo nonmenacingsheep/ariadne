@@ -1,0 +1,5 @@
+# Sidesteps, walking backwards, a slow stroll: cut into loops by kimodo_loop.py.
+strafe_left_1|8|A woman walks sideways to her left with small side steps, keeping her body facing forward.
+strafe_right_1|8|A woman walks sideways to her right with small side steps, keeping her body facing forward.
+walk_back_1|8|A woman walks backwards slowly, carefully stepping back.
+stroll_1|8|A woman strolls forward slowly and casually, in no hurry.

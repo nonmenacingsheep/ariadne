@@ -1,0 +1,6 @@
+# Walk cycles: long takes, cut into seamless loops by kimodo_loop.py.
+walk_1|8|A woman walks forward at a relaxed, natural pace with her arms swinging gently.
+walk_2|8|A woman walks forward gracefully with a slight sway of her hips.
+walk_3|8|A woman walks forward confidently at a steady pace.
+walk_cute_1|8|A cheerful woman walks forward with light, bouncy little steps, swinging her arms happily.
+walk_cute_2|8|A happy young woman walks forward with a playful skip in her step.

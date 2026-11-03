@@ -62,7 +62,7 @@ GATE=$HOME/.local/bin/godot-gate.sh; [ -x "$GATE" ] || GATE=
 if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -n "$GODOT" ] && [ -x "$GODOT" ]; then
   # A fresh copy has never been imported (pet/.godot isn't in git), and Godot
   # can't load the model or the animations until it has: do it once.
-  if [ ! -d pet/.godot/imported ] || [ pet/models/aries.vrm -nt pet/.godot/imported ]; then
+  if [ ! -d pet/.godot/imported ] || [ -n "$(find pet/models -newer pet/.godot/imported -name '*.glb' -o -newer pet/.godot/imported -name '*.vrm' 2>/dev/null)" ]; then
     echo "preparing her 3D body (first run, a few seconds)"
     timeout 300 "$GODOT" --headless --path pet --import >/dev/null 2>&1
   fi

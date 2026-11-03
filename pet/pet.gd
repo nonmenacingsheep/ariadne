@@ -69,6 +69,8 @@ var body: Node3D
 var skel: Skeleton3D
 var ap: AnimationPlayer
 var face := {}                            # key -> [[mesh, index], ...]
+var body_path := ""                       # the model she's wearing (res://models/...)
+var clip_lib: AnimationLibrary            # the humanoid clips, shared by every body
 var bones := {}
 var cam: Camera3D
 var screen := Vector2(3440, 1366)
@@ -132,27 +134,12 @@ func _ready() -> void:
 	get_viewport().transparent_bg = true
 	get_window().title = "ariadne2-pet"      # KWin finds her by this (desk/kwin_layer.js)
 	_cover_ultrawide()
-	# PET_MODEL picks another 3D body (a GLB imported with the humanoid bone map,
-	# e.g. res://models/jane.glb; docs/JANE_3D_PLAN.md).
-	var model_path := OS.get_environment("PET_MODEL")
-	body = (load(model_path if model_path != "" else MODEL) as PackedScene).instantiate()
-	add_child(body)
-	skel = _find(body, "Skeleton3D")
-	# MMD-style bodies tuck the skin in under clothes with "Shrink_for..." shapes.
-	for m in body.find_children("*", "MeshInstance3D", true, false):
-		for i in (m as MeshInstance3D).mesh.get_blend_shape_count() if (m as MeshInstance3D).mesh else 0:
-			if String((m as MeshInstance3D).mesh.get_blend_shape_name(i)).begins_with("Shrink_for"):
-				(m as MeshInstance3D).set_blend_shape_value(i, 1.0)
-	for key in FACE:
-		face[key] = _find_shapes(body, FACE[key])
+	# PET_MODEL picks the 3D body for a test run (PET_SNAPSHOT); otherwise
+	# the Avatar "Model" setting does (_read_settings), Aries until it's read.
+	var forced := OS.get_environment("PET_MODEL")
+	_load_body(forced if forced != "" else MODEL)
 	for k in moods:
 		mood_target[k] = moods[k]
-	for b in ["Neck", "Head", "Hips"]:
-		var i := skel.find_bone(b)
-		if i >= 0:
-			bones[b] = i
-	_load_clips()
-	_sample_carry_pose()
 	_make_slab()
 	_camera()
 	life = load("res://life.gd").new()
@@ -166,6 +153,46 @@ func _ready() -> void:
 		_snapshot.call_deferred()
 	else:
 		_connect()
+
+
+# --- which body ---------------------------------------------------------------
+# A 3D model in models/: aries.vrm, or a GLB imported with the humanoid bone
+# map (models/jane.glb + jane_bonemap.tres; docs/JANE_3D_PLAN.md). The Avatar
+# "Model" setting names it ("aries", or "3d:<file stem>"); a change swaps
+# bodies while she runs.
+func _model_path(setting: String) -> String:
+	if setting == "aries":
+		return MODEL
+	if setting.begins_with("3d:"):
+		return "res://models/%s.glb" % setting.substr(3)
+	return ""
+
+
+func _load_body(path: String) -> void:
+	if body:
+		body.free()                        # its AnimationPlayer goes with it
+	body = (load(path) as PackedScene).instantiate()
+	add_child(body)
+	body_path = path
+	skel = _find(body, "Skeleton3D")
+	# MMD-style bodies tuck the skin in under clothes with "Shrink_for..." shapes.
+	for m in body.find_children("*", "MeshInstance3D", true, false):
+		for i in (m as MeshInstance3D).mesh.get_blend_shape_count() if (m as MeshInstance3D).mesh else 0:
+			if String((m as MeshInstance3D).mesh.get_blend_shape_name(i)).begins_with("Shrink_for"):
+				(m as MeshInstance3D).set_blend_shape_value(i, 1.0)
+	face = {}
+	for key in FACE:
+		face[key] = _find_shapes(body, FACE[key])
+	bones = {}
+	for b in ["Neck", "Head", "Hips"]:
+		var i := skel.find_bone(b)
+		if i >= 0:
+			bones[b] = i
+	_load_clips()
+	carry_pose = {}
+	_sample_carry_pose()
+	clip = ""
+	body.visible = shown
 
 
 # --- window and camera ------------------------------------------------------
@@ -446,16 +473,17 @@ func _load_clips() -> void:
 	body.add_child(ap)
 	ap.root_node = ap.get_path_to(body)    # clip tracks address %GeneralSkeleton in her scene
 	ap.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-	var lib := AnimationLibrary.new()
-	for path in CLIPS:
-		var src: Node = (load(path) as PackedScene).instantiate()
-		var player := _find(src, "AnimationPlayer") as AnimationPlayer
-		if player:
-			for name in player.get_animation_list():
-				if not lib.has_animation(name):
-					lib.add_animation(name, player.get_animation(name))
-		src.free()
-	ap.add_animation_library("", lib)
+	if clip_lib == null:                   # read once; every body plays the same humanoid clips
+		clip_lib = AnimationLibrary.new()
+		for path in CLIPS:
+			var src: Node = (load(path) as PackedScene).instantiate()
+			var player := _find(src, "AnimationPlayer") as AnimationPlayer
+			if player:
+				for name in player.get_animation_list():
+					if not clip_lib.has_animation(name):
+						clip_lib.add_animation(name, player.get_animation(name))
+			src.free()
+	ap.add_animation_library("", clip_lib)
 
 
 func _play(name: String, blend := 0.3, speed := 1.0) -> void:
@@ -555,7 +583,12 @@ func _read_settings() -> void:
 		PPM = clampf(float(av["size"]), 200, 840)
 		screen = Vector2.ZERO                 # forces the camera to re-fit
 	# Hidden while she wears another body (a Live2D model: ariadne2/pet2d).
-	var want_shown: bool = bool(desk.get("body", true)) and str(av.get("model", "aries")) == "aries"
+	var want_path := _model_path(str(av.get("model", "aries")))
+	if OS.get_environment("PET_MODEL") == "" and want_path != "" and want_path != body_path \
+			and ResourceLoader.exists(want_path):
+		_load_body(want_path)
+		_play("Idle")
+	var want_shown: bool = bool(desk.get("body", true)) and want_path != ""
 	if want_shown != shown:
 		shown = want_shown
 		body.visible = shown

@@ -82,7 +82,7 @@ def wanted_model(settings: dict) -> str | None:
     av = settings.get("avatar") if isinstance(settings.get("avatar"), dict) else {}
     desk = settings.get("desktop") if isinstance(settings.get("desktop"), dict) else {}
     name = str(av.get("model") or "aries")
-    if not desk.get("body", True) or name == "aries" or not CORE.exists():
+    if not desk.get("body", True) or name == "aries" or name.startswith("3d:") or not CORE.exists():
         return None            # no Cubism Core yet: nothing could draw it (the core says so in the chat)
     return name if name in live2d_models() else None
 

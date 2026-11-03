@@ -170,9 +170,9 @@ class BodyModels:
         if not body_on:
             return
         live2d = await asyncio.to_thread(self._live2d_ready)
-        if av == "aries" and self._three_d_ready() or av in live2d:
+        if (av == "aries" or av.startswith("3d:")) and self._three_d_ready() or av in live2d:
             return
-        if av != "aries" and not CORE.exists() and (importer.MODELS / av).is_dir():
+        if av != "aries" and not av.startswith("3d:") and not CORE.exists() and (importer.MODELS / av).is_dir():
             await self._say(NEEDS_CORE)            # a Live2D body is chosen; the library is what's missing
             return
         if live2d:

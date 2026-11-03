@@ -183,7 +183,7 @@ var brain                                  # brain.gd: what she does with her ti
 var room                                   # room.gd: her furniture
 var places                                 # places.gd: the ways she can be at it (states.json)
 var pstate := ""                           # the one she's in (Bed_SitEdge ...), "" on her feet
-var furniture := true                      # Avatar setting
+var furniture := false                     # Avatar setting (off: her room is an empty stage)
 var lift := 0.0                            # raised onto furniture (a cushion, the bed), metres
 var perched := ""                          # the furniture spot her body's on, or ""
 var perch := {}                            # moving onto or off it: from, to (x, lift, depth), t0, dur, yaw
@@ -215,6 +215,7 @@ func _ready() -> void:
 	room = load("res://room.gd").new()
 	add_child(room)
 	room.setup(self)
+	room.visible = furniture                  # off unless his Avatar setting turns it on
 	places = load("res://places.gd").new(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)

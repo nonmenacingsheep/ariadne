@@ -220,8 +220,8 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
     s.append(_entry("avatar", "room_depth", "Room depth", "number", 8,
                     "How far back her room goes behind the screen (3D bodies); she walks around in it.",
                     min=5, max=10, step=0.5, unit=" ft"))
-    s.append(_entry("avatar", "furniture", "Her furniture", "bool", True,
-                    "A bed, desk, kitchen and workout mat in her room (3D bodies), where she eats, sleeps and works."))
+    s.append(_entry("avatar", "furniture", "Her furniture", "bool", False,
+                    "A bed, desk, kitchen and workout mat in her room (3D bodies). Off: an empty room, all play."))
     s.append(_entry("avatar", "jacket", "Jacket", "bool", True,
                     "Her jacket on (3D bodies that have one, like Jane)."))
     s.append(_entry("avatar", "weapon", "Weapon", "bool", False,

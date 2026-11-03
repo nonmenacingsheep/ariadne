@@ -75,11 +75,12 @@ def personalities() -> list[str]:
 
 
 LIVE2D_MODELS = Path(__file__).resolve().parents[1] / "pet2d" / "web" / "models"
+PET_MODELS = Path(__file__).resolve().parents[2] / "pet" / "models"          # 3D bodies (pet/)
 
 
 def bodies() -> list[tuple[str, str]]:
     """The bodies she can wear: the 3D one (pet/) and each Live2D model folder (pet2d/)."""
-    models = Path(__file__).resolve().parents[2] / "pet" / "models"
+    models = PET_MODELS
     vrm = models / "aries.vrm"
     out = [("aries", "Aries (3D, walks about)" if vrm.exists() else "Aries (3D: needs pet/models/aries.vrm)")]
     # Other 3D bodies: a GLB with its humanoid bone map (pet/import/, docs/JANE_3D_PLAN.md).

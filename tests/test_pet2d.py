@@ -19,6 +19,20 @@ class BodiesTests(unittest.TestCase):
         (self.root / "jian" / "jian.model3.json").write_text("{}")
         (self.root / "jian" / "about.json").write_text(json.dumps({"name": "简"}))
         (self.root / "empty").mkdir()                       # no model3.json: not a body
+        self.pet = base / "pet_models"
+        self.pet.mkdir()
+        (self.pet / "aries.vrm").write_bytes(b"x")
+        patcher = mock.patch.object(s, "PET_MODELS", self.pet)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_3d_glb_with_its_bone_map_is_a_body(self):
+        (self.pet / "jane.glb").write_bytes(b"x")
+        (self.pet / "loose.glb").write_bytes(b"x")              # no bone map: not wearable
+        (self.pet / "jane_bonemap.tres").write_text("")
+        with mock.patch.object(s, "LIVE2D_MODELS", self.root):
+            self.assertIn(("3d:jane", "Jane (3D, walks about)"), s.bodies())
+            self.assertNotIn("3d:loose", [v for v, _ in s.bodies()])
 
     def test_the_3d_body_first_then_each_live2d_model(self):
         with mock.patch.object(s, "LIVE2D_MODELS", self.root):

@@ -109,5 +109,13 @@ class AvatarTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(AdapterError, "Desk_Sit"):
             await self.a.run("be", {"state": "on the roof"})
 
+    async def test_do_one_of_her_interactions(self):
+        self.body(kind="3d", on="floor", plays=["twirl", "fog", "air_guitar"])
+        out = await self.a.run("do", {"what": "Air guitar"})
+        self.assertIn("Doing air guitar.", out)
+        self.assertEqual(self.cmds()[-1], {"t": "body", "cmd": "do", "what": "air_guitar"})
+        with self.assertRaisesRegex(AdapterError, "fog, twirl"):
+            await self.a.run("do", {"what": "moonwalk"})
+
 if __name__ == "__main__":
     unittest.main()

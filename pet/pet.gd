@@ -156,6 +156,7 @@ var look := Vector2.ZERO
 var look_target := Vector2.ZERO
 var look_until := 0.0
 var spotify_playing := false
+var last_song := ""
 var on_name := "floor"                     # the widget she's standing on, for her avatar tool
 var told_in := 1.0
 var widget_x := {}                         # widget -> centre x (m), from the layout
@@ -182,6 +183,10 @@ var life                                   # life.gd: needs, items, dropped file
 var brain                                  # brain.gd: what she does with her time
 var room                                   # room.gd: her furniture
 var places                                 # places.gd: the ways she can be at it (states.json)
+var play                                   # play.gd: her interactions (play.json)
+var pressing := false                      # his button down on her
+var press_at := 0.0
+var shakes := 0                            # back-and-forths while he dangles her
 var pstate := ""                           # the one she's in (Bed_SitEdge ...), "" on her feet
 var furniture := false                     # Avatar setting (off: her room is an empty stage)
 var lift := 0.0                            # raised onto furniture (a cushion, the bed), metres
@@ -217,6 +222,9 @@ func _ready() -> void:
 	room.setup(self)
 	room.visible = furniture                  # off unless his Avatar setting turns it on
 	places = load("res://places.gd").new(self)
+	play = load("res://play.gd").new()
+	add_child(play)
+	play.setup(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
 	_land()
@@ -649,7 +657,8 @@ func _on_message(msg: Dictionary) -> void:
 			elif phase == "failed":
 				_feel("sorrow", 0.7, 2.4)
 				_slab_crumble()
-				_react("Idle_No")
+				if not play.run("wince"):
+					_react("Idle_No")
 		"flow":
 			if msg.get("phase", "") == "fired":
 				_watch(str(msg.get("widget", "")), 2.0)
@@ -663,7 +672,18 @@ func _on_message(msg: Dictionary) -> void:
 					life.bump("affection", 0.03)
 		"state":
 			if msg.get("widget", "") == "spotify" and msg.get("data") is Dictionary:
-				spotify_playing = msg["data"].get("status", "") == "playing"
+				var d: Dictionary = msg["data"]
+				var was := spotify_playing
+				spotify_playing = d.get("status", "") == "playing"
+				var song := str(d.get("title", d.get("track", d.get("song", ""))))
+				if state in FREE or state == "rest":
+					if spotify_playing and not was:
+						play.run("music_on")          # the music's on: she bobs along (and may dance)
+					elif was and not spotify_playing:
+						play.run("music_off")
+					elif spotify_playing and song != last_song and last_song != "":
+						play.run("new_song")
+				last_song = song
 
 
 # Her avatar tool (adapters/avatar.py): go somewhere, dance, stop, a face, sleep, wake.
@@ -707,6 +727,8 @@ func _command(msg: Dictionary) -> void:
 		"wake":
 			if state == "sleep":
 				_wake()
+		"do":                                  # her avatar tool: one of her interactions (play.json)
+			play.run(str(msg.get("what", "")))
 		"be":                                  # her avatar tool: a way to be at her furniture
 			var st := str(msg.get("state", ""))
 			if places.reachable(st):
@@ -743,7 +765,8 @@ func _tell(delta: float) -> void:
 			mood = k
 	var data := {"kind": "3d", "model": "Aries", "x": pos.x * PPM, "y": screen.y - pos.y * PPM,
 		"w": screen.x, "h": screen.y, "mode": state, "on": on, "look": mood,
-		"dancing": state == "dance", "doing": brain.doing, "at": perched, "state": pstate, "states": _ways(),
+		"dancing": state == "dance", "doing": play.current if state == "react" and play.current != "" else brain.doing, "at": perched,
+		"plays": play.names(), "state": pstate, "states": _ways(),
 		"holding": life.holding if life and life.holding in life.THINGS else "", "depth": snappedf(-depth / room_depth, 0.01), "asleep": state == "sleep", "ts": Time.get_unix_time_from_system(),
 		"own": ["smile", "angry", "tears", "wide", "smirk"], "looks": LOOK_FACE.keys()}
 	var f := FileAccess.open(OS.get_environment("HOME") + BODY_FILE, FileAccess.WRITE)
@@ -1071,6 +1094,9 @@ func _feeling(f: String) -> float:
 		"bored": return maxf(0.0, 0.7 - float(n.get("fun", 0.6))) * 2.0 + float(moods.get("bored", 0.0))
 		"tired": return maxf(0.0, 0.6 - float(n.get("energy", 0.8))) * 2.5 + float(moods.get("sleepy", 0.0))
 		"shy": return 0.2 + 2.0 * float(moods.get("blush", 0.0))
+		"angry": return 0.05 + 2.5 * float(moods.get("angry", 0.0))
+		"lonely": return maxf(0.0, 0.6 - float(n.get("affection", 0.6))) * 2.5 + 0.05
+		"hungry": return maxf(0.0, 0.6 - float(n.get("hunger", 0.7))) * 2.5 + 0.05
 		"light": return 0.15 + 3.0 * float(moods.get("joy", 0.0)) + 2.0 * float(moods.get("stars", 0.0)) \
 				+ 2.0 * float(moods.get("hearts", 0.0)) + maxf(0.0, float(n.get("energy", 0.8)) - 0.6) * 2.0
 	return 0.0
@@ -1078,6 +1104,8 @@ func _feeling(f: String) -> float:
 
 func _variant(role: String) -> String:
 	var entries: Array = ROLES.get(role, [])
+	if role.begins_with("play:") and play:
+		entries = play.entry(role.substr(5)).get("clips", [])     # an interaction's pool (play.json)
 	var held: String = life.holding if life else ""
 	if ROLE_ITEMS.has(role) and ROLE_ITEMS[role].has(held) \
 			and (ROLE_ITEMS[role][held] as Array).any(func(e): return _variant_of(e[0]) != ""):
@@ -1087,7 +1115,7 @@ func _variant(role: String) -> String:
 		# "<state>:react" when he pokes or talks to her there.
 		var s := role.get_slice(":", 0)
 		entries = places.react(s) if role.ends_with(":react") else places.pool(s, life.holding if life else "")
-	elif not ROLES.has(role):
+	elif not ROLES.has(role) and not role.begins_with("play:"):
 		return role if ap.has_animation(role) else ""
 	var pool := []
 	var weights := []
@@ -1443,7 +1471,7 @@ func _vary() -> void:
 		pending = ""
 		_play_variant(next, 0.35)
 		return
-	if not (ROLES.has(clip) or _is_state_role(clip)) or clip in ONE_SHOT or clip.ends_with(":react"):
+	if not (ROLES.has(clip) or _is_state_role(clip) or clip.begins_with("play:")) or clip in ONE_SHOT or clip.ends_with(":react"):
 		return
 	var pick := _variant(clip)
 	if pick != "" and (pick != variant or ap.get_animation(pick).loop_mode == Animation.LOOP_NONE):
@@ -1565,8 +1593,11 @@ func _process(delta: float) -> void:
 		layout_check = 4.0
 		var path := OS.get_environment("HOME") + "/.config/ariadne2/layout.json"
 		if FileAccess.get_modified_time(path) != layout_mtime:
+			var before := layout_mtime
 			_read_layout()
 			_land()
+			if before != 0 and state in FREE:
+				play.run("startle")               # a widget moved on the glass: she jumps
 
 	settings_check -= delta
 	if settings_check <= 0.0 and snapshot_path == "":
@@ -1583,6 +1614,7 @@ func _process(delta: float) -> void:
 	_tail_frame()
 	_carry_frame(delta)
 	_head()
+	play.emote_frame()
 	_face_frame(delta)
 	_place_body()
 	_update_click_area()
@@ -1693,6 +1725,7 @@ func _move(delta: float) -> void:
 				vel = Vector2.ZERO
 				spin = 0.0
 				_land()
+				play.landed(impact > HARD_LANDING or absf(wrapf(roll, -PI, PI)) > 1.2)
 				if impact > HARD_LANDING or absf(wrapf(roll, -PI, PI)) > 1.2:
 					# Flat on her back, dizzy for a moment, then back up.
 					roll = 0.0
@@ -1758,10 +1791,14 @@ func _noticed() -> void:
 
 
 # Clicked: how she takes it depends on how she feels; poked over and over, she's had enough.
-func _clicked() -> void:
-	brain.drop()
+func _clicked(part := "") -> void:
 	clicks = clicks.filter(func(c): return t - c < 4.0)
 	clicks.append(t)
+	if clicks.size() >= 4 and play.run("huff"):     # poked over and over: she's had enough
+		return
+	if play.clicked(part):                    # her head, face, hand, middle, feet (play.gd)
+		return
+	brain.drop()
 	life.bump("affection", 0.06 if clicks.size() < 3 else 0.0)
 	_set_state("react", 2.0)
 	_face_front(2.4)
@@ -1904,7 +1941,7 @@ func _head() -> void:
 	if wiggles.size() >= 4 and t - noticed_at > 8.0:
 		wiggles.clear()
 		noticed_at = t
-		_noticed()
+		play.wiggled()                         # a wave back, or over she comes
 	if t - cursor_at < 2.5 and state != "sleep" and cam and bones.has("Head"):
 		# Toward the pointer, from where her head is on screen; held a moment after it stops.
 		var head := skel.global_transform * skel.get_bone_global_pose(bones["Head"]).origin
@@ -2040,18 +2077,33 @@ func _input(event: InputEvent) -> void:
 		if not life.ring.get_global_rect().has_point(event.position):
 			life.close_ring()
 		return
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] \
+			and event.pressed:
+		_stir()
+		play.run("twirl")                     # scrolled over her: round she goes
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			drag_from = event.position
 			drag_moved = false
 			held_vel = Vector2.ZERO
+			shakes = 0
 			_stir()
-			brain.drop()
-			_unperch_now()
-			_set_state("held", 1e9)
-			_feel("surprised", 0.4, 1.0)
+			if event.double_click:
+				pressing = false
+				play.run("joy_jump")
+				return
+			# Picked up once he drags; held still, it's a hug (play.gd).
+			pressing = true
+			press_at = t
+			play.press_part = play.part_at(event.position)
 		else:
-			if drag_moved:
+			pressing = false
+			if play.holding_still:
+				play.let_go()
+			elif drag_moved:
+				if shakes >= 6:
+					play.after_landing = "shaken"
 				# Let go: she keeps the speed you threw her with, and spins with it.
 				_set_state("fall", 99.0)
 				vel = held_vel.limit_length(MAX_THROW)
@@ -2059,14 +2111,21 @@ func _input(event: InputEvent) -> void:
 				_play("Jump", 0.15)
 				if vel.length() > 4.0:
 					_feel("surprised", 0.8, 1.2)
-			else:                              # a click, not a drag
-				_clicked()
-	elif event is InputEventMouseMotion and state == "held":
-		if event.position.distance_to(drag_from) > 4:
-			if not drag_moved:
-				_play("Held", 0.15)           # dangling while held
+			elif state != "held":              # a click, not a drag
+				_clicked(play.press_part)
+	elif event is InputEventMouseMotion and pressing:
+		if event.position.distance_to(drag_from) > 4 and not drag_moved and not play.holding_still:
 			drag_moved = true
+			brain.drop()
+			_unperch_now()
+			_set_state("held", 1e9)
+			_feel("surprised", 0.4, 1.0)
+			_play("Held", 0.15)               # dangling while held
+		if state != "held":
+			return
 		var v: Vector2 = event.velocity / PPM
+		if absf(v.x) > 2.0 and signf(v.x) != signf(held_vel.x) and held_vel.x != 0.0:
+			shakes += 1                        # shaken side to side
 		held_vel = held_vel.lerp(Vector2(v.x, -v.y), 0.5)
 		pos = Vector2(event.position.x / PPM, (screen.y - event.position.y) / PPM - 1.3)
 
@@ -2249,6 +2308,15 @@ func _snapshot_seq(what: String) -> void:
 			get_tree().create_timer(0.3 + hold * i).timeout.connect(_play.bind(chain[i], 0.4))
 		if OS.get_environment("PET_SEQ_TALK") != "":      # he talks to her that many seconds in
 			get_tree().create_timer(float(OS.get_environment("PET_SEQ_TALK"))).timeout.connect(_attend)
+	if what.begins_with("play:"):                # one interaction (play.json), near the glass
+		depth = -0.3
+		_set_state("idle", 1.0)
+		get_tree().create_timer(0.5).timeout.connect(func(): play.run(what.substr(5)))
+	if what.begins_with("gesture:"):             # his pointer doing something at her (play.gd reads it)
+		depth = -0.3
+		_set_state("idle", 99.0)
+		play.test = true
+		_gesture(what.substr(8))
 	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
 		depth = -0.4
 		var act := what.substr(3)
@@ -2317,6 +2385,33 @@ func _snapshot_seq(what: String) -> void:
 				print("FOOT %d %s %.3f %.3f %s %s %.2f" % [i, b, g.x, g.y, state, variant, pos.x])
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_seq_%02d.png" % i))
 	get_tree().quit()
+
+
+# A test run's pointer: stroking her head, tickling her, circling her, held still, clicks on her parts.
+func _gesture(g: String) -> void:
+	await get_tree().create_timer(0.6).timeout
+	var head := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Head")).origin)
+	var belly := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Spine")).origin)
+	var r := (head - belly).length()
+	if g.begins_with("click:"):
+		_clicked(g.substr(6))
+		return
+	for i in 240:
+		var a := i * 0.35
+		match g:
+			"pat": cursor = head + Vector2(sin(a) * r * 0.3, -r * 0.35 + cos(a * 2.0) * 4.0)
+			"tickle": cursor = belly + Vector2(sin(a * 4.0) * r * 0.25, 0.0)
+			"circle": cursor = belly + Vector2(cos(a * 0.5), sin(a * 0.5)) * r * 2.2
+			"still": cursor = belly + Vector2(r * 0.9, -r * 0.2) if i == 0 else cursor
+			"away": cursor_at = t - 700.0 if i < 5 else cursor_at
+		if g != "still" and g != "away":
+			cursor_at = t
+		elif i == 0:
+			cursor_at = t
+		if g == "away" and i == 120:
+			cursor = cursor + Vector2(40, 0)
+			cursor_at = t                      # he's back
+		await get_tree().process_frame
 
 
 # PET_SNAPSHOT=path: render her in a few clips, one image each, then quit.

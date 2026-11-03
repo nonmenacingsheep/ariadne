@@ -59,6 +59,9 @@ class AvatarAdapter(Adapter):
                  "which widget it's standing on, what it's up to, its face.", {}, self._status),
             Verb("go", "Move your body: walk along where it stands, or go to a widget (the Live2D body "
                  "jumps onto its top; the 3D body lives in a room behind the screen and walks up behind it).", {"properties": {"to": target}, "required": ["to"]}, self._go),
+            Verb("do", "3D body: one of your interactions: twirl, cartwheel, guitar, fog (a heart on the glass), "
+                 "knock, hug, peek... (a wrong name lists them all).",
+                 {"properties": {"what": {"type": "string"}}, "required": ["what"]}, self._do),
             Verb("be", "3D body: settle at your furniture one way (Bed_SitEdge, Bed_LieFront, Desk_LeanBack...; "
                  "status lists them), maybe with one of your things in hand.",
                  {"properties": {"state": {"type": "string", "description": "one of the ways status lists"},
@@ -168,6 +171,15 @@ class AvatarAdapter(Adapter):
         d = await asyncio.to_thread(self.read)
         return await self._after(f"Walking up behind the {match} widget." if d and d.get("kind") == "3d"
                                  else f"Jumping onto the {match} widget.")
+
+    async def _do(self, what: str) -> str:
+        d = await asyncio.to_thread(self.read)
+        plays = (d or {}).get("plays") or []
+        w = str(what or "").strip().lower().replace(" ", "_")
+        if w not in plays:
+            raise AdapterError(f"no interaction called {what!r}; there's {', '.join(sorted(plays)) or 'none (a 3D body has them)'}")
+        await self._cmd("do", what=w)
+        return await self._after(f"Doing {w.replace('_', ' ')}.")
 
     async def _be(self, state: str, holding=None, seconds=None) -> str:
         d = await asyncio.to_thread(self.read)

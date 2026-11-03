@@ -25,6 +25,8 @@ const ACTIVITIES := {
 	"drink": [240.0, true], "water": [900.0, true], "tidy": [300.0, true],
 	# Staying where she is: another way of being at the same place (lying back, then onto her side).
 	"linger": [20.0, false],
+	# One of her interactions (play.json: on her own, with her things, at the glass).
+	"play": [6.0, false], "play_more": [20.0, false],
 	# Her things anywhere (phase 9): her phone on her feet, a book on the floor.
 	"phone_about": [200.0, true], "read_floor": [240.0, true],
 }
@@ -55,7 +57,8 @@ func attend() -> void:
 		return
 	if pet.floor_y < 0.01 and pet.depth < -0.5:
 		plan.append({"go": Vector2(clampf(pet.pos.x, _x0(), _x1()), -randf_range(0.15, 0.35))})
-	plan.append({"play": "Idle", "front": true, "for": randf_range(8, 14)})
+	plan.append({"play": "play:listen" if pet.play and not pet.play.entry("listen").is_empty() else "Idle",
+			"front": true, "for": randf_range(8, 14)})
 
 
 # He wiggled the pointer at her: over she comes, and follows it about a while.
@@ -169,6 +172,9 @@ func next() -> void:
 		if item == "can" and pet.room.items.has("watering_can"):
 			pet.room.items["watering_can"].visible = false      # it's in her hand now
 		next()
+	elif step.has("interact"):
+		if not pet.play.run(step["interact"], true):
+			next()
 	elif step.has("take"):
 		pet.life.take(step["take"])
 		next()
@@ -309,6 +315,10 @@ func _score(a: String, on_widget: bool) -> float:
 		"drink": return 0.2 + maxf(0.0, 0.6 - float(n["hunger"])) * 0.5 if _room("kitchen") and _has("drink_") else 0.0
 		"phone_about": return (0.1 + lonely * 0.2 + bored * 0.2) if _room("desk") and _has("stand_phone_") else 0.0
 		"read_floor": return (0.1 + bored * 0.2 + tired * 0.15) if _room("shelf") and _has("floor_front_read_") else 0.0
+		"play", "play_more":
+			if pet.play == null or pet.play.names().is_empty():
+				return 0.0
+			return (0.9 if a == "play" else 0.5) + bored * 0.5 + joy * 0.2 - tired * 0.3
 		"linger":
 			if pet.pstate == "" or _stay_in().is_empty():
 				return 0.0
@@ -373,6 +383,19 @@ func _plan(a: String, on_widget: bool) -> Array:
 					b.append({"play": s, "state": "rest", "for": randf_range(5, 10)})
 					break
 			return b + [{"call": "_bed_sleep"}]
+		"play", "play_more":
+			# One thing, or a little run of them (play_more), walking up to the glass for the glass ones.
+			var out := []
+			for i in (1 if a == "play" else randi_range(2, 3)):
+				var n: String = pet.play.pick()
+				if n == "":
+					break
+				if pet.play.entry(n).get("glass", false):
+					out.append({"go": Vector2(clampf(pet.pos.x + randf_range(-1.0, 1.0), _x0(), _x1()), -randf_range(0.12, 0.22))})
+				elif i > 0 and randf() < 0.5:
+					out.append({"go": _spot(randf_range(0.5, 1.5))})
+				out.append({"interact": n})
+			return out
 		"linger":
 			var st: String = _stay_in().pick_random()
 			return [{"play": st, "state": "rest", "for": randf_range(12, 30)}]

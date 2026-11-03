@@ -39,6 +39,6 @@ pinned to the existing stance clips so transitions match.
 |---|------|--------|
 | 1 | Furniture GLB + placed in the room, toon-shaded, setting to hide (pet/room.gd: spots + routing round it) | done |
 | 2 | Kimodo clips generated, checked, packed (21 clips; sleep_bed_2 rolls end for end, left out of SleepBed) | done |
-| 3 | Needs + activities + plans in brain.gd/life.gd, body at the furniture (seat/bed heights, facing) | todo |
-| 4 | Held props for each activity | todo |
-| 5 | Filmed checks of each activity, fixes, commit, restart body | todo |
+| 3 | Needs + activities + plans in brain.gd/life.gd, body at the furniture (seat/bed heights, facing) | done |
+| 4 | Held props for each activity (book, phone, controller, bowl, mug, watering can; the can leaves its spot while held) | done |
+| 5 | Filmed checks of each activity, fixes, commit, restart body (work, workout, bed, reading, watering filmed; push-ups and sit-ups came out wrong and are left out; PET_SNAPSHOT_SEQ=do:<activity> or clip:<name>, PET_SEQ_HEAD=1 logs head/hips heights) | done |

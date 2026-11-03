@@ -27,6 +27,15 @@ func setup(owner) -> void:
 	for c in root.get_children():
 		items[str(c.name)] = c
 	pet._toonify(root)
+	# The monitor's screen glows (it's lit when the room is).
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		for i in mi.mesh.get_surface_count():
+			var m := mi.get_active_material(i) as StandardMaterial3D
+			if m and String(m.resource_name) == "screen":
+				m.emission_enabled = true
+				m.emission = Color(0.3, 0.55, 0.9)
+				m.emission_energy_multiplier = 0.9
 	arrange()
 
 
@@ -72,7 +81,7 @@ func arrange() -> void:
 	var ch := _place("chair", Vector2(d.x, d.y + 0.58), 0.0, Vector2(0.5, 0.5))
 	blockers[-1] = blockers[-1].merge(blockers[-2])
 	blockers.remove_at(blockers.size() - 2)
-	spots["desk"] = {"approach": Vector2(ch.x + 0.62, ch.y + 0.25), "at": Vector3(ch.x, 0, ch.y - 0.12), "yaw": PI}
+	spots["desk"] = {"approach": Vector2(ch.x + 0.62, ch.y + 0.25), "at": Vector3(ch.x + 0.06, 0, ch.y - 0.12), "yaw": PI}
 	# A plant in the corner by the desk, its watering can beside it.
 	var p := _place("plant", Vector2(w - 0.75, back + 0.3), 0.0, Vector2(0.4, 0.4))
 	spots["plant"] = {"approach": p + Vector2(-0.1, 0.62), "at": Vector3(p.x - 0.1, 0, p.y + 0.62), "yaw": PI}

@@ -988,7 +988,9 @@ const ROLES := {
 	"Phone": [["phone_", 1.0], ["floor_sit_", 0.01]],
 	"Meditate": [["meditate_", 1.0], ["floor_sit_", 0.01]],
 	"SleepBed": [["sleep_bed_1", 1.0], ["lie_idle_1", 0.3]],   # sleep_bed_2 rolls her end for end
-	"Workout": [["workout_", 1.0], ["stretch_", 0.15], ["Idle", 0.01]],
+	# (workout_pushup_/situp_ came out wrong: she sits back on thin air; left out)
+	"Workout": [["workout_squat_", 1.0], ["workout_jacks_", 1.0], ["workout_lunge_", 1.0], ["workout_boxing_", 1.0],
+			["workout_stretch_", 0.6], ["stretch_", 0.15], ["Idle", 0.01]],
 	"Drink": [["drink_", 1.0], ["Idle", 0.01]],
 	"Water": [["water_plant_", 1.0], ["Interact", 0.01]],
 	"Cook": [["cook_", 1.0], ["Interact", 0.01]],
@@ -2058,6 +2060,11 @@ func _snapshot_seq(what: String) -> void:
 	yaw = 0.0
 	if OS.get_environment("PET_TIME_SCALE") != "":
 		Engine.time_scale = float(OS.get_environment("PET_TIME_SCALE"))
+	if what.begins_with("clip:"):                # one clip, from standing
+		_set_state("workout", 99.0)
+		await get_tree().create_timer(0.3).timeout
+		_play_variant(what.substr(5), 0.3)
+		variant_until = 1e9
 	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
 		depth = -0.4
 		var act := what.substr(3)
@@ -2116,6 +2123,10 @@ func _snapshot_seq(what: String) -> void:
 	for i in 14:
 		await get_tree().create_timer(dt).timeout
 		await RenderingServer.frame_post_draw
+		if OS.get_environment("PET_SEQ_HEAD") != "":      # head and hips heights: catches her upside down
+			var hd := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Head")).origin
+			var hp := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin
+			print("HEAD %d head(%.2f %.2f %.2f) hips(%.2f %.2f %.2f) %s %s" % [i, hd.x, hd.y, hd.z, hp.x, hp.y, hp.z, state, variant])
 		if feet:
 			for b in ["LeftToes", "RightToes"]:
 				var g := skel.global_transform * skel.get_bone_global_pose(skel.find_bone(b)).origin

@@ -1,0 +1,18 @@
+# Stance poses and the moves between them ("tr_<from>_<to>_N"): standing,
+# floor_sit (cross-legged on the floor), lie (lying on her side/back), crouch.
+# Ledge sitting has sit_down_ / sit_up_ already.
+crouch_idle_1|8|A woman crouches down low and stays crouched, looking at something on the ground and poking at it.
+crouch_idle_2|8|A woman squats down and stays squatting, resting her arms on her knees and looking around.
+lie_idle_2|8|A woman lies on her back on the floor with her hands behind her head, relaxing.
+tr_stand_floor_1|4|A standing woman sits down on the floor and crosses her legs.
+tr_floor_stand_1|4|A woman sitting cross-legged on the floor stands up.
+tr_stand_lie_1|5|A standing woman lies down on the floor on her side.
+tr_lie_stand_1|5|A woman lying on her side on the floor gets up and stands.
+tr_stand_crouch_1|3|A standing woman crouches down low.
+tr_crouch_stand_1|3|A crouching woman stands up.
+tr_floor_lie_1|4|A woman sitting cross-legged on the floor lies down on her side.
+tr_lie_floor_1|4|A woman lying on her side on the floor sits up and crosses her legs.
+tr_lie_crouch_1|4|A woman lying on the floor gets up into a crouch.
+tr_crouch_lie_1|4|A crouching woman lies down on the floor on her side.
+tr_floor_crouch_1|3|A woman sitting cross-legged on the floor gets up into a crouch.
+tr_crouch_floor_1|3|A crouching woman sits down on the floor and crosses her legs.

@@ -731,11 +731,13 @@ func _load_clips() -> void:
 					if not clip_lib.has_animation(name):
 						var anim := player.get_animation(name)
 						if String(path).begins_with(KIMODO_DIR):
+							if String(name).begins_with("stop_"):
+								stop_curve[name] = _travel_curve(anim)
 							if GAIT_PREFIXES.any(func(px): return String(name).begins_with(px)):
 								gait_velocity[name] = _ground_velocity(anim)
 								anim = anim.duplicate(true)
 								anim.loop_mode = Animation.LOOP_LINEAR
-							anim = _in_place(anim)
+							anim = _in_place(anim, String(name).begins_with("stop_"))
 						clip_lib.add_animation(name, anim)
 			src.free()
 	ap.add_animation_library("", clip_lib)
@@ -745,8 +747,41 @@ func _load_clips() -> void:
 # measured off its hips before the travel is taken out, in hip-heights per
 # second, clip space (x her left, z forward). Her body moves her exactly that
 # fast (times her hip height and the playback speed), so her feet stay planted.
-const GAIT_PREFIXES := ["walk_", "stroll_", "strafe_", "walk_back_"]
+const GAIT_PREFIXES := ["walk_", "stroll_", "strafe_", "walk_back_", "jog_", "carry_walk_"]
 var gait_velocity := {}
+
+
+# Stops (pet/import/kimodo_stop.py): how far she's travelled at each moment
+# of the clip, hip-heights, along its direction of travel.
+var stop_curve := {}
+func _travel_curve(anim: Animation) -> Dictionary:
+	for tr in anim.get_track_count():
+		if anim.track_get_type(tr) == Animation.TYPE_POSITION_3D and String(anim.track_get_path(tr)).ends_with(":Hips"):
+			var n := anim.track_get_key_count(tr)
+			var a: Vector3 = anim.track_get_key_value(tr, 0)
+			var b: Vector3 = anim.track_get_key_value(tr, n - 1)
+			var along := Vector2(b.x - a.x, b.z - a.z).normalized()
+			var times := PackedFloat32Array()
+			var dist := PackedFloat32Array()
+			var far := 0.0
+			for k in n:
+				var v: Vector3 = anim.track_get_key_value(tr, k)
+				far = maxf(far, Vector2(v.x - a.x, v.z - a.z).dot(along))     # never backwards
+				times.append(anim.track_get_key_time(tr, k))
+				dist.append(far)
+			return {"t": times, "d": dist}
+	return {}
+
+
+func _curve_at(c: Dictionary, time: float) -> float:
+	var ts: PackedFloat32Array = c["t"]
+	var ds: PackedFloat32Array = c["d"]
+	var i := ts.bsearch(time)
+	if i <= 0:
+		return ds[0]
+	if i >= ts.size():
+		return ds[-1]
+	return lerpf(ds[i - 1], ds[i], (time - ts[i - 1]) / maxf(ts[i] - ts[i - 1], 0.0001))
 
 
 func _ground_velocity(anim: Animation) -> Vector2:
@@ -767,7 +802,9 @@ func _ground_velocity(anim: Animation) -> Vector2:
 # Kimodo clips travel (a walk goes somewhere); her body moves her itself, so
 # the hips' steady drift over the clip comes out, keeping its sway and bob.
 const KIMODO_DIR := "res://assets/anims/kimodo/"
-func _in_place(src: Animation) -> Animation:
+# exact: take out the travel as it happens (a stop slows down), not as a
+# straight line, keeping only the sway across it; her body follows the curve.
+func _in_place(src: Animation, exact := false) -> Animation:
 	var anim := src.duplicate(true) as Animation
 	for tr in anim.get_track_count():
 		if anim.track_get_type(tr) != Animation.TYPE_POSITION_3D or not (String(anim.track_get_path(tr)).ends_with(":Hips") or String(anim.track_get_path(tr)).ends_with(":Root")):
@@ -777,6 +814,14 @@ func _in_place(src: Animation) -> Animation:
 			continue
 		var first: Vector3 = anim.track_get_key_value(tr, 0)
 		var last: Vector3 = anim.track_get_key_value(tr, n - 1)
+		if exact:
+			var along := Vector2(last.x - first.x, last.z - first.z).normalized()
+			var far := 0.0
+			for k in n:
+				var v: Vector3 = anim.track_get_key_value(tr, k)
+				far = maxf(far, Vector2(v.x - first.x, v.z - first.z).dot(along))   # as _travel_curve has it
+				anim.track_set_key_value(tr, k, Vector3(v.x - first.x - along.x * far, v.y, v.z - first.z - along.y * far))
+			continue
 		var t0 := anim.track_get_key_time(tr, 0)
 		var span := maxf(anim.track_get_key_time(tr, n - 1) - t0, 0.001)
 		for k in n:
@@ -794,22 +839,76 @@ func _in_place(src: Animation) -> Animation:
 # her picks bored idles. When a variant ends (or a looping one completes a
 # cycle) another is picked, never the same one twice running.
 const ROLES := {
-	"Idle": [["Idle", 1.0], ["idle_calm_", 1.2], ["idle_happy_", "joy"], ["idle_bored_", "bored"],
+	"Idle": [["Idle", 0.01], ["idle_calm_", 1.2], ["idle_happy_", "joy"], ["idle_bored_", "bored"],
 			["idle_sad_", "sorrow"], ["idle_tired_", "tired"], ["stretch_", 0.25], ["yawn_", "tired"],
 			["look_around_", 0.35], ["think_", 0.15]],
-	"Idle_FoldArms": [["Idle_FoldArms", 1.0], ["think_", 0.8], ["shy_", "shy"]],
-	"Sitting_Idle": [["Sitting_Idle", 1.0], ["sit_idle_", 1.5]],
-	"Crouch_Idle": [["Crouch_Idle", 1.0], ["nap_", 1.5], ["floor_sit_", 1.0]],   # on the floor (asleep)
-	"Dance": [["Dance", 1.0], ["dance_", 1.5]],
+	"Idle_FoldArms": [["Idle_FoldArms", 0.01], ["fold_arms_", 1.0], ["think_", 0.8], ["shy_", "shy"]],
+	"Idle_Talking": [["Idle_Talking", 0.01], ["talk_", 1.0]],
+	"Sitting_Idle": [["Sitting_Idle", 0.01], ["sit_idle_", 1.5]],
+	# Asleep on the floor: curled cross-legged, lying on her side or back.
+	"Crouch_Idle": [["Crouch_Idle", 0.01], ["nap_", 1.5], ["lie_idle_", 1.0], ["floor_sit_", 0.5]],
+	"Crouching": [["Crouch_Idle", 0.01], ["crouch_idle_", 1.0]],
+	"Dance": [["Dance", 0.01], ["dance_", 1.5]],
+	"Jump": [["Jump", 0.01], ["fall_", 1.0], ["jump_", 0.3]],
+	"Held": [["Jump", 0.01], ["held_", 1.0]],
+	"Jump_Land": [["Jump_Land", 0.01], ["land_", 1.0]],
+	"Death01": [["Death01", 0.01], ["knocked_", 1.0]],
+	"PickUp_Table": [["PickUp_Table", 0.01], ["pickup_", 1.0]],
+	"LayToIdle": [["LayToIdle", 0.01], ["tr_lie_stand_", 1.0], ["get_up_", 1.0]],
+	"Interact": [["Interact", 0.01], ["interact_", 1.0]],
+	"Yes": [["Yes", 0.01], ["nod_", 1.0]],
+	"Jog_Fwd": [["Jog_Fwd", 0.01], ["jog_", 1.0]],
 	# Getting about: her walks (a cute bouncy one when she feels light), side
 	# steps facing you, and backing up. The old stock walk only if none exist.
 	"Walk": [["walk_1", 1.0], ["walk_2", 1.0], ["walk_3", 1.0], ["stroll_", 1.2], ["walk_cute_", "light"],
 			["Walk", 0.01]],
+	"Walk_Carry": [["carry_walk_", 1.0], ["Walk_Carry", 0.01]],
 	"Strafe_Left": [["strafe_left_", 1.0], ["Walk", 0.01]],
 	"Strafe_Right": [["strafe_right_", 1.0], ["Walk", 0.01]],
 	"Walk_Back": [["walk_back_", 1.0], ["Walk", 0.01]],
 }
 const GAIT_PLAYBACK := 0.8                 # a touch slower than Kimodo's brisk takes; speed follows
+# Played once and held at their end (a nod, being knocked over), not re-picked.
+const ONE_SHOT := ["Jump_Land", "Death01", "PickUp_Table", "LayToIdle", "Interact", "Yes"]
+
+# --- stances: every clip is standing, sitting on a ledge, sitting on the
+# floor, lying, or crouching. Moving between two, the matching transition
+# plays first (tr_<from>_<to>_*, sit_down_/sit_up_ for ledges), so she never
+# pops from a nap to standing or from standing to a crouch.
+const STANCE_PREFIXES := [["sit_idle_", "ledge"], ["Sitting_", "ledge"], ["nap_", "floor"], ["floor_sit_", "floor"],
+		["lie_", "lie"], ["crouch_idle_", "crouch"], ["Crouch_Idle", "crouch"]]
+const TRANSITION_EXTRA := {"stand>ledge": "sit_down_", "ledge>stand": "sit_up_"}
+var pending := ""                          # the clip waiting for a transition to finish
+
+
+func _stance(name: String) -> String:
+	if name.begins_with("tr_"):
+		return name.split("_")[2]          # tr_<from>_<to>_N: where it ends up
+	if name.begins_with("sit_down_"):
+		return "ledge"
+	if name.begins_with("sit_up_") or name == "Sitting_Exit" or name.begins_with("get_up_"):
+		return "stand"
+	for sp in STANCE_PREFIXES:
+		if name.begins_with(sp[0]):
+			return sp[1]
+	return "stand"
+
+
+# A clip that is itself a move between stances.
+func _is_move(name: String) -> bool:
+	return name.begins_with("tr_") or name.begins_with("sit_down_") or name.begins_with("sit_up_") \
+			or name.begins_with("get_up_") or name == "Sitting_Exit" or name == "LayToIdle"
+
+
+func _transition(from: String, to: String) -> String:
+	if from == to:
+		return ""
+	var tr := _variant_of("tr_%s_%s_" % [from, to])
+	if tr == "" and TRANSITION_EXTRA.has(from + ">" + to):
+		tr = _variant_of(TRANSITION_EXTRA[from + ">" + to])
+	if tr == "" and from != "stand" and to != "stand":
+		tr = _variant_of("tr_%s_stand_" % from)    # no direct move: stand up first, the next one follows
+	return tr
 var variant := ""                          # the clip actually playing for the role in `clip`
 var variant_until := 0.0
 
@@ -870,6 +969,13 @@ func _play(name: String, blend := 0.3, speed := 1.0) -> void:
 
 
 func _play_variant(pick: String, blend: float) -> void:
+	var from := _stance(variant) if variant != "" else "stand"
+	var tr := "" if _is_move(pick) else _transition(from, _stance(pick))
+	if tr != "" and tr != pick and not variant.begins_with("tr_"):
+		pending = pick
+		pick = tr
+	elif pick == pending:
+		pending = ""
 	variant = pick
 	ap.play(pick, blend)
 	var a := ap.get_animation(pick)
@@ -921,6 +1027,39 @@ func _gait_clip() -> void:
 			_play("Walk", 0.35, GAIT_PLAYBACK)
 
 
+# Stopping: walk, side-steps or backing up each end in their own stop clip,
+# begun when the distance left is the clip's stopping distance and followed
+# along its slowing curve, so she arrives on her feet instead of sliding.
+var stop_name := ""
+var stop_from := 0.0
+var stop_dir := 1.0
+var stop_scale := 1.0
+func _stop_clip(dir: float) -> String:
+	match gait:
+		"strafe", "lead":
+			return _variant_of("stop_strafe_left_" if dir > 0.0 else "stop_strafe_right_")
+		"back":
+			return _variant_of("stop_back_")
+	return _variant_of("stop_walk_")
+
+
+func _stop_length(stop: String) -> float:
+	if not stop_curve.has(stop) or leg_length < 0.1:
+		return 0.0
+	return (stop_curve[stop]["d"] as PackedFloat32Array)[-1] * (leg_length / SOMA_LEG)
+
+
+func _begin_stop(stop: String, dir: float) -> void:
+	var length := _stop_length(stop)
+	stop_name = stop
+	stop_from = pos.x
+	stop_dir = dir
+	stop_scale = (absf(target_x - pos.x) / length if length > 0.0 else 1.0) * (leg_length / SOMA_LEG)
+	_set_state("stopping", 6.0)
+	_play_via(stop, "Idle", 0.25)
+	ap.speed_scale = GAIT_PLAYBACK
+
+
 # How fast her body moves for the clip playing: its measured stride if it's
 # a locomotion loop, else the old fixed pace.
 # Stride is set by leg length, not hip height: the clips' source skeleton
@@ -962,23 +1101,20 @@ func _progress() -> float:
 # Falling asleep: on a widget she sits down first (unless already seated),
 # on the floor she settles into a nap.
 func _settle_to_sleep() -> void:
-	if floor_y > 0.01:
-		if clip.begins_with("Sitting"):
-			_play("Sitting_Idle", 1.0, 0.6)
-		else:
-			_play_via(_variant_of("sit_down_"), "Sitting_Idle", 0.5)
-	else:
-		_play("Crouch_Idle", 1.0, 0.6)
+	_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)      # the stance move comes first
 
 
 # Waking: from a floor nap she gets up (get_up_*), from a widget seat she
 # just comes to.
 func _wake() -> void:
-	_set_state("idle", 2.5)
-	if clip == "Crouch_Idle" and floor_y < 0.01:
-		_play_via(_variant_of("get_up_"), "Idle", 0.4)
-	else:
-		_play("Idle", 0.5)
+	# Getting up from wherever she was comes first (the stance moves); off
+	# the floor, now and then she comes up through a crouch, stretching awake.
+	if floor_y < 0.01 and randf() < 0.35 and _variant_of("crouch_idle_") != "":
+		_set_state("idle", randf_range(1.5, 3.0))
+		_play("Crouching", 0.4)
+		return
+	_set_state("idle", 3.0)
+	_play("Idle", 0.4)
 
 
 func _variant_of(prefix: String) -> String:
@@ -988,7 +1124,14 @@ func _variant_of(prefix: String) -> String:
 
 # Called each frame: a role whose variant has had its time moves on to another.
 func _vary() -> void:
-	if not ROLES.has(clip) or t < variant_until:
+	if t < variant_until:
+		return
+	if pending != "":                          # a transition ended: on to what it led to
+		var next := pending
+		pending = ""
+		_play_variant(next, 0.35)
+		return
+	if not ROLES.has(clip) or clip in ONE_SHOT:
 		return
 	var pick := _variant(clip)
 	if pick != "" and (pick != variant or ap.get_animation(pick).loop_mode == Animation.LOOP_NONE):
@@ -1040,7 +1183,10 @@ func _choose() -> void:
 		_set_state("idle", 3.0)
 	elif r < 0.7 and on_widget and allow["sit_on_widgets"]:
 		_set_state("sit", randf_range(10, 25))
-		_play_via(_variant_of("sit_down_"), "Sitting_Idle", 0.4)
+		_play("Sitting_Idle", 0.4)
+	elif r < 0.62 and not on_widget and _variant_of("crouch_idle_") != "" and randf() < 0.4:
+		_set_state("idle", randf_range(4, 8))         # crouches to look at something on the floor
+		_play("Crouching", 0.4)
 	elif r < 0.78:
 		_set_state("idle", randf_range(4, 8))
 		_play("Idle_FoldArms", 0.4)
@@ -1169,7 +1315,7 @@ func _think(_delta: float) -> void:
 		return
 	if t > state_until and state != "sleep":
 		if state == "sit":
-			_play("Sitting_Exit", 0.2)
+			_play("Idle", 0.3)                    # sitting up off the ledge comes first
 			_set_state("idle", 1.2)
 			return
 		if state == "hug":
@@ -1184,6 +1330,11 @@ func _move(delta: float) -> void:
 			if gait == "lead" and t > gait_turn_at:
 				gait = "walk"                      # done side-stepping: turn and walk straight
 				_gait_clip()
+			# Close enough that the stop's own slowing carries her the rest of the way.
+			var stop := _stop_clip(dir)
+			if stop != "" and absf(target_x - pos.x) <= _stop_length(stop):
+				_begin_stop(stop, dir)
+				return
 			pos.x += dir * _gait_speed() * delta
 			match gait:
 				"strafe", "lead":
@@ -1205,6 +1356,13 @@ func _move(delta: float) -> void:
 				_set_state("fall", 99.0)
 				vel = Vector2(dir * _gait_speed(), 0.0)
 				_play("Jump", 0.15)
+		"stopping":
+			var c: Dictionary = stop_curve.get(variant, {})
+			if variant == stop_name and not c.is_empty():
+				pos.x = stop_from + stop_dir * _curve_at(c, ap.current_animation_position) * stop_scale
+			else:                                  # stopped: the idle took over
+				_set_state("idle", randf_range(2, 5))
+				yaw_target = 0.0
 		"fall":
 			var before := pos.y
 			vel.y -= GRAVITY * delta
@@ -1244,7 +1402,7 @@ func _move(delta: float) -> void:
 					_play("Jump_Land", 0.1)
 		"fetch":
 			var fdir := signf(target_x - pos.x)
-			pos.x += fdir * WALK_SPEED * 2.4 * _stride() * delta
+			pos.x += fdir * (_gait_speed() if gait_velocity.has(variant) else WALK_SPEED * 2.4 * _stride()) * delta
 			yaw_target = fdir * 1.3
 			pos.y = floor_y
 			if absf(target_x - pos.x) < 0.1:
@@ -1274,11 +1432,11 @@ func _place_body() -> void:
 	# getting up, it follows the clip's hips so she lowers onto the edge and
 	# rises off it instead of popping.
 	var sit := 0.0
-	if clip.begins_with("Sitting") and floor_y > 0.01:
+	if floor_y > 0.01 and (_stance(variant) == "ledge" or variant.begins_with("sit_up_") or variant == "Sitting_Exit"):
 		sit = 1.0
 		if variant.begins_with("sit_down_"):
 			sit = smoothstep(0.38, 0.72, _progress())
-		elif variant == "Sitting_Exit":
+		elif variant.begins_with("sit_up_") or variant == "Sitting_Exit":
 			sit = 1.0 - smoothstep(0.15, 0.75, _progress())
 	# SIT_DROP was measured on Aries (hips 0.795 m); a taller body sits lower.
 	var drop := SIT_DROP * (skel.motion_scale / 0.795 if skel and skel.motion_scale > 0.1 else 1.0)
@@ -1458,7 +1616,7 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and state == "held":
 		if event.position.distance_to(drag_from) > 4:
 			if not drag_moved:
-				_play("Jump", 0.15, 0.0)      # a dangling pose while held
+				_play("Held", 0.15)           # dangling while held
 			drag_moved = true
 		var v: Vector2 = event.velocity / PPM
 		held_vel = held_vel.lerp(Vector2(v.x, -v.y), 0.5)
@@ -1557,9 +1715,12 @@ func _slab_crumble() -> void:
 
 # Arms out in front, as if carrying, laid over whatever clip is playing.
 func _sample_carry_pose() -> void:
-	if not ap.has_animation("Walk_Carry"):
+	var carry := _variant_of("carry_walk_")
+	if carry == "":
+		carry = "Walk_Carry"
+	if not ap.has_animation(carry):
 		return
-	ap.play("Walk_Carry")
+	ap.play(carry)
 	ap.seek(0.0, true)
 	for b in ["LeftShoulder", "RightShoulder", "LeftUpperArm", "RightUpperArm", "LeftLowerArm",
 			"RightLowerArm", "LeftHand", "RightHand"]:
@@ -1623,7 +1784,7 @@ func _snapshot_seq(what: String) -> void:
 	match what:
 		"sit":
 			_set_state("sit", 99.0)
-			_play_via(_variant_of("sit_down_"), "Sitting_Idle", 0.4)
+			_play("Sitting_Idle", 0.4)
 		"wake":
 			_set_state("sleep", 1e9)
 			_play("Crouch_Idle", 0.0, 0.6)
@@ -1645,7 +1806,7 @@ func _snapshot_seq(what: String) -> void:
 		if feet:
 			for b in ["LeftToes", "RightToes"]:
 				var g := skel.global_transform * skel.get_bone_global_pose(skel.find_bone(b)).origin
-				print("FOOT %d %s %.3f %.3f" % [i, b, g.x, g.y])
+				print("FOOT %d %s %.3f %.3f %s %s %.2f" % [i, b, g.x, g.y, state, variant, pos.x])
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_seq_%02d.png" % i))
 	get_tree().quit()
 

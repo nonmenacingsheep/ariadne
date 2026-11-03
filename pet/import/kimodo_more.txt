@@ -1,0 +1,22 @@
+# Replacements for the stock (Quaternius) clips her body still used, and stops.
+talk_1|6|A woman stands and talks expressively, gesturing with both hands.
+talk_2|6|A woman stands chatting casually, nodding and moving one hand as she speaks.
+fold_arms_1|8|A woman stands with her arms folded across her chest, waiting patiently.
+sit_idle_3|8|A woman sits on the edge of a tall table, leaning forward with her elbows on her knees.
+sit_up_1|4|A woman sitting on the edge of a tall table slides off it and stands up.
+dance_3|8|A woman dances energetically, spinning around and swaying her arms.
+jump_1|3|A woman jumps straight up into the air and lands.
+fall_1|3|A woman falls through the air, flailing her arms and legs.
+land_1|3|A woman lands from a jump, bending her knees to absorb the impact, then stands up straight.
+knocked_1|4|A woman is knocked over backwards and falls onto her back.
+pickup_1|4|A woman bends down and picks up a small object from the floor in front of her.
+interact_1|4|A woman reaches out with her right hand and taps something in front of her, then lowers her hand.
+nod_1|3|A woman nods her head yes happily.
+held_1|6|A woman hangs in the air with her arms raised, kicking her legs.
+jog_1|8|A woman jogs forward at an easy pace.
+carry_walk_1|8|A woman walks forward carrying a box in front of her with both hands.
+stop_walk_1|5|A woman walks forward, comes to a stop and stands still.
+stop_walk_2|5|A woman walks forward, slows down and stops, standing relaxed.
+stop_strafe_left_1|4|A woman side-steps to her left, then stops and stands still facing forward.
+stop_strafe_right_1|4|A woman side-steps to her right, then stops and stands still facing forward.
+stop_back_1|4|A woman walks backwards a few steps, then stops and stands still.

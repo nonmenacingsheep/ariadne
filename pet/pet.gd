@@ -674,15 +674,46 @@ func _load_clips() -> void:
 	ap.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	if clip_lib == null:                   # read once; every body plays the same humanoid clips
 		clip_lib = AnimationLibrary.new()
-		for path in CLIPS:
+		var paths: Array = CLIPS.duplicate()
+		# Kimodo clips (pet/import/: BVH -> GLB, soma_bonemap.tres), each played in place.
+		for f in DirAccess.get_files_at(KIMODO_DIR):
+			if f.ends_with(".glb"):
+				paths.append(KIMODO_DIR + f)
+		for path in paths:
 			var src: Node = (load(path) as PackedScene).instantiate()
 			var player := _find(src, "AnimationPlayer") as AnimationPlayer
 			if player:
 				for name in player.get_animation_list():
 					if not clip_lib.has_animation(name):
-						clip_lib.add_animation(name, player.get_animation(name))
+						var anim := player.get_animation(name)
+						if String(path).begins_with(KIMODO_DIR):
+							anim = _in_place(anim)
+						clip_lib.add_animation(name, anim)
 			src.free()
 	ap.add_animation_library("", clip_lib)
+
+
+# Kimodo clips travel (a walk goes somewhere); her body moves her itself, so
+# the hips' steady drift over the clip comes out, keeping its sway and bob.
+const KIMODO_DIR := "res://assets/anims/kimodo/"
+func _in_place(src: Animation) -> Animation:
+	var anim := src.duplicate(true) as Animation
+	for tr in anim.get_track_count():
+		if anim.track_get_type(tr) != Animation.TYPE_POSITION_3D or not (String(anim.track_get_path(tr)).ends_with(":Hips") or String(anim.track_get_path(tr)).ends_with(":Root")):
+			continue
+		var n := anim.track_get_key_count(tr)
+		if n < 2:
+			continue
+		var first: Vector3 = anim.track_get_key_value(tr, 0)
+		var last: Vector3 = anim.track_get_key_value(tr, n - 1)
+		var t0 := anim.track_get_key_time(tr, 0)
+		var span := maxf(anim.track_get_key_time(tr, n - 1) - t0, 0.001)
+		for k in n:
+			var f := (anim.track_get_key_time(tr, k) - t0) / span
+			var v: Vector3 = anim.track_get_key_value(tr, k)
+			var drift := first.lerp(last, f)
+			anim.track_set_key_value(tr, k, Vector3(v.x - drift.x, v.y, v.z - drift.z))
+	return anim
 
 
 func _play(name: String, blend := 0.3, speed := 1.0) -> void:

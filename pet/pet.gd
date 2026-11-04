@@ -377,6 +377,17 @@ var tail_up := 0.0                         # 0 lying on the floor, 1 raised
 # Each segment's bend when raised (radians, + is up: a turn about her right
 # side bends the tail down for minus, up for plus): up and back, tip curling over.
 const TAIL_UP := [0.7, 0.35, 0.15, 0.0, -0.1, -0.15, -0.2, -0.2]
+# The second spring: raising (about 0.8 Hz, a ~20% overshoot) and her body's
+# motion swinging it (about 1.2 Hz, bouncier), spread down the tail by SWING_FALL.
+const TAIL_K_UP := 25.0
+const TAIL_C_UP := 4.5
+const TAIL_K_SWING := 55.0
+const TAIL_C_SWING := 4.0
+const SWING_FALL := [1.0, 0.75, 0.55, 0.4, 0.3, 0.2, 0.15, 0.1]
+var tail_up_v := 0.0
+var tail_swing := Vector2.ZERO             # (sideways, down) radians, from her body's motion
+var tail_swing_v := Vector2.ZERO
+var tail_body_was := Vector3.ZERO
 var ear_bones: Array = []                  # [bone, rest rotation] left, right
 var ear_flick_at := [-9.0, -9.0]
 var ear_next := [3.0, 5.0]
@@ -498,20 +509,35 @@ func _tail_frame() -> void:
 	# arcs up off the floor, light. Idling, resting or asleep it eases down
 	# and lies heavy along the ground, the floor plane under it.
 	var relaxed := state in ["idle", "rest", "sleep", "sit"] and not speaking
-	tail_up = lerpf(tail_up, 0.0 if relaxed else 1.0, 0.035)
+	var dt := clampf(get_process_delta_time(), 0.001, 0.1)
+	# A second spring under the springy bones: underdamped, so it overshoots.
+	# Up it springs and bounces, down it flops; and her body's own motion
+	# (setting off, stopping, turning, a jump) throws it, and it rebounds.
+	tail_up_v += ((0.0 if relaxed else 1.0) - tail_up) * TAIL_K_UP * dt - tail_up_v * TAIL_C_UP * dt
+	tail_up = clampf(tail_up + tail_up_v * dt, -0.1, 1.3)
+	var moved := body.global_position - tail_body_was
+	tail_body_was = body.global_position
+	if moved.length() > 0.5:
+		moved = Vector3.ZERO                   # a teleport, not motion
+	var v := body.global_transform.basis.inverse() * (moved / dt)
+	var goal := Vector2(clampf(-v.x * 0.5, -0.7, 0.7), clampf(-v.z * 0.35 - v.y * 0.25, -0.6, 0.6))
+	tail_swing_v += (goal - tail_swing) * TAIL_K_SWING * dt - tail_swing_v * TAIL_C_SWING * dt
+	tail_swing += tail_swing_v * dt
+	var up_k := clampf(tail_up, 0.0, 1.0)
 	if jiggle and tail_chain >= 0:
-		jiggle.set_gravity(tail_chain, lerpf(0.55, 0.02, tail_up))
-		jiggle.set_stiffness(tail_chain, lerpf(0.35, 1.3, tail_up))   # held up, not just let fall
+		jiggle.set_gravity(tail_chain, lerpf(0.55, 0.08, up_k))
+		jiggle.set_stiffness(tail_chain, lerpf(0.3, 0.6, up_k))       # held up loosely: its own springs keep moving
 	var lift_k := 0.25 if state in ["sit", "sleep", "rest"] else 1.0
 	for i in tail_bones.size():
 		# (lying, a slight downward bend: it rests on the floor)
 		var down := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35)
 		var up: float = TAIL_UP[mini(i, TAIL_UP.size() - 1)] + 0.07 * sin(t * 0.9 * pace - i * 0.9)   # up and back, tip curling over
-		var curl := lerpf(down, -up, tail_up)
+		var curl: float = lerpf(down, -up, tail_up) + tail_swing.y * SWING_FALL[mini(i, 7)]
 		var side := (amp if i == 0 else 0.05 + 0.05 * happy) * sin(t * speed * pace - i * 0.6)
 		if i < 3:
 			# strong enough to beat her pelvis's own twist, which carries the root toward the stepping leg
 			side = lerpf(side, WAG_SIDE * walk_wag * (0.8 + 0.3 * happy) * [1.0, 0.6, 0.35][i], walk_mix)
+		side += tail_swing.x * float(SWING_FALL[mini(i, 7)])
 		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
 		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
 

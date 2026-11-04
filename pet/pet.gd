@@ -366,11 +366,16 @@ const JIGGLE_COLLIDE := [["Head", 0.1, false], ["Neck", 0.055, true], ["UpperChe
 		["LeftLowerArm", 0.04, true], ["RightLowerArm", 0.04, true], ["LeftHand", 0.04, false], ["RightHand", 0.04, false],
 		["LeftUpperLeg", 0.075, true], ["RightUpperLeg", 0.075, true],
 		["LeftLowerLeg", 0.055, true], ["RightLowerLeg", 0.055, true], ["LeftFoot", 0.045, false], ["RightFoot", 0.045, false]]
+var tail_x := 0.0
 var tail_low: Array = []                   # a test run's lowest tail and hair joints, after the springs
 var floor_plane: SpringBoneCollisionPlane3D   # the ground under her, for her tail (and her hair, lying down)
 var jiggle: SpringBoneSimulator3D
 var jiggle_at := Vector3.ZERO              # where her body was last frame: a jump is a teleport
 var tail_bones: Array[int] = []
+var walk_mix := 0.0                        # how much her stride (not the idle sway) is swinging her tail
+var walk_wag := 0.0                        # +1 left foot ahead, -1 right foot ahead
+var feet_were := 0.0
+const WAG_SIDE := -1.0                     # away from the leading foot (measured: tail vs feet correlate -0.55; her pelvis alone gives +0.6)
 var tail_rest: Array[Quaternion] = []
 
 
@@ -453,12 +458,33 @@ func _tail_frame() -> void:
 	if tail_bones.is_empty():
 		return
 	var pace := 0.6 if state == "sleep" else (1.8 if state in ["dance", "held", "fall", "react"] else 1.0)
+	# Happy, it swishes wider and quicker.
+	var happy := clampf((_feeling("joy") - 0.3) / 1.2, 0.0, 1.0) if state != "sleep" else 0.0
+	var amp := 0.35 + 0.5 * happy
+	var speed := 1.3 + 1.8 * happy
+	# Walking, its root swings to the side away from the leg stepping forward
+	# (left foot ahead, tail to her right), in time with her stride.
+	var walking := state in ["wander", "stopping"] and (gait_velocity.has(variant) or variant.begins_with("stop_"))
+	walk_mix = lerpf(walk_mix, 1.0 if walking else 0.0, 0.12)
+	var ahead := 0.0
+	if walking and leg_length > 0.1:
+		var inv := body.global_transform.affine_inverse()
+		var lf := inv * (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("LeftFoot")).origin)
+		var rf := inv * (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("RightFoot")).origin)
+		ahead = clampf((lf.z - rf.z) / (leg_length * 0.5), -1.0, 1.0)
+	# Led a little (where her feet are heading): the springy tail lags its root.
+	var lead := clampf(ahead + (ahead - feet_were) * 3.0, -1.2, 1.2) if walking else 0.0
+	feet_were = ahead
+	walk_wag = lerpf(walk_wag, lead, 0.35)
 	# Sitting or asleep, it lies along the ground instead of curling up; on her
 	# feet only its first segments lift, the rest is heavy and drags on the floor.
 	var lift_k := 0.25 if state in ["sit", "sleep", "rest"] else 1.0
 	for i in tail_bones.size():
 		var curl := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35)
-		var side := (0.35 if i == 0 else 0.05) * sin(t * 1.3 * pace - i * 0.6)
+		var side := (amp if i == 0 else 0.05 + 0.05 * happy) * sin(t * speed * pace - i * 0.6)
+		if i < 3:
+			# strong enough to beat her pelvis's own twist, which carries the root toward the stepping leg
+			side = lerpf(side, WAG_SIDE * walk_wag * (0.8 + 0.3 * happy) * [1.0, 0.6, 0.35][i], walk_mix)
 		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
 		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
 
@@ -2421,6 +2447,10 @@ func _snapshot_seq(what: String) -> void:
 		skel.skeleton_updated.connect(func():
 			for b in skel.get_bone_count():
 				var nm := skel.get_bone_name(b)
+				if nm == "Tail_3":                   # sideways from her hips, in her own frame
+					var inv := body.global_transform.affine_inverse()
+					tail_x = (inv * (skel.global_transform * skel.get_bone_global_pose(b).origin)).x \
+							- (inv * (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin)).x
 				var k := 0 if nm.begins_with("Tail") else (1 if nm.begins_with("Hair") else -1)
 				if k >= 0:
 					tail_low[k] = minf(tail_low[k], (skel.global_transform * skel.get_bone_global_pose(b).origin).y))
@@ -2434,7 +2464,7 @@ func _snapshot_seq(what: String) -> void:
 			var hp := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin
 			print("HEAD %d head(%.2f %.2f %.2f) hips(%.2f %.2f %.2f) %s %s" % [i, hd.x, hd.y, hd.z, hp.x, hp.y, hp.z, state, variant])
 			if not tail_low.is_empty():              # her tail and hair after the springs: on the floor, never under it
-				print("TAIL %d lowest tail %.3f hair %.3f (floor %.2f)" % [i, tail_low[0], tail_low[1], pos.y + lift])
+				print("TAIL %d lowest tail %.3f hair %.3f (floor %.2f) tip_x %.2f ahead %.2f" % [i, tail_low[0], tail_low[1], pos.y + lift, tail_x, walk_wag])
 				tail_low = [9.0, 9.0]
 		if feet:
 			for b in ["LeftToes", "RightToes"]:

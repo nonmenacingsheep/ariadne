@@ -348,7 +348,7 @@ const JIGGLE := [
 	["Hair_Back_B.R", "Hair_Back_B.R", 1.2, 0.45, 0.2, 0.015], ["Hair_Back_D.L", "Hair_Back_D.L", 1.2, 0.45, 0.2, 0.015],
 	["Hair_Back_D.R", "Hair_Back_D.R", 1.2, 0.45, 0.2, 0.015], ["Hair_Back_F.L", "Hair_Back_F.L", 1.2, 0.45, 0.2, 0.015],
 	["Hair_Back_F.R", "Hair_Back_F.R", 1.2, 0.45, 0.2, 0.015],
-	["Ear.L", "Ear.L", 2.0, 0.3, 0.0, 0.01], ["Ear.R", "Ear.R", 2.0, 0.3, 0.0, 0.01],        # a twitchy flick
+	["Ear.L", "Ear.L", 0.8, 0.22, 0.04, 0.01], ["Ear.R", "Ear.R", 0.8, 0.22, 0.04, 0.01],     # soft: they wobble after a flick
 	["Breast_1.L", "Breast_2.L", 4.0, 0.55, 0.0, 0.03], ["Breast_1.R", "Breast_2.R", 4.0, 0.55, 0.0, 0.03],
 	["Butt.L", "Butt.L", 4.0, 0.55, 0.0, 0.03], ["Butt.R", "Butt.R", 4.0, 0.55, 0.0, 0.03],      # firm: a bounce, not a swing
 	["JacketBelt_1.L", "JacketBelt_3.L", 0.6, 0.4, 0.6, 0.01], ["JacketBelt_1.R", "JacketBelt_3.R", 0.6, 0.4, 0.6, 0.01],
@@ -372,6 +372,14 @@ var floor_plane: SpringBoneCollisionPlane3D   # the ground under her, for her ta
 var jiggle: SpringBoneSimulator3D
 var jiggle_at := Vector3.ZERO              # where her body was last frame: a jump is a teleport
 var tail_bones: Array[int] = []
+var tail_chain := -1                       # the tail's spring setting (its gravity drops while it's up)
+var tail_up := 0.0                         # 0 lying on the floor, 1 raised
+# Each segment's bend when raised (radians, + is up: a turn about her right
+# side bends the tail down for minus, up for plus): up and back, tip curling over.
+const TAIL_UP := [0.7, 0.35, 0.15, 0.0, -0.1, -0.15, -0.2, -0.2]
+var ear_bones: Array = []                  # [bone, rest rotation] left, right
+var ear_flick_at := [-9.0, -9.0]
+var ear_next := [3.0, 5.0]
 var walk_mix := 0.0                        # how much her stride (not the idle sway) is swinging her tail
 var walk_wag := 0.0                        # +1 left foot ahead, -1 right foot ahead
 var feet_were := 0.0
@@ -429,6 +437,15 @@ func _add_jiggle() -> void:
 	for i in chains.size():
 		var root: String = chains[i][0]
 		sim.set_enable_all_child_collisions(i, root.begins_with("Hair") or root.begins_with("Tail"))
+	tail_chain = -1
+	for i in chains.size():
+		if chains[i][0] == "Tail_0":
+			tail_chain = i
+	ear_bones.clear()
+	for e in ["Ear.L", "Ear.R"]:
+		var eb := skel.find_bone(e)
+		if eb >= 0:
+			ear_bones.append([eb, skel.get_bone_rest(eb).basis.get_rotation_quaternion()])
 	for i in 8:
 		var b := skel.find_bone("Tail_%d" % i)
 		if b < 0:
@@ -455,11 +472,12 @@ func _tail_frame() -> void:
 		if state in ["held", "fall"]:
 			ground = 0.0                       # dangling or flying: only the room's floor
 		floor_plane.global_transform = Transform3D(Basis.IDENTITY, Vector3(body.global_position.x, ground, body.global_position.z))
+	var happy := clampf((_feeling("joy") - 0.3) / 1.2, 0.0, 1.0) if state != "sleep" else 0.0
+	_ear_frame(happy)
 	if tail_bones.is_empty():
 		return
 	var pace := 0.6 if state == "sleep" else (1.8 if state in ["dance", "held", "fall", "react"] else 1.0)
 	# Happy, it swishes wider and quicker.
-	var happy := clampf((_feeling("joy") - 0.3) / 1.2, 0.0, 1.0) if state != "sleep" else 0.0
 	var amp := 0.35 + 0.5 * happy
 	var speed := 1.3 + 1.8 * happy
 	# Walking, its root swings to the side away from the leg stepping forward
@@ -476,17 +494,46 @@ func _tail_frame() -> void:
 	var lead := clampf(ahead + (ahead - feet_were) * 3.0, -1.2, 1.2) if walking else 0.0
 	feet_were = ahead
 	walk_wag = lerpf(walk_wag, lead, 0.35)
-	# Sitting or asleep, it lies along the ground instead of curling up; on her
-	# feet only its first segments lift, the rest is heavy and drags on the floor.
+	# Up while she's doing anything (walking, playing, dancing, reacting): it
+	# arcs up off the floor, light. Idling, resting or asleep it eases down
+	# and lies heavy along the ground, the floor plane under it.
+	var relaxed := state in ["idle", "rest", "sleep", "sit"] and not speaking
+	tail_up = lerpf(tail_up, 0.0 if relaxed else 1.0, 0.035)
+	if jiggle and tail_chain >= 0:
+		jiggle.set_gravity(tail_chain, lerpf(0.55, 0.02, tail_up))
+		jiggle.set_stiffness(tail_chain, lerpf(0.35, 1.3, tail_up))   # held up, not just let fall
 	var lift_k := 0.25 if state in ["sit", "sleep", "rest"] else 1.0
 	for i in tail_bones.size():
-		var curl := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35)
+		# (lying, a slight downward bend: it rests on the floor)
+		var down := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35)
+		var up: float = TAIL_UP[mini(i, TAIL_UP.size() - 1)] + 0.07 * sin(t * 0.9 * pace - i * 0.9)   # up and back, tip curling over
+		var curl := lerpf(down, -up, tail_up)
 		var side := (amp if i == 0 else 0.05 + 0.05 * happy) * sin(t * speed * pace - i * 0.6)
 		if i < 3:
 			# strong enough to beat her pelvis's own twist, which carries the root toward the stepping leg
 			side = lerpf(side, WAG_SIDE * walk_wag * (0.8 + 0.3 * happy) * [1.0, 0.6, 0.35][i], walk_mix)
 		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
 		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
+
+
+# Her ears flick: often when she's happy (now one, now both), once in a while
+# otherwise. A quick perk upward and back (her ears point out to the sides:
+# a turn about forward lifts the left tip for minus, the right for plus); the
+# soft springs add the wobble after.
+const EAR_FLICK := 0.6
+func _ear_frame(happy: float) -> void:
+	if ear_bones.size() < 2:
+		return
+	for e in 2:
+		if t > ear_next[e] and state != "sleep":
+			ear_flick_at[e] = t
+			ear_next[e] = t + (randf_range(0.5, 2.0) / (0.5 + happy) if happy > 0.25 else randf_range(6.0, 15.0))
+			if randf() < 0.35:                 # both together
+				ear_flick_at[1 - e] = t
+				ear_next[1 - e] = maxf(ear_next[1 - e], t + 0.5)
+		var u: float = (t - float(ear_flick_at[e])) / 0.16
+		var a := sin(PI * u) * EAR_FLICK * (0.6 + 0.4 * happy) if u >= 0.0 and u < 1.0 else 0.0
+		skel.set_bone_pose_rotation(ear_bones[e][0], (ear_bones[e][1] as Quaternion) * Quaternion(Vector3.FORWARD, a * (-1.0 if e == 0 else 1.0)))
 
 
 # Anime look for GLB bodies: two-tone lighting, a soft rim, no gloss, both
@@ -909,10 +956,28 @@ func _load_clips() -> void:
 								anim = anim.duplicate(true)
 								anim.loop_mode = Animation.LOOP_LINEAR
 							anim = _in_place(anim, String(name).begins_with("stop_"))
+						anim = _without_eyes(anim)
 						clip_lib.add_animation(name, anim)
 						_lying_heads(name, anim)
 			src.free()
 	ap.add_animation_library("", clip_lib)
+
+
+# The clips' source skeletons have no eyes, but the retarget gives every clip
+# eye-bone tracks anyway, posed for some other face: they turned her irises
+# into her head, leaving just the whites. Her eyes keep the model's own pose.
+func _without_eyes(src: Animation) -> Animation:
+	var drop := []
+	for tr in src.get_track_count():
+		var p := String(src.track_get_path(tr))
+		if p.ends_with(":LeftEye") or p.ends_with(":RightEye") or p.ends_with(":Eyes"):
+			drop.append(tr)
+	if drop.is_empty():
+		return src
+	var anim := src.duplicate(true) as Animation
+	for i in range(drop.size() - 1, -1, -1):
+		anim.remove_track(drop[i])
+	return anim
 
 
 # Lying clips don't agree which way her head points (lying back from sitting

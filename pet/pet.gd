@@ -336,7 +336,7 @@ func _dress() -> void:
 # model has: [root, end, stiffness, drag, gravity, radius]. root == end is a
 # single bone, extended. Missing bones are skipped, so any rig works.
 const JIGGLE := [
-	["Tail_0", "Tail_7", 0.45, 0.18, 0.10, 0.025],          # the dragon: loose, low drag, the wave carries
+	["Tail_0", "Tail_7", 0.35, 0.22, 0.55, 0.03],           # the dragon: loose and heavy, lies on the floor and drags
 	["Hair_Ponytail_1", "Hair_Ponytail_5", 0.7, 0.35, 0.35, 0.02],
 	["Hair_Ponytail_B_1", "Hair_Ponytail_B_2", 0.8, 0.4, 0.35, 0.015],
 	["Hair_Ponytail_C_1", "Hair_Ponytail_C_4", 0.7, 0.35, 0.35, 0.015],
@@ -357,9 +357,17 @@ const JIGGLE := [
 	["Shoe_A_1.L", "Shoe_A_2.L", 0.7, 0.4, 0.7, 0.008], ["Shoe_A_1.R", "Shoe_A_2.R", 0.7, 0.4, 0.7, 0.008],
 	["Shoe_B_1.L", "Shoe_B_2.L", 0.7, 0.4, 0.7, 0.008], ["Shoe_B_1.R", "Shoe_B_2.R", 0.7, 0.4, 0.7, 0.008],
 ]
-# What hair and tail bump against: [humanoid bone, radius m].
-const JIGGLE_COLLIDE := [["Head", 0.095], ["Chest", 0.12], ["Hips", 0.13], ["LeftUpperLeg", 0.07],
-		["RightUpperLeg", 0.07], ["Spine", 0.11]]
+# What hair and tail bump against, so they never pass through her: [humanoid
+# bone, radius m, capsule along the bone to its child (true) or a ball].
+const JIGGLE_COLLIDE := [["Head", 0.1, false], ["Neck", 0.055, true], ["UpperChest", 0.12, false],
+		["Chest", 0.12, false], ["Spine", 0.11, false], ["Hips", 0.13, false],
+		["LeftShoulder", 0.05, true], ["RightShoulder", 0.05, true],
+		["LeftUpperArm", 0.045, true], ["RightUpperArm", 0.045, true],
+		["LeftLowerArm", 0.04, true], ["RightLowerArm", 0.04, true], ["LeftHand", 0.04, false], ["RightHand", 0.04, false],
+		["LeftUpperLeg", 0.075, true], ["RightUpperLeg", 0.075, true],
+		["LeftLowerLeg", 0.055, true], ["RightLowerLeg", 0.055, true], ["LeftFoot", 0.045, false], ["RightFoot", 0.045, false]]
+var tail_low: Array = []                   # a test run's lowest tail and hair joints, after the springs
+var floor_plane: SpringBoneCollisionPlane3D   # the ground under her, for her tail (and her hair, lying down)
 var jiggle: SpringBoneSimulator3D
 var jiggle_at := Vector3.ZERO              # where her body was last frame: a jump is a teleport
 var tail_bones: Array[int] = []
@@ -390,11 +398,27 @@ func _add_jiggle() -> void:
 		sim.set_gravity(i, c[4])
 		sim.set_radius(i, c[5])
 	for c in JIGGLE_COLLIDE:
-		if have.call(c[0]):
+		if not have.call(c[0]):
+			continue
+		var b := skel.find_bone(c[0])
+		var kids := skel.get_bone_children(b)
+		if c[2] and not kids.is_empty():
+			# A capsule from this joint to the next, however the bone points.
+			var along: Vector3 = skel.get_bone_rest(kids[0]).origin
+			var cap := SpringBoneCollisionCapsule3D.new()
+			cap.bone_name = c[0]
+			cap.radius = c[1]
+			cap.height = along.length() + 2.0 * float(c[1])
+			cap.position_offset = along / 2.0
+			cap.rotation_offset = Quaternion(Vector3.UP, along.normalized())
+			sim.add_child(cap)
+		else:
 			var col := SpringBoneCollisionSphere3D.new()
 			col.bone_name = c[0]
 			col.radius = c[1]
 			sim.add_child(col)
+	floor_plane = SpringBoneCollisionPlane3D.new()
+	sim.add_child(floor_plane)
 	# Only hair and tail bump into her; a chain that sits on the body (chest,
 	# hips, belts) would be pushed out by the very sphere it rests on.
 	for i in chains.size():
@@ -419,13 +443,21 @@ func _tail_frame() -> void:
 		jiggle.reset()
 	if body:
 		jiggle_at = body.global_position
+	if floor_plane:
+		# The ground she's on (the room's floor, the bed, the cushion); on a
+		# widget's edge there's nothing below, so her tail hangs free.
+		var ground := pos.y + lift if floor_y < 0.01 and state not in ["held", "fall"] else -100.0
+		if state in ["held", "fall"]:
+			ground = 0.0                       # dangling or flying: only the room's floor
+		floor_plane.global_transform = Transform3D(Basis.IDENTITY, Vector3(body.global_position.x, ground, body.global_position.z))
 	if tail_bones.is_empty():
 		return
 	var pace := 0.6 if state == "sleep" else (1.8 if state in ["dance", "held", "fall", "react"] else 1.0)
-	# Sitting or asleep, it lies along the ground instead of curling up.
-	var lift := 0.25 if state in ["sit", "sleep"] else 1.0
+	# Sitting or asleep, it lies along the ground instead of curling up; on her
+	# feet only its first segments lift, the rest is heavy and drags on the floor.
+	var lift_k := 0.25 if state in ["sit", "sleep", "rest"] else 1.0
 	for i in tail_bones.size():
-		var curl := (0.22 + 0.06 * sin(t * 0.7 * pace - i * 0.9)) * lift  # lifts it off the floor, S-shaped
+		var curl := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35)
 		var side := (0.35 if i == 0 else 0.05) * sin(t * 1.3 * pace - i * 0.6)
 		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
 		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
@@ -2384,6 +2416,14 @@ func _snapshot_seq(what: String) -> void:
 			gait = what
 			gait_turn_at = t + 0.8
 			_gait_clip()
+	if OS.get_environment("PET_SEQ_HEAD") != "":
+		tail_low = [9.0, 9.0]
+		skel.skeleton_updated.connect(func():
+			for b in skel.get_bone_count():
+				var nm := skel.get_bone_name(b)
+				var k := 0 if nm.begins_with("Tail") else (1 if nm.begins_with("Hair") else -1)
+				if k >= 0:
+					tail_low[k] = minf(tail_low[k], (skel.global_transform * skel.get_bone_global_pose(b).origin).y))
 	var dt := float(OS.get_environment("PET_SEQ_DT")) if OS.get_environment("PET_SEQ_DT") != "" else 0.4
 	var feet := OS.get_environment("PET_SEQ_FEET") != ""      # log where her feet are, for slide checks
 	for i in 14:
@@ -2393,6 +2433,9 @@ func _snapshot_seq(what: String) -> void:
 			var hd := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Head")).origin
 			var hp := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin
 			print("HEAD %d head(%.2f %.2f %.2f) hips(%.2f %.2f %.2f) %s %s" % [i, hd.x, hd.y, hd.z, hp.x, hp.y, hp.z, state, variant])
+			if not tail_low.is_empty():              # her tail and hair after the springs: on the floor, never under it
+				print("TAIL %d lowest tail %.3f hair %.3f (floor %.2f)" % [i, tail_low[0], tail_low[1], pos.y + lift])
+				tail_low = [9.0, 9.0]
 		if feet:
 			for b in ["LeftToes", "RightToes"]:
 				var g := skel.global_transform * skel.get_bone_global_pose(skel.find_bone(b)).origin

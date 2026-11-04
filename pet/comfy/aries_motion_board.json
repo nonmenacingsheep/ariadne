@@ -46,6 +46,7 @@
     1,
     "fixed",
     "standing",
+    "(the pose above)",
     "same as start",
     "",
     ""
@@ -173,7 +174,7 @@
    ],
    "flags": {},
    "order": 3,
-   "mode": 2,
+   "mode": 0,
    "inputs": [
     {
      "name": "motion",
@@ -194,7 +195,8 @@
     "Node name for S&R": "AriesPreviewOnHer"
    },
    "widgets_values": [
-    "three-quarter"
+    "three-quarter",
+    false
    ]
   },
   {
@@ -210,7 +212,7 @@
    ],
    "flags": {},
    "order": 5,
-   "mode": 2,
+   "mode": 0,
    "inputs": [
     {
      "name": "images",
@@ -249,7 +251,7 @@
    ],
    "flags": {},
    "order": 6,
-   "mode": 2,
+   "mode": 0,
    "inputs": [
     {
      "name": "motion",
@@ -269,6 +271,7 @@
    },
    "widgets_values": [
     "idle_happy_9",
+    false,
     true
    ]
   },
@@ -290,7 +293,7 @@
    "outputs": [],
    "properties": {},
    "widgets_values": [
-    "HER MOTION BOARD\n1. Write what she does in the prompt (\"A woman ...\" works best), pick seconds and a seed, and the poses she starts and ends in (standing, sitting, lying...). Same as start = it loops back.\n2. Queue (Ctrl+Enter). The first take of a session waits a few minutes while Kimodo's text encoder loads; after that a take is about 20 s.\n3. The skeleton preview plays on the right; the checker's verdict shows under it.\n4. Like it? Turn on \"Preview: On Her Body\" (Ctrl+M) to see it on her in her room (about a minute).\n5. Keep it: turn on \"Add To Her Clips\", name it with a role prefix (idle_happy_, solo_, play_...), queue again. It repacks her clips; restart her body to use it.\nChange the seed for another take of the same prompt."
+    "HER MOTION BOARD\n1. Write what she does (\"A woman ...\" works best), pick seconds and a seed, and the pose she starts in: one of her poses, or start_from = where one of her saved clips ends (newest first). End pose \"same as start\" makes it come back there.\n2. Queue (Ctrl+Enter). The first take of a session waits a few minutes while Kimodo's text encoder loads; after that a take is about 20 s.\n3. The skeleton preview plays on the right; the checker's verdict shows under it.\n4. Like it? Switch \"film\" on in Preview: On Her Body and queue again: the same take on her in her room (about a minute).\n5. Keep it: in Add To Her Clips name it with a role prefix (idle_happy_, solo_, play_...), switch \"save\" on, queue again (the same take is saved, not a new one). It repacks her clips; restart her body to use it. Switch save off again before your next take.\nNew clips show up in start_from after you press R (refresh) in ComfyUI."
    ]
   }
  ],

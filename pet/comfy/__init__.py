@@ -44,6 +44,18 @@ POSES = {
     "on her stomach": "lie_idle_1:0",
 }
 END_POSES = {"same as start": "=", **POSES}
+NO_CLIP = "(the pose above)"
+
+
+def _saved_clips() -> list:
+    """Her clip library (Kimodo takes), newest first: a take can start where one ends."""
+    try:
+        names = [f[:-4] for f in os.listdir(CLIPS) if f.endswith(".npz") and not f.endswith(".bad.npz")
+                 and "_try" not in f]
+        names.sort(key=lambda n: -os.path.getmtime(os.path.join(CLIPS, n + ".npz")))
+        return names
+    except OSError:
+        return []
 
 _encoder = {"proc": None, "used": 0.0}
 
@@ -103,6 +115,8 @@ class MakeHerMotion:
             "seconds": ("FLOAT", {"default": 5.0, "min": 1.0, "max": 12.0, "step": 0.5}),
             "seed": ("INT", {"default": 1, "min": 1, "max": 99999}),
             "start_pose": (list(POSES), {"default": "standing"}),
+            "start_from": ([NO_CLIP] + _saved_clips(), {"default": NO_CLIP,
+                           "tooltip": "start where one of her saved clips ends (its last frame); newest first"}),
             "end_pose": (list(END_POSES), {"default": "same as start"}),
         }, "optional": {
             "custom_start": ("STRING", {"default": "", "tooltip": "a pose of your own: clip:frame or clip:frame/degrees"}),
@@ -114,10 +128,10 @@ class MakeHerMotion:
     FUNCTION = "make"
     CATEGORY = "Aries"
 
-    def make(self, prompt, seconds, seed, start_pose, end_pose, custom_start="", custom_end=""):
+    def make(self, prompt, seconds, seed, start_pose, start_from, end_pose, custom_start="", custom_end=""):
         pbar = comfy.utils.ProgressBar(100)
         _ensure_encoder(pbar)
-        a = custom_start.strip() or POSES[start_pose]
+        a = custom_start.strip() or (f"{start_from}:-1" if start_from != NO_CLIP else POSES[start_pose])
         b = custom_end.strip() or (a if END_POSES[end_pose] == "=" else END_POSES[end_pose])
         out = os.path.join(_take_dir(), f"take_{int(time.time())}_{seed}")
         spec = {"prompt": prompt, "seconds": seconds, "seed": seed, "start": a, "end": b, "out": out}
@@ -181,13 +195,18 @@ class PreviewOnHer:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"motion": ("ARIES_MOTION",), "view": (["front", "three-quarter", "side"],)}}
+        return {"required": {"motion": ("ARIES_MOTION",), "view": (["front", "three-quarter", "side"],),
+                             "film": ("BOOLEAN", {"default": False, "label_on": "film her", "label_off": "off (skeleton only)"})}}
 
     RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "film"
+    FUNCTION = "film_her"
     CATEGORY = "Aries"
 
-    def film(self, motion, view):
+    def film_her(self, motion, view, film):
+        if not film:                                  # off: one quiet frame, no minute-long render
+            img = Image.new("RGB", (320, 120), (44, 46, 54))
+            ImageDraw.Draw(img).text((14, 50), "On her body: turn film on to see it", fill=(200, 200, 210))
+            return (_frames_to_tensor([img]),)
         pbar = comfy.utils.ProgressBar(100)
         stem = motion["stem"]
         name = "preview_" + os.path.basename(stem).replace("take_", "")
@@ -249,6 +268,7 @@ class AddToHerClips:
     def INPUT_TYPES(cls):
         return {"required": {"motion": ("ARIES_MOTION",),
                              "name": ("STRING", {"default": "idle_happy_9"}),
+                             "save": ("BOOLEAN", {"default": False, "label_on": "save it", "label_off": "off"}),
                              "repack": ("BOOLEAN", {"default": True})}}
 
     RETURN_TYPES = ("STRING",)
@@ -256,7 +276,10 @@ class AddToHerClips:
     OUTPUT_NODE = True
     CATEGORY = "Aries"
 
-    def add(self, motion, name, repack):
+    def add(self, motion, name, save, repack):
+        if not save:
+            msg = "Not saved: turn save on and queue again to keep this take (it won't be made again)."
+            return {"ui": {"text": [msg]}, "result": (msg,)}
         name = "".join(c for c in name.strip() if c.isalnum() or c == "_")
         if not name:
             raise RuntimeError("give it a name (letters, digits, _)")

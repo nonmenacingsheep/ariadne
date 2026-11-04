@@ -336,7 +336,7 @@ func _dress() -> void:
 # model has: [root, end, stiffness, drag, gravity, radius]. root == end is a
 # single bone, extended. Missing bones are skipped, so any rig works.
 const JIGGLE := [
-	["Tail_0", "Tail_7", 0.35, 0.22, 0.55, 0.03],           # the dragon: loose and heavy, lies on the floor and drags
+	["Tail_0", "Tail_7", 0.35, 0.22, 0.55, 0.045],           # the dragon: loose and heavy, lies on the floor and drags
 	["Hair_Ponytail_1", "Hair_Ponytail_5", 0.7, 0.35, 0.35, 0.02],
 	["Hair_Ponytail_B_1", "Hair_Ponytail_B_2", 0.8, 0.4, 0.35, 0.015],
 	["Hair_Ponytail_C_1", "Hair_Ponytail_C_4", 0.7, 0.35, 0.35, 0.015],
@@ -365,8 +365,11 @@ const JIGGLE_COLLIDE := [["Head", 0.1, false], ["Neck", 0.055, true], ["UpperChe
 		["LeftUpperArm", 0.045, true], ["RightUpperArm", 0.045, true],
 		["LeftLowerArm", 0.04, true], ["RightLowerArm", 0.04, true], ["LeftHand", 0.04, false], ["RightHand", 0.04, false],
 		["LeftUpperLeg", 0.075, true], ["RightUpperLeg", 0.075, true],
-		["LeftLowerLeg", 0.055, true], ["RightLowerLeg", 0.055, true], ["LeftFoot", 0.045, false], ["RightFoot", 0.045, false]]
+		# her boots: fat shins, and the feet as capsules out to the toes
+		["LeftLowerLeg", 0.08, true], ["RightLowerLeg", 0.08, true], ["LeftFoot", 0.075, true], ["RightFoot", 0.075, true],
+		["LeftToes", 0.06, false], ["RightToes", 0.06, false]]
 var tail_x := 0.0
+var tail_feet := 9.0
 var tail_low: Array = []                   # a test run's lowest tail and hair joints, after the springs
 var floor_plane: SpringBoneCollisionPlane3D   # the ground under her, for her tail (and her hair, lying down)
 var jiggle: SpringBoneSimulator3D
@@ -377,14 +380,15 @@ var tail_up := 0.0                         # 0 lying on the floor, 1 raised
 # Each segment's bend when raised (radians, + is up: a turn about her right
 # side bends the tail down for minus, up for plus): up and back, tip curling over.
 const TAIL_UP := [0.7, 0.35, 0.15, 0.0, -0.1, -0.15, -0.2, -0.2]
-# The second spring: raising (about 0.8 Hz, a ~20% overshoot) and her body's
+# The second spring: raising (about 0.4 Hz, a ~10% overshoot) and her body's
 # motion swinging it (about 1.2 Hz, bouncier), spread down the tail by SWING_FALL.
-const TAIL_K_UP := 25.0
-const TAIL_C_UP := 4.5
+const TAIL_K_UP := 6.0                     # about a second to rise, a small overshoot
+const TAIL_C_UP := 2.6
 const TAIL_K_SWING := 55.0
 const TAIL_C_SWING := 4.0
 const SWING_FALL := [1.0, 0.75, 0.55, 0.4, 0.3, 0.2, 0.15, 0.1]
 var tail_up_v := 0.0
+var wrap_k := 0.0                          # 1 wrapped round to her side (sitting, lying)
 var tail_swing := Vector2.ZERO             # (sideways, down) radians, from her body's motion
 var tail_swing_v := Vector2.ZERO
 var tail_body_was := Vector3.ZERO
@@ -524,13 +528,16 @@ func _tail_frame() -> void:
 	tail_swing_v += (goal - tail_swing) * TAIL_K_SWING * dt - tail_swing_v * TAIL_C_SWING * dt
 	tail_swing += tail_swing_v * dt
 	var up_k := clampf(tail_up, 0.0, 1.0)
+	wrap_k = lerpf(wrap_k, 1.0 if state in ["rest", "sit", "sleep"] else 0.0, 0.03)
 	if jiggle and tail_chain >= 0:
 		jiggle.set_gravity(tail_chain, lerpf(0.55, 0.08, up_k))
-		jiggle.set_stiffness(tail_chain, lerpf(0.3, 0.6, up_k))       # held up loosely: its own springs keep moving
+		jiggle.set_stiffness(tail_chain, lerpf(0.42, 0.6, up_k))       # held up loosely: its own springs keep moving
 	var lift_k := 0.25 if state in ["sit", "sleep", "rest"] else 1.0
 	for i in tail_bones.size():
 		# (lying, a slight downward bend: it rests on the floor)
-		var down := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35)
+		# (the root angled back a little first, so it meets the floor clear of her heels)
+		var down := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35) \
+				+ float([-0.3, -0.12, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0][mini(i, 7)])
 		var up: float = TAIL_UP[mini(i, TAIL_UP.size() - 1)] + 0.07 * sin(t * 0.9 * pace - i * 0.9)   # up and back, tip curling over
 		var curl: float = lerpf(down, -up, tail_up) + tail_swing.y * SWING_FALL[mini(i, 7)]
 		var side := (amp if i == 0 else 0.05 + 0.05 * happy) * sin(t * speed * pace - i * 0.6)
@@ -538,6 +545,9 @@ func _tail_frame() -> void:
 			# strong enough to beat her pelvis's own twist, which carries the root toward the stepping leg
 			side = lerpf(side, WAG_SIDE * walk_wag * (0.8 + 0.3 * happy) * [1.0, 0.6, 0.35][i], walk_mix)
 		side += tail_swing.x * float(SWING_FALL[mini(i, 7)])
+		# Sitting or lying down it wraps round to her side, like a cat's, not
+		# under her legs where her feet would press it into the floor.
+		side += wrap_k * (1.0 - clampf(tail_up, 0.0, 1.0)) * float(SWING_FALL[mini(i, 7)]) * 0.9
 		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
 		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
 
@@ -2538,6 +2548,14 @@ func _snapshot_seq(what: String) -> void:
 		skel.skeleton_updated.connect(func():
 			for b in skel.get_bone_count():
 				var nm := skel.get_bone_name(b)
+				if nm.begins_with("Tail"):                # nearest any tail joint gets to her shins and feet
+					var tp := skel.global_transform * skel.get_bone_global_pose(b).origin
+					for fb in ["LeftFoot", "RightFoot", "LeftToes", "RightToes"]:
+						var fi := skel.find_bone(fb)
+						if fi >= 0:
+							var fp := skel.global_transform * skel.get_bone_global_pose(fi).origin
+							var pp := skel.global_transform * skel.get_bone_global_pose(skel.get_bone_parent(fi)).origin
+							tail_feet = minf(tail_feet, tp.distance_to(Geometry3D.get_closest_point_to_segment(tp, pp, fp)))
 				if nm == "Tail_3":                   # sideways from her hips, in her own frame
 					var inv := body.global_transform.affine_inverse()
 					tail_x = (inv * (skel.global_transform * skel.get_bone_global_pose(b).origin)).x \
@@ -2555,7 +2573,8 @@ func _snapshot_seq(what: String) -> void:
 			var hp := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin
 			print("HEAD %d head(%.2f %.2f %.2f) hips(%.2f %.2f %.2f) %s %s" % [i, hd.x, hd.y, hd.z, hp.x, hp.y, hp.z, state, variant])
 			if not tail_low.is_empty():              # her tail and hair after the springs: on the floor, never under it
-				print("TAIL %d lowest tail %.3f hair %.3f (floor %.2f) tip_x %.2f ahead %.2f" % [i, tail_low[0], tail_low[1], pos.y + lift, tail_x, walk_wag])
+				print("TAIL %d lowest tail %.3f hair %.3f (floor %.2f) tip_x %.2f ahead %.2f up %.2f feet %.3f" % [i, tail_low[0], tail_low[1], pos.y + lift, tail_x, walk_wag, tail_up, tail_feet])
+				tail_feet = 9.0
 				tail_low = [9.0, 9.0]
 		if feet:
 			for b in ["LeftToes", "RightToes"]:

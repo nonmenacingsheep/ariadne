@@ -1,0 +1,359 @@
+{
+ "id": "a71e5e1c-7a5b-4c8e-9a51-aa1e5000a001",
+ "revision": 0,
+ "last_node_id": 8,
+ "last_link_id": 6,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "AriesMakeMotion",
+   "pos": [
+    40,
+    60
+   ],
+   "size": [
+    420,
+    330
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "motion",
+     "type": "ARIES_MOTION",
+     "links": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "name": "check",
+     "type": "STRING",
+     "links": [
+      4
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AriesMakeMotion"
+   },
+   "widgets_values": [
+    "A woman waves happily with her right hand, then puts her hands behind her back and sways.",
+    5,
+    1,
+    "fixed",
+    "standing",
+    "same as start",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": 2,
+   "type": "AriesPreviewSkeleton",
+   "pos": [
+    520,
+    60
+   ],
+   "size": [
+    300,
+    80
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "motion",
+     "type": "ARIES_MOTION",
+     "link": 1
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      5
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AriesPreviewSkeleton"
+   },
+   "widgets_values": [
+    "front and side"
+   ]
+  },
+  {
+   "id": 6,
+   "type": "SaveAnimatedWEBP",
+   "pos": [
+    880,
+    60
+   ],
+   "size": [
+    560,
+    420
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 5
+    }
+   ],
+   "outputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SaveAnimatedWEBP"
+   },
+   "widgets_values": [
+    "aries/skeleton",
+    15,
+    false,
+    85,
+    "default"
+   ]
+  },
+  {
+   "id": 5,
+   "type": "PreviewAny",
+   "pos": [
+    520,
+    200
+   ],
+   "size": [
+    300,
+    200
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "source",
+     "type": "*",
+     "link": 4
+    }
+   ],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PreviewAny"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 3,
+   "type": "AriesPreviewOnHer",
+   "pos": [
+    520,
+    520
+   ],
+   "size": [
+    300,
+    80
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 2,
+   "inputs": [
+    {
+     "name": "motion",
+     "type": "ARIES_MOTION",
+     "link": 2
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      6
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AriesPreviewOnHer"
+   },
+   "widgets_values": [
+    "three-quarter"
+   ]
+  },
+  {
+   "id": 7,
+   "type": "SaveAnimatedWEBP",
+   "pos": [
+    880,
+    520
+   ],
+   "size": [
+    560,
+    560
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 2,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 6
+    }
+   ],
+   "outputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SaveAnimatedWEBP"
+   },
+   "widgets_values": [
+    "aries/on_her",
+    15,
+    false,
+    85,
+    "default"
+   ]
+  },
+  {
+   "id": 4,
+   "type": "AriesAddToClips",
+   "pos": [
+    40,
+    460
+   ],
+   "size": [
+    420,
+    130
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 2,
+   "inputs": [
+    {
+     "name": "motion",
+     "type": "ARIES_MOTION",
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "name": "STRING",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AriesAddToClips"
+   },
+   "widgets_values": [
+    "idle_happy_9",
+    true
+   ]
+  },
+  {
+   "id": 8,
+   "type": "Note",
+   "pos": [
+    40,
+    640
+   ],
+   "size": [
+    420,
+    330
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "HER MOTION BOARD\n1. Write what she does in the prompt (\"A woman ...\" works best), pick seconds and a seed, and the poses she starts and ends in (standing, sitting, lying...). Same as start = it loops back.\n2. Queue (Ctrl+Enter). The first take of a session waits a few minutes while Kimodo's text encoder loads; after that a take is about 20 s.\n3. The skeleton preview plays on the right; the checker's verdict shows under it.\n4. Like it? Turn on \"Preview: On Her Body\" (Ctrl+M) to see it on her in her room (about a minute).\n5. Keep it: turn on \"Add To Her Clips\", name it with a role prefix (idle_happy_, solo_, play_...), queue again. It repacks her clips; restart her body to use it.\nChange the seed for another take of the same prompt."
+   ]
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "ARIES_MOTION"
+  ],
+  [
+   2,
+   1,
+   0,
+   3,
+   0,
+   "ARIES_MOTION"
+  ],
+  [
+   3,
+   1,
+   0,
+   4,
+   0,
+   "ARIES_MOTION"
+  ],
+  [
+   4,
+   1,
+   1,
+   5,
+   0,
+   "STRING"
+  ],
+  [
+   5,
+   2,
+   0,
+   6,
+   0,
+   "IMAGE"
+  ],
+  [
+   6,
+   3,
+   0,
+   7,
+   0,
+   "IMAGE"
+  ]
+ ],
+ "groups": [],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.9,
+   "offset": [
+    0,
+    0
+   ]
+  }
+ },
+ "version": 0.4
+}

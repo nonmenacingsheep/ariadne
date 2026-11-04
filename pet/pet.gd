@@ -977,6 +977,8 @@ func _load_clips() -> void:
 		for f in DirAccess.get_files_at(KIMODO_DIR):
 			if f.ends_with(".glb"):
 				paths.append(KIMODO_DIR + f)
+		if OS.get_environment("PET_PREVIEW_GLB") != "":
+			paths.append(OS.get_environment("PET_PREVIEW_GLB"))      # a new take from his ComfyUI board (pet/comfy)
 		for path in paths:
 			var src: Node = (load(path) as PackedScene).instantiate()
 			var player := _find(src, "AnimationPlayer") as AnimationPlayer
@@ -984,7 +986,7 @@ func _load_clips() -> void:
 				for name in player.get_animation_list():
 					if not clip_lib.has_animation(name):
 						var anim := player.get_animation(name)
-						if String(path).begins_with(KIMODO_DIR):
+						if String(path).begins_with(KIMODO_DIR) or String(path) == OS.get_environment("PET_PREVIEW_GLB"):
 							if String(name).begins_with("stop_"):
 								stop_curve[name] = _travel_curve(anim)
 							if GAIT_PREFIXES.any(func(px): return String(name).begins_with(px)):
@@ -2447,6 +2449,31 @@ func _snapshot_seq(what: String) -> void:
 			get_tree().create_timer(0.3 + hold * i).timeout.connect(_play.bind(chain[i], 0.4))
 		if OS.get_environment("PET_SEQ_TALK") != "":      # he talks to her that many seconds in
 			get_tree().create_timer(float(OS.get_environment("PET_SEQ_TALK"))).timeout.connect(_attend)
+	if what.begins_with("film:"):                # one clip, filmed frame by frame for his ComfyUI board
+		var name := what.substr(5)
+		depth = -0.4
+		brain_quiet = true
+		yaw = {"side": PI / 2, "three-quarter": 0.6}.get(OS.get_environment("PET_FILM_VIEW"), 0.0)
+		yaw_target = yaw
+		look_until = 1e9
+		_set_state("workout", 1e9)
+		await get_tree().create_timer(0.4).timeout
+		if not ap.has_animation(name):
+			print("FILM no clip ", name)
+			get_tree().quit()
+			return
+		_play_variant(name, 0.0)
+		variant_until = 1e9
+		ground_lift = 0.0                      # not the last pose's lift: she starts on the floor
+		var fps := 15.0
+		var n := int(ap.get_animation(name).length * fps)
+		for k in n:
+			await get_tree().create_timer(1.0 / fps).timeout
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_film_%03d.png" % k))
+		print("FILM done ", n)
+		get_tree().quit()
+		return
 	if what.begins_with("play:"):                # one interaction (play.json), near the glass
 		depth = -0.3
 		_set_state("idle", 1.0)

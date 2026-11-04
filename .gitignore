@@ -10,3 +10,4 @@ pet/models/jane*
 
 # Kimodo clips: generated ones are committed; the NVIDIA sample test stays local
 pet/assets/anims/kimodo/test.glb*
+pet/assets/anims/preview/

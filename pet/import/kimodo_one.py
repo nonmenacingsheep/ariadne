@@ -10,6 +10,7 @@ joint parents, for drawing it), "fps"}.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -23,6 +24,10 @@ from kimodo_keyed import K, constraints, pose  # noqa: E402
 def main():
     spec = json.load(open(sys.argv[1]))
     out = spec["out"]
+    # kimodo_gen makes each sentence its own segment, each the full length, and
+    # a pinned pose falls in only one of them (an empty one crashes it): one
+    # sentence, so "... feet. Her hands stay at her side" is one take of its length.
+    spec["prompt"] = re.sub(r"\.\s+(\S)", lambda m: ", " + m.group(1).lower(), spec["prompt"].strip()).rstrip(".") + "."
     secs = str(float(spec.get("seconds", 5)))
     a, b, mids = spec.get("start", "-"), spec.get("end", "-"), spec.get("middle", "")
     frames = int(float(secs) * 30)

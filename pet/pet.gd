@@ -190,6 +190,7 @@ var shakes := 0                            # back-and-forths while he dangles he
 var brain_quiet := false
 var pstate := ""                           # the one she's in (Bed_SitEdge ...), "" on her feet
 var furniture := false                     # Avatar setting (off: her room is an empty stage)
+var in_front := false                      # Avatar setting: drawn over the widgets, not behind them
 var lift := 0.0                            # raised onto furniture (a cushion, the bed), metres
 var perched := ""                          # the furniture spot her body's on, or ""
 var perch := {}                            # moving onto or off it: from, to (x, lift, depth), t0, dur, yaw
@@ -1708,6 +1709,11 @@ func _read_settings() -> void:
 		FPS_IDLE = maxi(10, FPS_BUSY / 2)
 	if av.has("sleep_after"):
 		SLEEP_AFTER = clampf(float(av["sleep_after"]), 1, 120) * 60.0
+	if av.has("in_front") and bool(av["in_front"]) != in_front:
+		in_front = bool(av["in_front"])
+		# KWin stacks her by her window's title (desk/kwin_layer.js): under the
+		# desk's widgets as "ariadne2-pet", over them as "ariadne2-pet-front".
+		get_window().title = "ariadne2-pet-front" if in_front else "ariadne2-pet"
 	if av.has("furniture") and bool(av["furniture"]) != furniture:
 		furniture = bool(av["furniture"])
 		if room:

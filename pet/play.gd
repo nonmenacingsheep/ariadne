@@ -122,6 +122,8 @@ func pick() -> String:
 		var e: Dictionary = table[n]
 		if str(e.get("kind", "")) not in KINDS_SHE_PICKS or n in recent or pet.t < float(cool_until.get(n, 0.0)):
 			continue
+		if e.get("widget", false) and pet.in_front:
+			continue                           # in front of the widgets there's nothing to hide behind
 		if not _needs_ok(e) or not _has_clips(n):
 			continue
 		var w = e.get("weight", 0.3)

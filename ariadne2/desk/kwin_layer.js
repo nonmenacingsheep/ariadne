@@ -24,8 +24,12 @@ function layer() {
 function isPet(w) { return String(w.caption).indexOf(PET) === 0; }
 
 // Her 3D body lives in a room behind the screen, so the widgets (on the
-// glass) stack in front of it; her Live2D body stands on the widgets, over them.
-function behind(w) { return isPet(w) && String(w.caption).indexOf(PET + "-l2d") !== 0; }
+// glass) stack in front of it, unless his "In front of widgets" setting
+// renames its window "-front"; her Live2D body stands on the widgets, over them.
+function behind(w) {
+    var c = String(w.caption);
+    return isPet(w) && c.indexOf(PET + "-l2d") !== 0 && c.indexOf(PET + "-front") !== 0;
+}
 
 // Her bodies: the 3D one (pet/, Godot) and the Live2D one (ariadne2/pet2d);
 // both windows exist, whichever is hidden draws nothing.
@@ -187,7 +191,8 @@ workspace.windowAdded.connect(function (w) {
     if (w.caption === TITLE) { pin(w); hold(w); settleSoon(w); }
     if (isPet(w)) { settlePet(w); settleSoon(w); }
     // Godot sets its title just after mapping; catch the rename too.
-    w.captionChanged.connect(function () { if (isPet(w)) { settlePet(w); settleSoon(w); } });
+    // (and a rename is also her moving in front of the widgets or back behind them)
+    w.captionChanged.connect(function () { if (isPet(w)) { settlePet(w); settleSoon(w); petsAroundDesk(); } });
 });
 
 var existing = layer();

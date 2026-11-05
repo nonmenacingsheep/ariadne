@@ -196,6 +196,17 @@ var perched := ""                          # the furniture spot her body's on, o
 var perch := {}                            # moving onto or off it: from, to (x, lift, depth), t0, dur, yaw
 var drag_from := Vector2.ZERO
 var drag_moved := false
+# Picked up by where he clicked: the bone under the pointer and the point on it
+# (in its own space), the arm or leg that point is on (pulled up over her as she
+# hangs from it), and a pendulum swing about it.
+var grab_bone := -1
+var grab_local := Vector3.ZERO
+var grab_b := Vector3(0, 1.3, 0)            # that point, in her body's space
+var grab_chain: Array = []                 # [bone, child] pairs aimed up
+var grab_at := Vector2.ZERO                # the pointer, while he holds her
+var grab_prev := Vector2.ZERO
+var grab_k := 0.0                          # 0..1, eases the limb up
+var held_w := 0.0                          # swing speed, rad/s
 var last_rect := Rect2()
 var snapshot_path := OS.get_environment("PET_SNAPSHOT")
 
@@ -1789,6 +1800,7 @@ func _process(delta: float) -> void:
 	_tail_frame()
 	_carry_frame(delta)
 	_head()
+	_held_frame(delta)
 	play.emote_frame()
 	_face_frame(delta)
 	_place_body()
@@ -1907,8 +1919,6 @@ func _move(delta: float) -> void:
 					_play("Jump_Land", 0.1)
 		"held":
 			depth = lerpf(depth, 0.0, clampf(delta * 8.0, 0.0, 1.0))   # picked up: pulled to the front
-			# Dangling from your cursor: she sways behind the way you move her.
-			roll = lerpf(roll, clampf(-held_vel.x * 0.09, -0.7, 0.7), clampf(delta * 6.0, 0.0, 1.0))
 		"knocked":
 			pos.y = floor_y
 			if t > state_until - 1.4 and clip != "LayToIdle":
@@ -2062,13 +2072,24 @@ func _place_body() -> void:
 	# Roll about the point she's held by (her upper chest), not her feet.
 	var pivot := Vector3(0, 1.3, 0)
 	var spin := _chair_spin()
-	body.rotation = Vector3(0, yaw + spin, roll)
+	body.rotation = Vector3(0, yaw + spin, 0.0)
+	if state in ["held", "fall"]:              # rolled on the screen, whichever way she faces
+		body.basis = Basis(Vector3.BACK, roll) * Basis(Vector3.UP, yaw + spin)
 	if spin != 0.0:                            # round the chair's centre, not her feet
 		var c: Vector3 = (room.items["chair"] as Node3D).position
 		var off := body.position - Vector3(c.x, body.position.y, c.z)
 		body.position = Vector3(c.x, body.position.y, c.z) + off.rotated(Vector3.UP, spin)
-	if state in ["held", "fall"]:
-		body.position += pivot - pivot.rotated(Vector3.FORWARD, -roll)
+	if state == "held":
+		# The point he grabbed sits under the pointer; she hangs from it.
+		var off: Vector3 = body.basis * grab_b
+		var hit = Plane(Vector3.BACK, depth + off.z).intersects_ray(cam.project_ray_origin(grab_at), cam.project_ray_normal(grab_at))
+		if hit != null:
+			body.position = (hit as Vector3) - off
+		# Where her feet would be for the fall's pivot, so letting go doesn't jump.
+		var p := body.position - Vector3(0, lift, 0) - (pivot - pivot.rotated(Vector3.BACK, roll))
+		pos = Vector2(p.x, p.y)
+	elif state == "fall":
+		body.position += pivot - pivot.rotated(Vector3.BACK, roll)
 
 
 # Spinning round on the desk chair (desk_spin_ clips lift her feet): she and
@@ -2211,11 +2232,21 @@ func _emotion_key(em: String) -> String:
 func _update_click_area() -> void:
 	if snapshot_path != "":
 		return
+	if state in ["held", "fall"] and skel:
+		var box := Rect2(cam.unproject_position(body.global_position), Vector2.ZERO)
+		for b in ["Head", "LeftHand", "RightHand", "LeftFoot", "RightFoot", "Hips"]:
+			if skel.find_bone(b) >= 0:
+				box = box.expand(cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(skel.find_bone(b)).origin))
+		_set_click_rect(box.grow(36))
+		return
 	var sitting := clip.begins_with("Sitting") and floor_y > 0.01
 	var feet := cam.unproject_position(Vector3(pos.x, pos.y - (SIT_DROP if sitting else 0.0), depth))
 	var head := cam.unproject_position(Vector3(pos.x, pos.y + 1.62, depth))
 	var wide := (feet.y - head.y) * 0.3                  # narrower further back
-	var r := Rect2(Vector2(feet.x - wide / 2.0, head.y - 10), Vector2(wide, feet.y - head.y + 20))
+	_set_click_rect(Rect2(Vector2(feet.x - wide / 2.0, head.y - 10), Vector2(wide, feet.y - head.y + 20)))
+
+
+func _set_click_rect(r: Rect2) -> void:
 	if r.position.distance_to(last_rect.position) < 3 and r.size.distance_to(last_rect.size) < 3:
 		return
 	last_rect = r
@@ -2244,6 +2275,7 @@ func _input(event: InputEvent) -> void:
 			pressing = true
 			press_at = t
 			play.press_part = play.part_at(event.position)
+			_pick_grab(event.position)
 		else:
 			pressing = false
 			if play.holding_still:
@@ -2254,7 +2286,7 @@ func _input(event: InputEvent) -> void:
 				# Let go: she keeps the speed you threw her with, and spins with it.
 				_set_state("fall", 99.0)
 				vel = held_vel.limit_length(MAX_THROW)
-				spin = clampf(-vel.x * 1.6, -9.0, 9.0)
+				spin = clampf(held_w - vel.x * 1.6, -9.0, 9.0)
 				_play("Jump", 0.15)
 				if vel.length() > 4.0:
 					_feel("surprised", 0.8, 1.2)
@@ -2268,13 +2300,116 @@ func _input(event: InputEvent) -> void:
 			_set_state("held", 1e9)
 			_feel("surprised", 0.4, 1.0)
 			_play("Held", 0.15)               # dangling while held
+			grab_prev = drag_from
+			grab_k = 0.0
+			held_w = 0.0
+			roll = 0.0
 		if state != "held":
 			return
 		var v: Vector2 = event.velocity / PPM
 		if absf(v.x) > 2.0 and signf(v.x) != signf(held_vel.x) and held_vel.x != 0.0:
 			shakes += 1                        # shaken side to side
-		held_vel = held_vel.lerp(Vector2(v.x, -v.y), 0.5)
-		pos = Vector2(event.position.x / PPM, (screen.y - event.position.y) / PPM - 1.3)
+		grab_at = event.position
+
+
+# Which bit of her is under the pointer: the nearest bone on screen, and the
+# exact point on it, kept in that bone's space so it moves with her.
+const GRAB_SEGS := [["Hips", "Spine"], ["Spine", "Chest"], ["Chest", "UpperChest"], ["UpperChest", "Neck"],
+		["Neck", "Head"], ["Head", ""],
+		["LeftUpperArm", "LeftLowerArm"], ["LeftLowerArm", "LeftHand"], ["LeftHand", ""],
+		["RightUpperArm", "RightLowerArm"], ["RightLowerArm", "RightHand"], ["RightHand", ""],
+		["LeftUpperLeg", "LeftLowerLeg"], ["LeftLowerLeg", "LeftFoot"], ["LeftFoot", "LeftToes"],
+		["RightUpperLeg", "RightLowerLeg"], ["RightLowerLeg", "RightFoot"], ["RightFoot", "RightToes"]]
+func _pick_grab(p: Vector2) -> void:
+	grab_bone = -1
+	grab_chain = []
+	grab_at = p
+	if skel == null or cam == null:
+		return
+	var best := INF
+	var at := Vector3.ZERO
+	var seg: Array = []
+	for s in GRAB_SEGS:
+		var ia := skel.find_bone(s[0])
+		if ia < 0:
+			continue
+		var a := skel.global_transform * skel.get_bone_global_pose(ia).origin
+		var b: Vector3
+		if s[1] != "" and skel.find_bone(s[1]) >= 0:
+			b = skel.global_transform * skel.get_bone_global_pose(skel.find_bone(s[1])).origin
+		else:                                  # the top of her head, her fingers: past the joint
+			var pa := skel.global_transform * skel.get_bone_global_pose(skel.get_bone_parent(ia)).origin
+			b = a + (a - pa) * (1.4 if s[0] == "Head" else 0.6)
+		var sa := cam.unproject_position(a)
+		var sb := cam.unproject_position(b)
+		var q := Geometry2D.get_closest_point_to_segment(p, sa, sb)
+		var d := p.distance_to(q)
+		if d < best:
+			best = d
+			var u := clampf((q - sa).dot(sb - sa) / maxf((sb - sa).length_squared(), 1e-6), 0.0, 1.0)
+			at = a.lerp(b, u)
+			grab_bone = ia
+			seg = s
+	if grab_bone < 0:
+		return
+	# The point under the pointer itself, at that bone's depth.
+	var hit = Plane(Vector3.BACK, at.z).intersects_ray(cam.project_ray_origin(p), cam.project_ray_normal(p))
+	if hit != null:
+		at = hit
+	grab_local = (skel.global_transform * skel.get_bone_global_pose(grab_bone)).affine_inverse() * at
+	# Held by an arm or a leg: that limb goes up over her, straight, as she hangs from it.
+	var side := "Left" if (seg[0] as String).begins_with("Left") else "Right"
+	if (seg[0] as String).contains("Arm") or (seg[0] as String).contains("Hand"):
+		grab_chain = [[side + "UpperArm", side + "LowerArm"], [side + "LowerArm", side + "Hand"]]
+	elif (seg[0] as String).contains("Leg") or (seg[0] as String).contains("Foot"):
+		grab_chain = [[side + "UpperLeg", side + "LowerLeg"], [side + "LowerLeg", side + "Foot"]]
+
+
+# Held: the limb he has her by is pulled up toward his pointer, and she swings
+# under the point he grabbed like a pendulum, pushed by how he moves it.
+func _held_frame(delta: float) -> void:
+	if state != "held" or grab_bone < 0 or delta <= 0.0:
+		grab_b = Vector3(0, 1.3, 0)
+		return
+	grab_k = move_toward(grab_k, 1.0, delta / 0.35)
+	var up := (skel.global_transform.basis.inverse() * Vector3.UP).normalized()
+	for c in grab_chain:
+		var i := skel.find_bone(c[0])
+		var j := skel.find_bone(c[1])
+		if i < 0 or j < 0:
+			continue
+		var g := skel.get_bone_global_pose(i)
+		var cur := (skel.get_bone_global_pose(j).origin - g.origin).normalized()
+		var want := cur.slerp(up, smoothstep(0.0, 1.0, grab_k) * 0.95)
+		var turned := Basis(Quaternion(cur, want)) * g.basis
+		var parent := skel.get_bone_parent(i)
+		var parent_g := skel.get_bone_global_pose(parent).basis if parent >= 0 else Basis()
+		skel.set_bone_pose_rotation(i, (parent_g.inverse() * turned).get_rotation_quaternion())
+	var inv := body.global_transform.affine_inverse()
+	grab_b = inv * (skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local)
+	var hips := inv * (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin)
+	var chest := inv * (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Spine")).origin)
+	# His pointer's speed and push, in metres (screen y is down).
+	var v := (grab_at - grab_prev) / delta / PPM
+	v.y = -v.y
+	grab_prev = grab_at
+	var before := held_vel
+	held_vel = held_vel.lerp(v, clampf(delta * 14.0, 0.0, 1.0))
+	var acc := (held_vel - before) / delta
+	# Her weight (between hips and belly) hangs below the grab point at rest.
+	var d := Basis(Vector3.UP, yaw) * ((hips + chest) / 2.0 - grab_b)
+	var arm := maxf(Vector2(d.x, d.y).length(), 0.3)
+	var rest := -PI / 2.0 - atan2(d.y, d.x)
+	var e := wrapf(roll - rest, -PI, PI)
+	if absf(e) > 2.9 and absf(held_w) < 0.6:
+		e = 2.9 * signf(e + 0.001)             # balanced upside down: tips one way
+	var grav := maxf(GRAVITY + clampf(acc.y, -20.0, 20.0) * 0.5, 2.0)
+	var push := clampf(acc.x, -40.0, 40.0) * 0.6
+	# Gravity eases in as the limb comes up, so a hand at her side doesn't fling her sideways first.
+	grav *= 0.25 + 0.75 * grab_k * grab_k
+	held_w += (-(grav / arm) * sin(e) - (push / arm) * cos(e) - 2.6 * held_w) * delta
+	held_w = clampf(held_w, -12.0, 12.0)
+	roll += held_w * delta
 
 
 # --- the window slab ---------------------------------------------------------
@@ -2523,6 +2658,10 @@ func _snapshot_seq(what: String) -> void:
 		_set_state("idle", 99.0)
 		play.test = true
 		_gesture(what.substr(8))
+	if what.begins_with("grab:"):                # picked up by a bone, lifted, swung, held still
+		depth = -0.3
+		_set_state("idle", 99.0)
+		_grab_test(what.substr(5))
 	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
 		depth = -0.4
 		var act := what.substr(3)
@@ -2615,6 +2754,30 @@ func _snapshot_seq(what: String) -> void:
 				print("FOOT %d %s %.3f %.3f %s %s %.2f" % [i, b, g.x, g.y, state, variant, pos.x])
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_seq_%02d.png" % i))
 	get_tree().quit()
+
+
+# A test run's hand picking her up by one bone: press on it, lift, swing side
+# to side, hold still. Logs how far the grabbed point is from the pointer.
+func _grab_test(bone: String) -> void:
+	await get_tree().create_timer(0.6).timeout
+	var p := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(skel.find_bone(bone)).origin)
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = true
+	e.position = p
+	_input(e)
+	for i in 150:
+		var at := p + Vector2(0, -minf(i, 30) * 8.0)
+		if i >= 50 and i < 110:
+			at.x += sin((i - 50) * 0.2) * 160.0
+		var m := InputEventMouseMotion.new()
+		m.position = at
+		m.velocity = (at - grab_at) * 30.0
+		_input(m)
+		await get_tree().process_frame
+		if i % 10 == 0 and state == "held":
+			var gp := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local)
+			print("GRAB %d %s roll %.2f gap %.1f px" % [i, bone, roll, gp.distance_to(grab_at)])
 
 
 # A test run's pointer: stroking her head, tickling her, circling her, held still, clicks on her parts.

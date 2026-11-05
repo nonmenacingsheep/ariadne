@@ -47,6 +47,7 @@ desk's pointer relay gives the pointer anywhere; clicks come when he's on her.
 | hold the button on her hand | holds your hand through the glass |
 | click her feet | hops, startled |
 | hold the button on her body (no drag) | hugs the glass |
+| drag her by any part | picked up by that very point: hangs from her hand with the arm pulled up, by the scruff, upside down by a foot; swings like a pendulum as you move |
 | double-click | jumps for joy |
 | scroll over her | twirls round |
 | circle the pointer round her | follows it till she's dizzy |

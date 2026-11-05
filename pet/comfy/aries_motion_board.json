@@ -270,7 +270,8 @@
     "Node name for S&R": "AriesAddToClips"
    },
    "widgets_values": [
-    "idle_happy_9",
+    "something she does on her own",
+    "",
     false,
     true
    ]
@@ -293,7 +294,7 @@
    "outputs": [],
    "properties": {},
    "widgets_values": [
-    "HER MOTION BOARD\n1. Write what she does (\"A woman ...\" works best), pick seconds and a seed, and the pose she starts in: one of her poses, or start_from = where one of her saved clips ends (newest first). End pose \"same as start\" makes it come back there.\n2. Queue (Ctrl+Enter). The first take of a session waits a few minutes while Kimodo's text encoder loads; after that a take is about 20 s.\n3. The skeleton preview plays on the right; the checker's verdict shows under it.\n4. Like it? Switch \"film\" on in Preview: On Her Body and queue again: the same take on her in her room (about a minute).\n5. Keep it: in Add To Her Clips name it with a role prefix (idle_happy_, solo_, play_...), switch \"save\" on, queue again (the same take is saved, not a new one). It repacks her clips; restart her body to use it. Switch save off again before your next take.\nNew clips show up in start_from after you press R (refresh) in ComfyUI."
+    "HER MOTION BOARD\n1. Write what she does (\"A woman ...\" works best), pick seconds and a seed, and the pose she starts in: one of her poses, or start_from = where one of her saved clips ends (newest first). End pose \"same as start\" makes it come back there.\n2. Queue (Ctrl+Enter). The first take of a session waits a few minutes while Kimodo's text encoder loads; after that a take is about 20 s.\n3. The skeleton preview plays on the right; the checker's verdict shows under it.\n4. Like it? Switch \"film\" on in Preview: On Her Body and queue again: the same take on her in her room (about a minute).\n5. Keep it: in Add To Her Clips pick what it is for (a dance, an idle, something she does on her own), maybe a label, switch \"save\" on, queue again (the same take is saved, not a new one). It repacks her clips; restart her body to use it. Switch save off again before your next take.\nNew clips show up in start_from after you press R (refresh) in ComfyUI."
    ]
   }
  ],

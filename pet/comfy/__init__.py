@@ -260,14 +260,53 @@ class PreviewOnHer:
         return (_frames_to_tensor(frames),)
 
 
+# What a kept take becomes for her: its clip name's prefix is the role that
+# plays it (pet.gd ROLES); "on her own" ones also get a line in play.json.
+USES = {
+    "a dance (when music plays)": "dance_",
+    "something she does on her own": "solo_",
+    "a happy idle": "idle_happy_",
+    "a calm idle": "idle_calm_",
+    "a bored idle": "idle_bored_",
+    "a sleepy idle": "idle_tired_",
+    "a stretch": "stretch_",
+    "a wave": "wave_",
+    "a cheer": "cheer_",
+}
+PLAY_JSON = os.path.join(PET, "play.json")
+
+
+def _clip_name(prefix: str, label: str) -> str:
+    label = "".join(c for c in label.strip().lower().replace(" ", "_") if c.isalnum() or c == "_").strip("_")
+    stem = prefix + (label + "_" if label else "")
+    n = 1
+    while os.path.exists(os.path.join(CLIPS, f"{stem}{n}.npz")):
+        n += 1
+    return f"{stem}{n}"
+
+
+def _add_play(name: str) -> None:
+    """An "on her own" clip: a line in play.json so her brain picks it now and then."""
+    text = open(PLAY_JSON).read()
+    if f'"{name}"' in text:
+        return
+    line = f'  "{name}": {{"kind": "solo", "clips": [["{name}", 1.0]], "weight": 0.4, "cool": 120}}'
+    end = text.rstrip().rfind("}")
+    body = text[:end].rstrip()
+    open(PLAY_JSON, "w").write(body + ",\n" + line + "\n}\n")
+    json.load(open(PLAY_JSON))                    # still valid
+
+
 class AddToHerClips:
-    """Keeps a take: into her clip library under a name (role prefixes like play_, solo_,
-    idle_happy_ decide where she uses it), and repacks her clips (a few minutes)."""
+    """Keeps a take as one of her clips. Pick what it's for (a dance, an idle,
+    something she does on her own) and it's named so she uses it; then her
+    clips are repacked (a few minutes) and she plays it after a body restart."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {"motion": ("ARIES_MOTION",),
-                             "name": ("STRING", {"default": "idle_happy_9"}),
+                             "use_as": (list(USES), {"default": "something she does on her own"}),
+                             "label": ("STRING", {"default": "", "tooltip": "a word or two for its name, e.g. jiggle"}),
                              "save": ("BOOLEAN", {"default": False, "label_on": "save it", "label_off": "off"}),
                              "repack": ("BOOLEAN", {"default": True})}}
 
@@ -276,22 +315,20 @@ class AddToHerClips:
     OUTPUT_NODE = True
     CATEGORY = "Aries"
 
-    def add(self, motion, name, save, repack):
+    def add(self, motion, use_as, label, save, repack):
         if not save:
             msg = "Not saved: turn save on and queue again to keep this take (it won't be made again)."
             return {"ui": {"text": [msg]}, "result": (msg,)}
-        name = "".join(c for c in name.strip() if c.isalnum() or c == "_")
-        if not name:
-            raise RuntimeError("give it a name (letters, digits, _)")
-        if os.path.exists(os.path.join(CLIPS, name + ".npz")):
-            raise RuntimeError(f"she already has a clip called {name}")
+        name = _clip_name(USES[use_as], label)
         for ext in (".npz", ".bvh"):
             shutil.copy(motion["stem"] + ext, os.path.join(CLIPS, name + ext))
-        msg = f"Added {name} to her clips."
+        if USES[use_as] == "solo_":
+            _add_play(name)
+        msg = f"Added {name} to her clips, as {use_as}."
         if repack:
             r = subprocess.run([os.path.join(IMPORT, "kimodo_batch.sh"), "--pack"], capture_output=True, text=True,
                                env=dict(os.environ, KIMODO_THREADS="6"))
-            msg += " " + (r.stdout.strip().splitlines() or ["repacked"])[-1] + ". Restart her body to use it."
+            msg += " " + (r.stdout.strip().splitlines() or ["repacked"])[-1] + ". Restart her body to see it."
         return {"ui": {"text": [msg]}, "result": (msg,)}
 
 

@@ -2397,22 +2397,39 @@ func _held_frame(delta: float) -> void:
 		var v := (grab_at - grab_prev) / delta / PPM
 		grab_prev = grab_at
 		held_vel = held_vel.lerp(Vector2(v.x, -v.y), clampf(delta * 14.0, 0.0, 1.0))
-	elif state == "tumble" and ((ragdoll.still_for > 0.6 and ragdoll.since_drop > 0.8) or ragdoll.since_drop > 8.0):
+	elif state == "tumble" and ((ragdoll.still_for > 0.35 and ragdoll.since_drop > 0.6) or ragdoll.since_drop > 5.0):
 		_get_up()
 
 
 # Up from wherever she ended: the get-up for how she's lying, her frame put
 # under where she lies (and turned the way her head points), the ragdoll
 # easing into the clip's first pose.
-const GETUP := {"back": ["getup_back_", "get_up_"], "front": ["getup_front_", "get_up_"],
-		"side": ["getup_side_", "tr_lie_stand_", "get_up_"], "sit": ["tr_floor_stand_", "get_up_"]}
+# Each get-up is sorted by how its own first frame lies (back, front, side,
+# sit), measured once, so she never blends from her back into a clip that
+# starts on her front (her torso spinning round). Close ones stand in when
+# none lies quite the same way.
+const GETUPS := ["getup_", "get_up_", "tr_lie_stand_", "tr_floor_stand_", "LayToIdle"]
+const GETUP_NEAR := {"back": ["back", "side"], "front": ["front", "side"], "side": ["side", "front", "back"],
+		"sit": ["sit", "back", "side"]}
+var getup_kind := {}                       # clip -> how its first frame lies
 func _get_up() -> void:
 	var how: String = ragdoll.lie()
+	if getup_kind.is_empty():
+		for a in ap.get_animation_list():
+			var n := String(a)
+			if not n.contains("@") and GETUPS.any(func(g): return n.begins_with(g)):
+				ap.play(n, 0.0)
+				ap.seek(0.0, true)
+				getup_kind[n] = ragdoll.lie_of(skel.global_basis * skel.get_bone_global_pose(skel.find_bone("Hips")).basis)
 	var pick := ""
-	for pre in GETUP[how]:
-		pick = _variant_of(pre)
-		if pick != "":
+	for near in GETUP_NEAR[how]:
+		var ok := getup_kind.keys().filter(func(c): return getup_kind[c] == near)
+		var fresh := ok.filter(func(c): return String(c).begins_with("getup_"))
+		if not ok.is_empty():
+			pick = (fresh if not fresh.is_empty() else ok).pick_random()
 			break
+	if pick == "":
+		pick = _variant_of("get_up_")
 	var hips_w: Vector3 = ragdoll.joint("Hips")
 	var head_w: Vector3 = ragdoll.joint("Head")
 	# The clip's first frame, in her own frame (yaw 0): where its hips and head are.
@@ -2445,7 +2462,7 @@ func _get_up() -> void:
 	ragdoll.ease_out(0.7)
 	play.landed(ragdoll.impact > HARD_LANDING, a.length)
 	if OS.get_environment("PET_SNAPSHOT_SEQ").begins_with("grab:"):
-		print("GETUP %s %s impact %.1f yaw %.2f at %s" % [how, pick, ragdoll.impact, yaw, at])
+		print("GETUP %s %s impact %.1f yaw %.2f at %s kinds %s" % [how, pick, ragdoll.impact, yaw, at, getup_kind])
 
 
 # --- the window slab ---------------------------------------------------------

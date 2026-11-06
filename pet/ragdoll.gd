@@ -8,6 +8,7 @@ extends Node
 var pet
 var skel: Skeleton3D
 var sim: PhysicalBoneSimulator3D
+var rigid: Rigid
 var parts := {}            # bone -> PhysicalBone3D
 var row := {}              # bone -> its PARTS row
 var up_part := {}          # bone -> the part it hangs from ("" for her hips)
@@ -28,8 +29,8 @@ var still_for := 0.0
 var landed := false
 var impact := 0.0
 var exceptions: Array = []
-var fwd_in_chest := Vector3.BACK
-var up_in_chest := Vector3.UP
+var fwd_in_hips := Vector3.BACK
+var up_in_hips := Vector3.UP
 var last_speed := {}
 var fading := 0.0          # seconds left of handing her back to her clips
 var fade_len := 0.0
@@ -42,11 +43,11 @@ const PARTS := [
 	["Chest", "Neck", 0.1, 8.0, "cone", 20, 15, 0.15],
 	["Head", "+0.2", 0.095, 4.0, "cone", 40, 40, 0.35],
 	["LeftUpperArm", "LeftLowerArm", 0.045, 2.0, "cone", 85, 40, 1.0],
-	["LeftLowerArm", "LeftHand", 0.04, 1.2, "elbow", -5, 140, 0.8],
-	["LeftHand", "+0.09", 0.035, 0.5, "cone", 50, 20, 0.5],
+	["LeftLowerArm", "LeftHand", 0.04, 1.5, "elbow", -5, 140, 0.8],
+	["LeftHand", "+0.09", 0.035, 0.9, "cone", 50, 20, 0.5],
 	["RightUpperArm", "RightLowerArm", 0.045, 2.0, "cone", 85, 40, 1.0],
-	["RightLowerArm", "RightHand", 0.04, 1.2, "elbow", -5, 140, 0.8],
-	["RightHand", "+0.09", 0.035, 0.5, "cone", 50, 20, 0.5],
+	["RightLowerArm", "RightHand", 0.04, 1.5, "elbow", -5, 140, 0.8],
+	["RightHand", "+0.09", 0.035, 0.9, "cone", 50, 20, 0.5],
 	["LeftUpperLeg", "LeftLowerLeg", 0.062, 6.0, "cone", 70, 25, 0.7],
 	["LeftLowerLeg", "LeftFoot", 0.05, 3.0, "knee", -5, 140, 0.9],
 	["LeftFoot", "LeftToes", 0.04, 1.0, "cone", 30, 10, 0.3],
@@ -67,6 +68,15 @@ func build(p, sk: Skeleton3D) -> void:
 	sim.active = false
 	skel.add_child(sim)
 	skel.move_child(sim, 0)                # before the spring bones: tail and hair follow her
+	rigid = Rigid.new()
+	rigid.active = false
+	skel.add_child(rigid)
+	skel.move_child(rigid, 1)
+	# Her pelvis, not her chest, tells how she lies: flat on her front whether
+	# or not she's propped on her elbows.
+	var hips_rest := skel.get_bone_global_rest(skel.find_bone("Hips")).basis
+	fwd_in_hips = (hips_rest.inverse() * Vector3.BACK).normalized()     # she faces +Z at rest
+	up_in_hips = (hips_rest.inverse() * Vector3.UP).normalized()
 	var rest := {}
 	for r in PARTS:
 		var i := skel.find_bone(r[0])
@@ -110,6 +120,8 @@ func build(p, sk: Skeleton3D) -> void:
 		pb.global_transform = skel.global_transform * g * pb.body_offset
 		parts[r[0]] = pb
 		row[r[0]] = r
+		if r[0] != "Hips":
+			rigid.ids.append(skel.find_bone(r[0]))
 		reach[r[0]] = len
 	# Joints, framed in the T-pose so the limits are a body's, not this moment's.
 	for b in parts:
@@ -209,6 +221,7 @@ func start(bone: String, at: Vector3) -> void:
 		stop()                             # caught again while getting up
 	var b := _part_for(bone)
 	sim.active = true
+	rigid.active = true
 	sim.influence = 1.0
 	sim.physical_bones_start_simulation()
 	# From the pose she's in this moment (the bodies otherwise start where they last were).
@@ -228,11 +241,6 @@ func start(bone: String, at: Vector3) -> void:
 	still_for = 0.0
 	flail = 1.0
 	last_speed.clear()
-	# Where her chest faces and points now (she's upright), to read how she lands.
-	var chest: PhysicalBone3D = parts["Chest"]
-	var face: Vector3 = pet.body.global_basis * Vector3.BACK
-	fwd_in_chest = (chest.global_basis.inverse() * face).normalized()
-	up_in_chest = (chest.global_basis.inverse() * Vector3.UP).normalized()
 	for p in parts:
 		if up_part[p] != "":
 			rel0[p] = ((parts[up_part[p]] as Node3D).global_basis.inverse() * (parts[p] as Node3D).global_basis).orthonormalized()
@@ -273,7 +281,13 @@ func ease_out(secs: float) -> void:
 
 
 func fwd_now() -> Vector3:
-	return (parts["Chest"] as Node3D).global_basis * fwd_in_chest
+	return _hips_bone() * fwd_in_hips
+
+
+# Her hips bone's turn in the world, from its physical part.
+func _hips_bone() -> Basis:
+	var pb: PhysicalBone3D = parts["Hips"]
+	return pb.global_basis * pb.body_offset.basis.inverse()
 
 
 func stop() -> void:
@@ -290,6 +304,7 @@ func stop() -> void:
 	exceptions.clear()
 	sim.physical_bones_stop_simulation()
 	sim.active = false
+	rigid.active = false
 
 
 # Where a part is, in the world (its middle).
@@ -305,9 +320,13 @@ func joint(bone: String) -> Vector3:
 
 # How she's lying: "back", "front", "side" or "sit".
 func lie() -> String:
-	var chest: Node3D = parts["Chest"]
-	var up := chest.global_basis * up_in_chest
-	var fwd := chest.global_basis * fwd_in_chest
+	return lie_of(_hips_bone())
+
+
+# The same for any turn of her hips bone (a get-up clip's first frame, say).
+func lie_of(hips: Basis) -> String:
+	var up := hips * up_in_hips
+	var fwd := hips * fwd_in_hips
 	if up.y > 0.55:
 		return "sit"
 	if fwd.y > 0.45:
@@ -361,11 +380,11 @@ func _physics_process(delta: float) -> void:
 		var step := (target - anchor.global_position) * clampf(delta * 30.0, 0.0, 1.0)
 		anchor.global_position += step.limit_length(9.0 * delta)
 		# Flailing hard when first grabbed, tiring to a wriggle after a few seconds.
-		flail = lerpf(flail, 0.35 if t > 3.0 else 1.0, clampf(delta * 1.5, 0.0, 1.0))
+		flail = lerpf(flail, 0.6 if t > 2.5 else 1.0, clampf(delta * 1.5, 0.0, 1.0))
 	else:
 		since_drop += delta
-		if landed:
-			flail = lerpf(flail, 0.0, clampf(delta * 6.0, 0.0, 1.0))   # limp once she hits something
+		# A last flail through the air, limp by the time she's down.
+		flail = move_toward(flail, 0.0, delta * (4.0 if landed else 1.6))
 	var fastest := 0.0
 	var spin := 0.0
 	for b in parts:
@@ -385,7 +404,7 @@ func _physics_process(delta: float) -> void:
 			continue
 		_drive(b, pb, parts[up], w, delta)
 	if not held:
-		still_for = still_for + delta if fastest < 0.18 and spin < 1.0 else 0.0
+		still_for = still_for + delta if fastest < 0.3 and spin < 1.5 else 0.0
 
 
 # Her muscles: a soft spring from each part toward its flailing target in the
@@ -395,8 +414,8 @@ func _drive(b: String, pb: PhysicalBone3D, par: PhysicalBone3D, w: Vector3, _del
 	var r: Array = row[b]
 	var k_flail: float = 0.0 if b in limp else flail * float(r[7])
 	var wg: Array = wiggle[b]
-	var target_rel: Basis = rel0[b] * Basis(wg[0], k_flail * 0.9 * sin(t * float(wg[4]) + float(wg[2]))) \
-			* Basis(wg[1], k_flail * 0.6 * sin(t * float(wg[4]) * 1.37 + float(wg[3])))
+	var target_rel: Basis = rel0[b] * Basis(wg[0], k_flail * 1.1 * sin(t * float(wg[4]) + float(wg[2]))) \
+			* Basis(wg[1], k_flail * 0.7 * sin(t * float(wg[4]) * 1.37 + float(wg[3])))
 	var want := par.global_basis.orthonormalized() * target_rel
 	var q := (want * pb.global_basis.orthonormalized().inverse()).get_rotation_quaternion()
 	var ang := q.get_angle()
@@ -404,8 +423,9 @@ func _drive(b: String, pb: PhysicalBone3D, par: PhysicalBone3D, w: Vector3, _del
 		ang -= TAU
 	var axis := q.get_axis() if ang != 0.0 else Vector3.ZERO
 	var wp := PhysicsServer3D.body_get_state(par.get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY) as Vector3
-	# Stiff enough to flail, near nothing when limp (a little tone so she isn't string).
-	var k := 4.0 + 70.0 * k_flail if b not in limp else 0.5
+	# Strong enough to swing a leg against gravity while flailing, near nothing
+	# when limp (a little tone so she isn't string).
+	var k := 6.0 + 240.0 * k_flail if b not in limp else 0.5
 	var d := 2.0 * sqrt(k) * 0.7
 	# Turning a part against the one above it: their reduced inertia, so a light
 	# part (her hips under two heavy legs) isn't kicked harder than it can take.
@@ -421,3 +441,17 @@ func _inertia(b: String) -> float:
 	var r: Array = row[b]
 	var l: float = reach[b]
 	return float(r[3]) * (l * l / 3.0 + float(r[2]) * float(r[2]) / 2.0)
+
+
+# After the physics: each part keeps its bone's own length (its rest offset
+# from its parent), so her joints can't drift apart under her weight and
+# stretch her; only how they turn comes from the physics.
+class Rigid extends SkeletonModifier3D:
+	var ids: Array[int] = []
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		for i in ids:
+			sk.set_bone_pose_position(i, sk.get_bone_rest(i).origin)

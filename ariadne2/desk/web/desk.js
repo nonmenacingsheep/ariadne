@@ -49,7 +49,7 @@ function build(name) {
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
-  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div><i class="lg-ring"></i><i class="lg-ring"></i><i class="lg-ring"></i></div><div class="grip"></div>`;
+  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div></div><div class="grip"></div>`;
   document.getElementById("widgets").appendChild(root);
   const w = { root, face: root.querySelector(".face"), bd: root.querySelector(".bd"), tag: root.querySelector(".tag") };
   if (name === "chat") {
@@ -137,74 +137,220 @@ function setTheme(t, instant) {
   if (typeof Settings !== "undefined") Settings.restyle();
 }
 
-// Liquid Glass: the pointer's light falls on the controls of the widget or
-// panel it's over (glass.css lights them from --gx/--gy), not on the glass.
-// One style write a frame at most, on that one container.
-const LIGHTS = ".fmenu, .cc-picker, .fe-palette, .setpanel, .drawer, .w";
-let lit = null, litXY = null, litQueued = false;
-function moveLight() {
-  litQueued = false;
-  if (!lit || !litXY) return;
-  lit.style.setProperty("--gx", litXY[0] + "px"); lit.style.setProperty("--gy", litXY[1] + "px");
+/* ---------------- Liquid Glass: water ---------------- */
+// Real refraction is an SVG filter (feDisplacementMap) and WebKitGTK runs
+// those on the CPU, over the host's whole box, every frame it changes; on a
+// whole widget face that tripled the frame time. So it is kept to the small
+// thing: the pointer's droplet lens. A click's wave is
+// done by the compositor instead (transforms and opacity only): caustic
+// light spreading across the face, the content swaying and the controls
+// rising as the crest passes, the widget's edges flexing as it hits them.
+// Filter hosts are a face or a panel, never the small controls inside: in
+// WebKitGTK 2.52 a map filter on a nested element blanks it. The map sits in
+// the host's own coordinates and must overlap the host or parts of it blank,
+// so an idle map waits, invisible (alpha 0), in the middle.
+const SVGNS = "http://www.w3.org/2000/svg";
+const lgNow = () => window.__lgTime ?? performance.now();      // __lgTime: frozen time, for still frames in tests
+const lgUrl = f => new URL("water/" + f, location.href).href;
+const WAVE_SPEED = .2, WAVE_POOL = 3, WAVE_R0 = 26, LENS_DISP = 18;
+// Inner scrollers first: a map filter on an element with backdrop-filter
+// (the panels) turns its blur off, so those get a denser tint while it's on.
+const LENS_HOSTS = ".face, .sp-body, .sp-tabs, .av-set, .setpanel, .drawer, .fmenu, .cc-picker, .fe-palette";
+let lgDefs = null, lgSeq = 0;
+function lgFilters() {
+  if (lgDefs) return lgDefs;
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("width", "0"); svg.setAttribute("height", "0");
+  svg.style.cssText = "position:absolute;left:0;top:0;pointer-events:none";
+  svg.innerHTML = "<defs></defs>";
+  document.body.appendChild(svg);
+  lgDefs = svg.firstChild;
+  const drop = document.createElement("div"); drop.id = "lg-drop"; document.body.appendChild(drop);
+  return lgDefs;
 }
-addEventListener("pointermove", e => {
-  if (theme !== "liquid_glass") return;
-  const w = e.target.closest?.(LIGHTS) || null;
-  if (w !== lit) { lit?.classList.remove("pt"); lit = w; w?.classList.add("pt"); }
-  litXY = [e.clientX, e.clientY];
-  if (lit && !litQueued) { litQueued = true; requestAnimationFrame(moveLight); }
-}, { passive: true });
-document.documentElement.addEventListener("pointerleave", () => { lit?.classList.remove("pt"); lit = null; });
+function glassOf(host) {
+  if (host._glass) return host._glass;
+  const id = `lg-glass-${++lgSeq}`;
+  lgFilters().insertAdjacentHTML("beforeend", `<filter id="${id}" x="-4%" y="-4%" width="108%" height="108%" color-interpolation-filters="sRGB">` +
+    `<feFlood flood-color="rgb(128,128,128)" result="base"/>` +
+    `<feImage href="${lgUrl("lens.png")}" preserveAspectRatio="none" x="0" y="0" width="2" height="2" result="l"/>` +
+    `<feMerge result="map"><feMergeNode in="base"/><feMergeNode in="l"/></feMerge>` +
+    `<feDisplacementMap in="SourceGraphic" in2="map" scale="${LENS_DISP}" xChannelSelector="R" yChannelSelector="G"/></filter>`);
+  const g = { id, host, img: document.getElementById(id).querySelector("feImage"), on: false };
+  park(g);
+  return (host._glass = g);
+}
+function park(g) {
+  g.img.setAttribute("x", g.host.offsetWidth / 2 - 1); g.img.setAttribute("y", g.host.offsetHeight / 2 - 1);
+  g.img.setAttribute("width", 2); g.img.setAttribute("height", 2);
+}
+function placeMap(g, cx, cy, rx, ry) {          // cx, cy in the host's own coordinates
+  g.img.setAttribute("x", (cx - rx).toFixed(1)); g.img.setAttribute("y", (cy - ry).toFixed(1));
+  g.img.setAttribute("width", (2 * rx).toFixed(1)); g.img.setAttribute("height", (2 * ry).toFixed(1));
+}
+function glassOn(g, on) {
+  g.on = on;
+  if (!on) park(g);
+  g.host.style.filter = on ? `url(#${g.id})` : "";
+  g.host.classList.toggle("lg-refract", on);
+}
 
-// Liquid Glass: a click is a drop in a pond. Wavelets of water spread from
-// the click across the widget's glass (three layers per widget, a beat apart;
-// the next click restarts them, so nothing piles up), and every control rises
-// and bobs as the wave reaches it, then settles. All of it is decided once per
-// click; after that only transform, translate, scale and opacity animate.
+// A click is a drop in a pond: an uneven ring of wavelets (water/caustic.png,
+// desk/make_water_maps.py) spreads slowly from it as caustic light; as the
+// crest passes, the content sways out from the click and settles, the
+// controls rise and bob more, and each edge of the widget flexes when the
+// wave hits it, less the farther that edge is from the click. Clicks stack:
+// up to three waves live per widget; a fourth restarts the oldest.
 const BOBS = ".sp-ctl button, .power, .gear, .st-close, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go, " +
   ".cc-pk-go, .cc-ask-b, .port, .upd, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .dp-file, .st-card, " +
   ".tk-row, .sp-qi.jump, .cc-tool-h, .say, .cc-in, .sp-select, .sp-input";
-const WAVE_SPEED = .32;           // px per ms: a slow pond, not a flash
+// Few and small: every element that sways is a compositor layer while it
+// does, and text-sized ones (titles, bubbles, rows) cost more than the rest of
+// the wave together; the art and her mark carry it.
+const SWAYS = ".mark, .sp-art, .st-now img";
+const SLIDERS = ".sp-vtrack, .sp-track, .sp-num input[type=range]";
+function pondOf(root) {
+  if (root._pond) return root._pond;
+  const pond = document.createElement("div"); pond.className = "lg-pond";
+  root.querySelector(":scope > .face").after(pond);
+  return (root._pond = { live: [], waves: Array.from({ length: WAVE_POOL }, () => { const e = document.createElement("i"); e.className = "lg-wave"; pond.appendChild(e); return e; }) });
+}
 function ripple(root, x, y, target) {
   const r = rects[root.dataset.w]; if (!r) return;
+  const p = pondOf(root), now = lgNow();
   const lx = x - r[0], ly = y - r[1];
-  const R = Math.hypot(Math.max(lx, r[2] - lx), Math.max(ly, r[3] - ly)) + 12;    // to the farthest corner
-  const T = R / WAVE_SPEED;
-  root.querySelectorAll(":scope > .face > .lg-ring").forEach((ring, k) => {
-    ring._anim?.cancel();
-    Object.assign(ring.style, { left: (lx - R) + "px", top: (ly - R) + "px", width: 2 * R + "px", height: 2 * R + "px" });
-    const a = [1, .6, .35][k] ?? .3;
-    ring._anim = ring.animate([
-      { transform: "scale(.02)", opacity: 0 },
-      { transform: "scale(.1)", opacity: a, offset: .06 },
-      { transform: "scale(.6)", opacity: a * .8, offset: .6 },
-      { transform: "scale(1)", opacity: 0 }],
-      { duration: T, delay: k * 260, easing: "linear" });
-  });
-  // The controls ride the wave: each rises when the leading crest reaches it,
-  // dips in the trough, bobs once more for the next wavelet, and settles.
+  const R = Math.hypot(Math.max(lx, r[2] - lx), Math.max(ly, r[3] - ly)) + 40;     // past the farthest corner
+  const T = (R - WAVE_R0) / WAVE_SPEED;
+  p.live = p.live.filter(w => now - w.t0 < w.T);
+  let k = [...Array(WAVE_POOL).keys()].find(i => !p.live.some(w => w.k === i));
+  if (k === undefined) { const old = p.live.reduce((a, b) => (a.t0 <= b.t0 ? a : b)); k = old.k; p.live = p.live.filter(w => w !== old); }
+  p.live.push({ k, t0: now, T });
+  const cau = p.waves[k];
+  cau._anim?.cancel();
+  // Drawn at half size and scaled up: a quarter of the pixels for the compositor, and it's soft light anyway.
+  Object.assign(cau.style, { left: (lx - R / 2) + "px", top: (ly - R / 2) + "px", width: R + "px", height: R + "px" });
+  cau._anim = cau.animate([
+    { transform: `scale(${2 * WAVE_R0 / R})`, opacity: 0 },
+    { transform: `scale(${2 * (WAVE_R0 + .06 * (R - WAVE_R0)) / R})`, opacity: 1, offset: .06 },
+    { transform: `scale(${2 * (WAVE_R0 + .5 * (R - WAVE_R0)) / R})`, opacity: .5, offset: .5 },
+    { transform: "scale(2)", opacity: 0 }], { duration: T, easing: "linear" });
+  const at = d => Math.max(0, (d - WAVE_R0) / WAVE_SPEED);              // when the front crest reaches distance d
+  // The content sways out from the click as the crest passes (refraction,
+  // faked), and the controls rise and bob on top of that. A newer wave takes
+  // over an element's motion (WebKit can't run additive animations on the
+  // compositor, and these have to stay there).
   const own = target?.closest?.(BOBS);
-  for (const el of root.querySelectorAll(BOBS)) {
-    if (el === own || !el.offsetParent) continue;            // the one you pressed keeps its squish
+  for (const el of root.querySelectorAll(`${BOBS}, ${SWAYS}`)) {
+    if (el === own || !el.offsetParent) continue;
     const b = el.getBoundingClientRect();
-    const d = Math.hypot(b.left + b.width / 2 - x, b.top + b.height / 2 - y);
-    if (d > R) continue;
-    const amp = 8 * (1 - .5 * d / R), s = .06 * (1 - .5 * d / R);
-    el._wave?.cancel();
-    // a damped bob: up as the crest arrives (at 30%), under in the trough, a smaller second rise, settled
-    el._wave = el.animate([
-      { translate: "0 0", scale: "1" },
-      { translate: `0 ${-amp}px`, scale: `${1 + s}`, offset: .3 },
-      { translate: `0 ${amp * .2}px`, scale: `${1 - s * .2}`, offset: .55 },
-      { translate: `0 ${-amp * .3}px`, scale: `${1 + s * .25}`, offset: .75 },
-      { translate: "0 0", scale: "1" }],
-      { duration: 950, delay: Math.max(0, d / (.94 * WAVE_SPEED) - 285), easing: "ease-in-out" });   // the crest rides at 94% of the ring
+    const dx = b.left + b.width / 2 - x, dy = b.top + b.height / 2 - y, d = Math.hypot(dx, dy) || 1;
+    if (d > R - 40) continue;
+    const fall = 1 - .6 * d / R, ux = dx / d, uy = dy / d, bob = el.matches(BOBS);
+    // translate only: a skew or scale here made the compositor redraw every swaying layer (2-3x the frame time)
+    const push = 4 * fall, lift = bob ? 12 * fall : 0;
+    const f = (p, l) => `${(ux * p).toFixed(2)}px ${(uy * p - l).toFixed(2)}px`;
+    el._sway?.cancel();
+    el._sway = el.animate([
+      { translate: f(0, 0) }, { translate: f(push, lift), offset: .26 }, { translate: f(-push * .45, -lift * .35), offset: .5 },
+      { translate: f(push * .2, lift * .3), offset: .72 }, { translate: f(0, 0) }],
+      { duration: 1400, delay: Math.max(0, at(d) - 360), easing: "ease-in-out" });
   }
+  // Each edge flexes when the wave reaches it: a small bulge outward there,
+  // stronger the nearer the edge is to the click. One animation for the
+  // widget, the four bulges laid out in time along it.
+  const edges = [[lx, -1, 0], [r[2] - lx, 1, 0], [ly, 0, -1], [r[3] - ly, 0, 1]].map(([dist, tx, ty]) => ({ t: at(dist), tx, ty, b: 11 / (1 + dist / 90) }));
+  const end = Math.max(...edges.map(e => e.t)) + 900, keys = [];
+  for (let i = 0; i <= 40; i++) {
+    const t = end * i / 40;
+    let ox = 0, oy = 0, gx = 0, gy = 0;
+    for (const e of edges) {
+      const u = (t - e.t + 270) / 900; if (u <= 0 || u >= 1) continue;
+      const k = Math.sin(u * Math.PI * 2) * Math.exp(-u * 2.2) * e.b;     // out, back past, settle
+      ox += e.tx * k / 2; oy += e.ty * k / 2; gx += Math.abs(e.tx) * k; gy += Math.abs(e.ty) * k;
+    }
+    keys.push({ transform: `translate(${ox.toFixed(2)}px, ${oy.toFixed(2)}px) scale(${(1 + gx / r[2]).toFixed(5)}, ${(1 + gy / r[3]).toFixed(5)})`, offset: i / 40 });
+  }
+  root._flex?.cancel();
+  root._flex = root.animate(keys, { duration: end, easing: "linear" });
 }
 document.addEventListener("pointerdown", e => {
   if (theme !== "liquid_glass" || e.button !== 0) return;
+  if (e.target.closest?.(".sp-vol, .sp-prog, .sp-num")) return;          // sliders don't ripple; their knob turns to glass
   const w = e.target.closest?.(".w"); if (w) ripple(w, e.clientX, e.clientY, e.target);
 }, true);
+
+// The pointer, over anything clickable, is a small clear droplet: the lens
+// map in the host's filter magnifies what's under the pointer, sized to the
+// control, and the meniscus ring (#lg-drop) rides on top. Over bare glass
+// there is no lens.
+const LENSED = BOBS + ", .sp-tab, .fm-item, .fe-item, .cc-pk-row, .fe-search, .fm-input, .fe-name";
+let lens = null, lensXY = null, lensQueued = false;      // lens: { g, el, box, r }
+function lensTo(el) {
+  if (el === lens?.el) return;
+  if (lens) glassOn(lens.g, false);
+  lens = null;
+  const host = el?.closest(LENS_HOSTS);
+  if (el && host) {
+    const g = glassOf(host), b = el.getBoundingClientRect();
+    lens = { g, el, box: host.getBoundingClientRect(), r: Math.max(13, Math.min(22, b.height * .72)) };
+    glassOn(g, true);
+  }
+  lgFilters(); const drop = document.getElementById("lg-drop");
+  if (drop) { drop.classList.toggle("on", !!lens); if (lens) drop.style.setProperty("--d", 2 * lens.r + "px"); }
+}
+function moveLens() {
+  lensQueued = false;
+  if (!lensXY) return;
+  const drop = document.getElementById("lg-drop");
+  if (drop) drop.style.translate = `${lensXY[0]}px ${lensXY[1]}px`;
+  if (lens) placeMap(lens.g, lensXY[0] - lens.box.left, lensXY[1] - lens.box.top, lens.r, lens.r);
+}
+addEventListener("pointermove", e => {
+  if (theme !== "liquid_glass") { if (lens) lensTo(null); return; }
+  lensXY = [e.clientX, e.clientY];
+  if (grab) slideMove(e);
+  else lensTo(e.target.closest?.(LENSED) || null);
+  if (!lensQueued) { lensQueued = true; requestAnimationFrame(moveLens); }
+}, { passive: true });
+document.documentElement.addEventListener("pointerleave", () => lensTo(null));
+
+// Sliders, Apple's way: pressed, the knob becomes a clear glass pill with the
+// track seen through it, enlarged (glass.css draws it: fill to the left of
+// the middle, bare track to the right, as the knob always sits on the edge
+// between them), and it stretches with how fast you drag; let go, it settles
+// back into a small knob. A displacement filter here bent the pill's own rim
+// into dashes, so the magnified track is drawn, not refracted.
+let grab = null;
+function slideMove(e) {
+  const dt = Math.max(8, e.timeStamp - grab.t), vx = (e.clientX - grab.x) / dt * 16;
+  grab.t = e.timeStamp; grab.x = e.clientX;
+  const sx = Math.min(.45, Math.abs(vx) * .03);
+  if (grab.s.tagName === "INPUT") { grab.s.style.setProperty("--sx", 1 + sx); grab.s.style.setProperty("--sy", 1 - sx * .45); }
+  else grab.s.querySelector("i").style.scale = `${1 + sx} ${1 - sx * .45}`;
+  clearTimeout(grab.rest);
+  grab.rest = setTimeout(() => {
+    if (!grab) return;
+    grab.s.style.removeProperty("--sx"); grab.s.style.removeProperty("--sy");
+    const i = grab.s.querySelector("i"); if (i) i.style.scale = "";
+  }, 90);
+}
+function slideStart(s, x, t) {
+  lensTo(null);
+  grab = { s, x, t };
+  s.classList.add("lg-grab");
+}
+document.addEventListener("pointerdown", e => {
+  if (theme !== "liquid_glass" || e.button !== 0) return;
+  const s = e.target.closest?.(SLIDERS); if (s) slideStart(s, e.clientX, e.timeStamp);
+}, true);
+addEventListener("pointerup", () => {
+  if (!grab) return;
+  const g = grab; grab = null;
+  clearTimeout(g.rest);
+  g.s.classList.remove("lg-grab");
+  g.s.style.removeProperty("--sx"); g.s.style.removeProperty("--sy");
+  const i = g.s.querySelector("i"); if (i) i.style.scale = "";
+});
 
 // Liquid Glass: a dragged widget lifts, and stretches along the way it moves,
 // then springs back when it stops or is let go.

@@ -79,54 +79,43 @@ html.lg {
     rgba(255, 255, 255, .02) 66%, rgba(255, 200, 208, .35) 88%, rgba(255, 255, 255, .85));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; }
-/* The pointer's light falls on the controls, never on the glass itself.
-   Every clickable thing carries a ::before lit by one radial gradient pinned
-   to the viewport (background-attachment: fixed) at the pointer (--gx, --gy,
-   set by desk.js on the widget or panel under the pointer, once a frame at
-   most), so each control glows by how near the pointer is and the slab
-   between them stays dark. Text boxes take the same light as a background layer. */
-.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
-    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h) { isolation: isolate; }
-.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
-    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h):not(.power, .gear, .upd, .st-play, .port.ghost, .tk-row, .cl-row) { position: relative; }
-.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
-    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h)::before {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
-  opacity: 0; transition: opacity .35s ease; }
-/* buttons, chips, tabs, switches: the light catches their rim, like an edge of glass */
-.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
-    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace)::before { padding: 1.2px;
-  background: radial-gradient(105px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .9), rgba(255, 255, 255, .25) 40%, rgba(255, 255, 255, 0) 64%) fixed;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
-/* list rows: a soft wash, shaped by the row's own rounded box */
-.lg :is(.br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h) { border-radius: 10px; }
-.lg :is(.br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h)::before {
-  background: radial-gradient(120px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .13), rgba(255, 255, 255, 0) 70%) fixed; }
-.lg .pt :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
-    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h)::before { opacity: 1; }
-.lg .pt :is(.say, .cc-in, .sp-input, .fe-search, .fm-input, .fe-val, .fe-name) {
-  background-image: radial-gradient(150px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 70%);
-  background-attachment: fixed; }
-.lg .pt .sp-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23fff' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"),
-    radial-gradient(150px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 70%);
-  background-attachment: scroll, fixed; background-repeat: no-repeat; background-position: right 10px center, 0 0; background-size: 10px 6px, auto; }
+/* ---------- water (desk.js: ripple, the lens, the slider pill) ----------
+   - a click's wave: uneven wavelets of light and shade (water/caustic.png,
+     desk/make_water_maps.py) spread in a clip box beside the face (.lg-pond),
+     moved by the compositor; desk.js bobs the controls and flexes the edges;
+   - the pointer, over anything clickable, is a small clear droplet: a real
+     lens (an SVG displacement filter on the face, only while it's over a
+     control) magnifies what's under it, with the meniscus (#lg-drop) on top;
+   - a slider's knob, pressed, becomes a clear glass pill showing the track
+     through it, enlarged, and stretches with the drag. */
+.lg-wave { display: none; }
+.lg-pond { display: none; }
+.lg .lg-pond { display: block; position: absolute; inset: 0; border-radius: var(--lg-r); overflow: hidden; pointer-events: none; z-index: 1; }
+.lg .lg-wave { display: block; position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; opacity: 0;
+  background: url("water/caustic.png") center / 100% 100% no-repeat; }
+#lg-drop { display: none; }
+.lg #lg-drop { display: block; position: fixed; left: 0; top: 0; width: var(--d, 44px); height: var(--d, 44px); margin: calc(var(--d, 44px) / -2) 0 0 calc(var(--d, 44px) / -2); border-radius: 50%;
+  pointer-events: none; z-index: 120; opacity: 0; scale: .4; transition: opacity .25s, scale .5s var(--lg-bounce);
+  background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .3), rgba(255, 255, 255, 0) 14%),
+    radial-gradient(circle, rgba(255, 255, 255, 0) 64%, rgba(255, 255, 255, .06) 86%, rgba(255, 255, 255, 0) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55), inset 0 1.5px 1px rgba(255, 255, 255, .8), inset 0 -2px 4px rgba(0, 0, 0, .28),
+    inset 1.5px 0 1px -0.5px rgba(255, 90, 170, .45), inset -1.5px 0 1px -0.5px rgba(80, 220, 255, .45), 0 4px 12px -2px rgba(0, 0, 0, .35); }
+.lg #lg-drop.on { opacity: 1; scale: 1; }
+.lg :is(.setpanel, .drawer, .fmenu, .cc-picker, .fe-palette).lg-refract { background-color: rgba(26, 22, 34, .9); }
 
-/* A click is a drop in a pond: wavelets of water spread from the click
-   across the glass under the content, each a bright crest with a soft
-   trough behind it, decaying inward and fading as they reach the edges
-   (clipped by the face's rounded corners). Three wave layers per widget,
-   started a beat apart and restarted by the next click, so rapid clicks
-   never add nodes. desk.js also bobs each control as the wave reaches it. */
-.lg-ring { display: none; }
-.lg .lg-ring { display: block; position: absolute; left: 0; top: 0; width: 0; height: 0; border-radius: 50%; pointer-events: none; z-index: -1;
-  opacity: 0;
-  background: radial-gradient(closest-side,
-    rgba(255, 255, 255, 0) 58%,
-    rgba(255, 255, 255, .025) 63%, rgba(0, 0, 0, .02) 67%,
-    rgba(255, 255, 255, .05) 72%, rgba(0, 0, 0, .045) 77%,
-    rgba(230, 242, 255, .10) 83%, rgba(0, 0, 0, .08) 88%,
-    rgba(235, 246, 255, .24) 94%, rgba(255, 255, 255, .06) 97.5%, rgba(255, 255, 255, 0) 100%); }
+/* sliders: the knob turns into a clear pill while held (the lens under it is desk.js's) */
+.lg :is(.sp-vtrack, .sp-track) i { transition: width .5s var(--lg-spring), height .5s var(--lg-spring), margin .5s var(--lg-spring),
+  background-color .25s, box-shadow .3s, opacity .2s, scale .35s var(--lg-spring); }
+.lg :is(.sp-vtrack, .sp-track).lg-grab i { opacity: 1; width: 38px; height: 24px; margin: -12px 0 0 -19px; border-radius: 999px;
+  /* the track seen through the pill, magnified: fill to the left of the middle, bare track to the right */
+  background: linear-gradient(90deg, rgba(255, 255, 255, .95) 50%, rgba(255, 255, 255, .2) 50%) center / 100% 9px no-repeat, rgba(255, 255, 255, .06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55), inset 0 1.5px 1px rgba(255, 255, 255, .8), inset 0 -2px 4px rgba(0, 0, 0, .28),
+    inset 1.5px 0 1px -0.5px rgba(255, 90, 170, .45), inset -1.5px 0 1px -0.5px rgba(80, 220, 255, .45), 0 4px 12px -2px rgba(0, 0, 0, .35); }
+.lg .sp-track.lg-grab { height: 7px; }
+.lg .sp-num input[type=range].lg-grab::-webkit-slider-thumb { width: 38px; height: 24px; margin-top: -10px;
+  background: linear-gradient(90deg, rgba(255, 82, 100, .95) 50%, rgba(255, 255, 255, .2) 50%) center / 100% 9px no-repeat, rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55), inset 0 1.5px 1px rgba(255, 255, 255, .8), inset 0 -2px 4px rgba(0, 0, 0, .28),
+    inset 1.5px 0 1px -0.5px rgba(255, 90, 170, .45), inset -1.5px 0 1px -0.5px rgba(80, 220, 255, .45), 0 4px 12px -2px rgba(0, 0, 0, .35);
+  transform: scale(var(--sx, 1), var(--sy, 1)); transition: transform .35s var(--lg-spring); }
 
 .lg .hd { padding: 14px 20px 8px; }
 .lg .ttl { font: 650 15px/1.1 Inter, "Noto Sans", sans-serif; letter-spacing: -.01em; text-transform: none; color: #fff; }
@@ -239,8 +228,6 @@ html.lg {
 .lg .sp-num input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 17px; margin-top: -6px; border-radius: 999px;
   background: linear-gradient(180deg, #fff, #eceef3); box-shadow: 0 3px 8px rgba(0, 0, 0, .32), 0 0 0 .5px rgba(0, 0, 0, .08);
   transition: transform .45s var(--lg-bounce); }
-.lg .sp-num input[type=range]:active::-webkit-slider-thumb { transform: scale(1.45, 1.6);
-  background: radial-gradient(120% 90% at 50% 10%, rgba(255, 255, 255, .95), rgba(255, 255, 255, .55)); }
 
 /* ======================= progress bars ======================= */
 .lg :is(.bar, .dl-bar, .sp-vtrack) { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, .13); overflow: hidden; }

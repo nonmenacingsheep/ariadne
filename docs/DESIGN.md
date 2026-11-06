@@ -163,16 +163,29 @@ another.
 - **Material:** a thin dark tint, denser in the middle where text sits and clearer toward the
   edges; a top-left specular wash; light pooling inside the top edge and a darker bottom edge
   with a thin caustic line (thickness); a 1.5 px gradient rim, bright where light strikes the
-  top-left and leaves the bottom-right. The pointer's light falls only on what you can click
-  (buttons, chips, tabs, switches, rows, text boxes): each control glows by how near the pointer
-  is, and the slab between them stays unlit (one radial gradient pinned to the viewport at the
-  pointer; desk.js writes its position on the hovered widget or panel, once a frame at most).
-- **Clicks are a drop in a pond:** a click anywhere in a widget sends slow wavelets of water
-  across its glass, under the content (bright crests with soft troughs, strongest at the front,
-  fading as they reach the rounded edges), and every control rises and bobs as the crest
-  reaches it, then settles. Each widget owns three wave layers and the next click restarts
-  them; everything is decided once per click and only transform, translate, scale and opacity
-  animate. The content itself isn't refracted (that would need a per-frame displacement filter).
+  top-left and leaves the bottom-right.
+- **Water (desk.js "Liquid Glass: water", glass.css "water"):** maps come from
+  `desk/make_water_maps.py` into `desk/web/water/`.
+  - **A click is a drop in a pond:** an uneven ring of wavelets (soft lit crests beside darker
+    troughs) spreads slowly from the click (0.2 px/ms) across the widget; the controls rise and
+    bob as the crest reaches them, her mark and the album art sway, and each edge of the widget
+    flexes when the wave hits it, more the nearer it is to the click. Clicks stack: up to three
+    waves per widget, a fourth restarts the oldest. All of it is compositor work (transform and
+    opacity), decided once per click.
+  - **The pointer is a droplet:** over anything clickable, a small lens magnifies what's under
+    the pointer for real (an SVG `feDisplacementMap` on the widget's face, only while the
+    pointer is over a control), with a meniscus ring and a faint colour fringe on top. Over bare
+    glass, nothing.
+  - **Sliders, Apple's way:** pressed, the knob turns into a clear pill showing the track through
+    it, enlarged, and stretches with drag speed; let go, it settles back to a knob. Sliders
+    don't ripple.
+  - **Why the wave doesn't refract the content:** WebKitGTK runs SVG filters on the CPU over the
+    host's whole box every frame; on a widget face that tripled the frame time in tests, so real
+    refraction is kept to the small lens. Other limits found in WebKitGTK 2.52: a map filter on a
+    small element nested inside a widget blanks it, so the lens filter sits on the face (or the
+    settings list, a menu); an `feImage` must overlap its host or parts of the host blank; on an
+    element with `backdrop-filter` the filter turns the blur off, so panels get a denser tint
+    while the lens is on them.
 - **Blur:** the wallpaper is outside the page, so nothing in CSS can blur it; widgets carry the
   glass with tint and light instead, and have no `backdrop-filter` (it would cost a blur per
   repaint for nothing). Menus, the settings panel, the drawer and the flow editor do blur and

@@ -195,6 +195,15 @@ class Segmenter:
         self.interrupting = False
         self.quiet_ms = 0
         self.speech_ms = 0
+        self.holding = False
+
+    def hold(self, frame: bytes) -> None:
+        """Keep a frame that mustn't start an utterance (the chime is playing over it)
+        but mustn't be lost either: he may already be talking. Held frames lead in
+        whatever starts before the next real silence, instead of being trimmed to
+        the usual lead-in."""
+        self.buffer.append(frame)
+        self.holding, self.quiet_ms = True, 0
 
     def threshold(self) -> float:
         if self.floor is None:
@@ -230,10 +239,14 @@ class Segmenter:
                 self.reset()
                 return out
         elif loud:
-            self.speaking, self.interrupting = True, her_voice
+            self.speaking, self.interrupting, self.holding = True, her_voice, False
             self.buffer.append(frame)              # the lead-in already in the buffer is the word's start
             self.speech_ms, self.quiet_ms = FRAME_MS, 0
         else:
             self.buffer.append(frame)
-            del self.buffer[:-LEAD_IN_FRAMES]
+            if self.holding:
+                self.quiet_ms += FRAME_MS
+                self.holding = self.quiet_ms < SILENCE_MS
+            if not self.holding:
+                del self.buffer[:-LEAD_IN_FRAMES]
         return None

@@ -43,7 +43,7 @@ class LazyTranscriber(FakeTranscriber):
         self.prefetched, self.warmed, self.idle_checks = [], [], 0
 
     def prefetch(self, name): self.prefetched.append(name)
-    def warm(self, name): self.warmed.append(name)
+    def warm(self, name, park=False): self.warmed.append((name, park))
     def unload_idle(self, idle_s=transcribe.IDLE_UNLOAD_S):
         self.idle_checks += 1
         return ()
@@ -67,12 +67,12 @@ class WakeModel(Spotting):
         self.assertEqual(self.ears.wake_phrase, "wake Aries")
         self.assertIn("listening for wake Aries", self.status)
 
-    async def test_only_the_wake_model_loads_at_start(self):
+    async def test_at_start_the_command_model_is_warmed_and_parked(self):
         self.build()
         await self.go()
-        self.assertTrue(await until(lambda: self.spot.loads == 1))
-        await asyncio.sleep(0.05)
-        self.assertEqual(self.tr.warmed, [])                     # no Whisper until she is woken
+        self.assertTrue(await until(lambda: self.spot.loads == 1 and self.tr.warmed))
+        self.assertEqual(self.tr.warmed, [("cmd", True)])        # loaded once, then off the card
+        self.assertNotIn(transcribe.WAKE_MODEL, [w[0] for w in self.tr.warmed])
 
     async def test_talk_without_the_phrase_is_never_transcribed(self):
         self.build([10] * 20 + speech(900) + [10] * 40 + speech(600) + [10] * 40,
@@ -143,6 +143,51 @@ class WakeModel(Spotting):
         await self.go()
         await asyncio.sleep(1.2)
         self.assertEqual(self.tr.idle_checks, 0)
+
+
+class NothingLost(Spotting):
+    """While Whisper loads, his words wait in the queue; none are thrown away."""
+
+    async def test_talking_through_the_chime_is_kept(self):
+        # The phrase, a pause long enough to end that breath, and he starts again
+        # while the chime is still playing.
+        from ariadne2.core.ears import session
+        deaf_frames = int(session.DEAF_S * 1000) // 32
+        self.build([10] * 20 + phrase() + [10] * 16 + speech(1000) + [10] * 200,
+                   texts=["play something"] * 2)          # short: the control model hears it first
+        await self.go()
+        self.assertTrue(await until(lambda: self.heard))
+        self.assertEqual(self.heard, ["play something"])
+        # 16 quiet frames end the breath (450 ms); she opens on the 15th; the rest of
+        # the chime's deafness falls on his words, and is in the clip
+        self.assertGreaterEqual(self.tr.calls[0][2], (1000 // 32 + deaf_frames - 4) * FRAME_BYTES)
+
+    async def test_utterances_queued_behind_a_slow_load_are_all_heard(self):
+        import threading
+        gate = threading.Event()
+
+        class Slow(LazyTranscriber):
+            def hear(self, pcm, model, hint):
+                gate.wait(5)                      # the command model is still loading
+                return super().hear(pcm, model, hint)
+
+        gap = [10] * 25                           # long enough to end an utterance, not to send
+        words = ["one", "two", "three", "four"]
+        tr = Slow(*[w for w in words for _ in (1, 2)])   # each short clip: control model, then command
+        self.build([10] * 20 + phrase() + [10] * 40 + (speech(600) + gap) * 4 + [10] * 400)
+        self.ears.transcriber = self.ears.listener.transcriber = self.tr = tr
+        await self.go()
+        self.assertTrue(await until(lambda: self.mic.reads > 20 + 19 + 40 + 4 * 44))
+        gate.set()
+        self.assertTrue(await until(lambda: self.heard, timeout=5))
+        self.assertEqual(self.heard, ["one two three four"])
+        self.assertEqual(self.ears.listener.dropped, 0)
+
+    async def test_push_to_talk_starts_the_load(self):
+        self.build(wake_word=False)
+        await self.go()
+        self.ears.push_to_talk(True)
+        self.assertEqual(self.tr.prefetched, ["cmd"])
 
 
 class Fallback(Spotting):
@@ -223,6 +268,55 @@ class Lazy(unittest.TestCase):
         self.assertEqual(t.loaded(), ("large-v3-turbo",))
         self.assertEqual(built, [("large-v3-turbo", "cuda")])
 
+    def make_parkable(self):
+        self.now = [0.0]
+        built, moves = [], []
+
+        class Engine:
+            def unload_model(e, to_cpu=False): moves.append(("park", to_cpu))
+            def load_model(e): moves.append(("back",))
+
+        class Model:
+            def __init__(m, name, device, compute_type):
+                built.append(name)
+                m.model = Engine()
+
+            def transcribe(m, samples, **kw):
+                return iter([]), None
+
+        t = Transcriber(model_factory=Model, device=("cuda", "float16"), clock=lambda: self.now[0])
+        return t, built, moves
+
+    def test_an_idle_gpu_model_is_parked_in_ram_and_comes_back_without_a_reload(self):
+        t, built, moves = self.make_parkable()
+        t.hear(b"\0" * 3200, "large-v3-turbo", "")
+        t.hear(b"\0" * 3200, transcribe.WAKE_MODEL, "")
+        self.now[0] = transcribe.IDLE_UNLOAD_S
+        self.assertEqual(t.unload_idle(), ("large-v3-turbo", transcribe.WAKE_MODEL))
+        self.assertEqual((t.parked(), t.loaded()), (("large-v3-turbo",), ()))   # tiny.en (CPU) dropped
+        self.assertEqual(moves, [("park", True)])
+        self.assertEqual(t.unload_idle(), ())                    # parked once, not again
+        t.hear(b"\0" * 3200, "large-v3-turbo", "")
+        self.assertEqual(moves[-1], ("back",))
+        self.assertEqual(built, ["large-v3-turbo", transcribe.WAKE_MODEL])   # never rebuilt
+        self.assertEqual(t.loaded(), ("large-v3-turbo",))
+
+    def test_warm_and_park_leaves_the_card_free_unless_a_wake_got_there_first(self):
+        t, _, moves = self.make_parkable()
+        t.warm("large-v3-turbo", park=True)
+        self.assertEqual(t.parked(), ("large-v3-turbo",))
+        t2, _, _ = self.make_parkable()
+        model = t2.load("large-v3-turbo")
+        inner = model.transcribe
+
+        def during_warm(samples, **kw):               # a wake loads it while warm transcribes
+            self.now[0] += 1
+            t2.load("large-v3-turbo")
+            return inner(samples, **kw)
+        model.transcribe = during_warm
+        t2.warm("large-v3-turbo", park=True)
+        self.assertEqual(t2.parked(), ())
+
     def test_tiny_en_never_wakes_the_card(self):
         t, built = self.make()
         t.hear(b"\0" * 3200, transcribe.WAKE_MODEL, "")
@@ -245,7 +339,7 @@ class SpotterUnit(unittest.TestCase):
 
     def test_it_scores_80ms_chunks_and_fires_once(self):
         model = self.Model([0.1, 0.2, 0.9, 0.95])
-        s = Spotter(factory=lambda path: model)
+        s = Spotter(factory=lambda path: model, threshold=0.5)
         frame = bytes(FRAME_BYTES)                         # 32 ms
         fired = [s.feed(frame) for _ in range(8)]          # 256 ms: three predictions
         self.assertEqual(model.seen, [wakeword.CHUNK] * 3)

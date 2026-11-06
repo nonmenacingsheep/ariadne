@@ -44,7 +44,11 @@ CONTROL_HINT = "Send. Send it. Send that. Nevermind. Go ahead. That's all."
 # heard. Below this average log probability it was guessing.
 UNSURE_BELOW = -0.85
 # With the wake model listening, Whisper is only needed after a wake: a model
-# untouched this long is dropped, and the card has its memory back.
+# untouched this long leaves the card. One on the GPU is parked in system RAM
+# rather than dropped (CTranslate2 moves its weights across): large-v3-turbo
+# comes back in 0.7-1.1 s that way, against 2.1-3.5 s to load it afresh, and
+# the card keeps only the CUDA context (~170 MB) instead of 2.3 GB. The price is
+# ~1.6 GB of RAM. CPU models are simply dropped; tiny.en reloads in a moment.
 IDLE_UNLOAD_S = 300.0
 # Whisper is markedly better on well-levelled audio (about nine points on quiet
 # input). Capped so near-silence is not amplified into hiss it hallucinates from.
@@ -83,6 +87,7 @@ class Transcriber:
         self._device = device
         self._models: dict = {}
         self._used: dict = {}                   # name -> when it last loaded or heard something
+        self._parked: set = set()               # on the GPU's side, but resting in system RAM
         self._lock = threading.Lock()
         self.clock = clock
 
@@ -121,6 +126,10 @@ class Transcriber:
         with self._lock:
             self._used[name] = self.clock()
             if name in self._models:
+                if name in self._parked:
+                    self._models[name].model.load_model()       # RAM back to the card
+                    self._parked.discard(name)
+                    self._used[name] = self.clock()
                 return self._models[name]
             factory = self._factory
             if factory is None:
@@ -158,37 +167,61 @@ class Transcriber:
                 scores.append(float(score))
         return Heard(" ".join(p.strip() for p in parts).strip(), sum(scores) / len(scores) if scores else 0.0)
 
-    def warm(self, name: str) -> None:
-        """One throwaway transcription so the first real one isn't the slow one."""
+    def warm(self, name: str, park: bool = False) -> None:
+        """One throwaway transcription so the first real one isn't the slow one.
+        `park`: then rest it in RAM, unless something used it meanwhile (a wake
+        during the start-up load), so the first wake doesn't pay for a cold load."""
         try:
+            model = self.load(name)
+            stamp = self._used.get(name)
             # The result is lazy; the decoding (and the first-use cost) happens on iteration.
-            list(self.load(name).transcribe(array.array("f", [0.0] * (RATE // 2)),
-                                            beam_size=1, language="en")[0])
+            list(model.transcribe(array.array("f", [0.0] * (RATE // 2)), beam_size=1, language="en")[0])
+            if park:
+                with self._lock:
+                    if self._used.get(name) == stamp:
+                        self._park(name)
         except Exception:
             pass
 
     def prefetch(self, name: str) -> None:
         """Start loading a model now, off this thread, so it is ready by the time it is
         needed (the wake fires as he finishes the phrase; the words take a moment more)."""
-        if name in self._models:
+        if name in self._models and name not in self._parked:
             self._used[name] = self.clock()
             return
         threading.Thread(target=self.warm, args=(name,), daemon=True, name="ears-load").start()
 
     def loaded(self) -> tuple[str, ...]:
-        return tuple(self._models)
+        """Ready to hear now (not parked)."""
+        return tuple(n for n in self._models if n not in self._parked)
+
+    def parked(self) -> tuple[str, ...]:
+        return tuple(self._parked)
+
+    def _park(self, name: str) -> bool:
+        """Move a GPU model's weights to system RAM. Under the lock. False if it can't be."""
+        engine = getattr(self._models.get(name), "model", None)
+        if name in CPU_MODELS or self.device()[0] == "cpu" or not hasattr(engine, "unload_model"):
+            return False
+        if name not in self._parked:
+            engine.unload_model(to_cpu=True)
+            self._parked.add(name)
+        return True
 
     def unload_idle(self, idle_s: float = IDLE_UNLOAD_S) -> tuple[str, ...]:
-        """Drop the models nothing has used for `idle_s`. Returns what was dropped."""
+        """Take the models nothing has used for `idle_s` off the card: parked in RAM
+        if they were on the GPU, dropped otherwise. Returns what was let go."""
         now = self.clock()
         with self._lock:
-            idle = tuple(n for n in self._models if now - self._used.get(n, now) >= idle_s)
+            idle = tuple(n for n in self._models if n not in self._parked
+                         and now - self._used.get(n, now) >= idle_s)
             for name in idle:
-                del self._models[name]
+                if not self._park(name):
+                    del self._models[name]
         if idle:
             import gc
             gc.collect()
-            log.info("ears: unloaded %s after %d idle minutes", ", ".join(idle), idle_s // 60)
+            log.info("ears: let go of %s after %d idle minutes", ", ".join(idle), idle_s // 60)
         return idle
 
     def unload(self) -> int:
@@ -196,6 +229,7 @@ class Transcriber:
         with self._lock:
             dropped = len(self._models)
             self._models.clear()
+            self._parked.clear()
         if dropped:
             import gc
             gc.collect()

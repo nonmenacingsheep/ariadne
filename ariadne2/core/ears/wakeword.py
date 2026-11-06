@@ -33,7 +33,7 @@ NAME = "aries"                   # the only name the model was trained on
 # The score that counts as the phrase. tools/wakeword/evaluate.py prints false
 # accepts per hour and recall at several; lower hears him more often and
 # wakes on the room more often.
-THRESHOLD = 0.5
+THRESHOLD = 0.2
 CHUNK = 1280                     # samples per prediction (80 ms), what the model is built around
 
 

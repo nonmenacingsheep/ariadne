@@ -65,7 +65,7 @@ class FakeTranscriber:
     def available(self): return None
     def command_model(self): return "cmd"
     def control_model(self): return "ctl"
-    def warm(self, name): pass
+    def warm(self, name, park=False): pass
     def unload(self): self.unloaded = True
 
     def hear(self, pcm, model, hint):

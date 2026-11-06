@@ -112,6 +112,8 @@ class Listener:
         if down:
             self._ptt_down, self._ptt_release_at = True, 0.0
             self.dialogue.set_ptt(True)
+            if self.spotting() is not None:
+                self.transcriber.prefetch(self.transcriber.command_model())    # loads while he talks
         elif self._ptt_down:
             self._ptt_down, self._ptt_release_at = False, self.clock() + PTT_TAIL_S
         self._poke.set()
@@ -221,8 +223,13 @@ class Listener:
                 continue
 
             # Fully deaf only through the chime, a loud noise a foot from the mic.
+            # Deaf, not discarding: once she is open he may already be talking over
+            # it, so the audio is held and leads in his first utterance.
             if now < d.deaf_until:
-                seg.reset()
+                if d.awake and not seg.speaking:
+                    seg.hold(frame)
+                else:
+                    seg.reset()
                 self._woke_at, self._spot_stale = None, True
                 continue
             her_voice = bool(self.is_speaking())
@@ -317,9 +324,11 @@ class Listener:
 
     # -------------------------------------------------------------- the worker
     def _submit(self, pcm: bytes, mode: str, rest: bytes = b"") -> None:
-        """Hand an utterance off. Dropping beats blocking the microphone (and beats
-        answering minutes late); a push-to-talk clip is deliberate and never dropped."""
-        if mode != PTT and self._pending.qsize() >= 2:
+        """Hand an utterance off. The queue is what holds his words while Whisper
+        loads (the worker waits for the model; the mic never does), so anything said
+        to her -- push-to-talk, or with her open -- is never dropped. Room talk and
+        speech over her voice are: dropping those beats answering minutes late."""
+        if mode in (IDLE, OVER) and self._pending.qsize() >= 2:
             self.dropped += 1
             return
         self.dialogue.began()

@@ -10,8 +10,10 @@
 on the CPU), so nothing is transcribed and no Whisper model is loaded until
 she has been woken. The wake starts loading the command model while he is
 still talking, and Whisper models nobody has used for IDLE_UNLOAD_S (five
-minutes) are dropped again, so the 2.3 GB it takes on his card is free nearly
-all the time. Without that model -- the package or file missing, or her
+minutes) leave the card again -- the command model parked in system RAM, so it
+is back in about a second -- and the 2.3 GB it took on his card is free nearly
+all the time. Nothing he says is lost while it loads: the mic never waits for
+Whisper, and what he said queues until it can be heard. Without that model -- the package or file missing, or her
 renamed to a name it wasn't trained on -- Whisper's tiny.en listens for
 "hey <name>" as before, and everything stays loaded.
 
@@ -147,17 +149,22 @@ class Ears:
 
     def _warm(self) -> None:
         """Load and run the models off the critical path, or the first wake pays for
-        all of it. With the wake model only that (a few hundred KB) is loaded; Whisper
-        waits until she is woken."""
+        all of it. With the wake model, Whisper's command model is loaded once and
+        parked in RAM straight away: the card is free, and a wake has it back in
+        about a second instead of three."""
         def go():
             spotter = self._spotting()
-            try:
-                if spotter is not None:
+            if spotter is not None:
+                try:
                     spotter.load()
+                except Exception as exc:
+                    self._spot_failed(exc)      # which warms Whisper the old way instead
                     return
-            except Exception as exc:
-                self._spot_failed(exc)
-                return                          # which warmed Whisper instead
+                try:
+                    self.transcriber.warm(self.transcriber.command_model(), park=True)
+                except Exception as exc:
+                    self._warn_once("model", f"couldn't load the speech model: {exc}")
+                return
             try:
                 self.transcriber.warm(WAKE_MODEL)
                 self.transcriber.warm(self.transcriber.command_model())

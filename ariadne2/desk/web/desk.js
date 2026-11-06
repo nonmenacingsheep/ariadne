@@ -49,7 +49,7 @@ function build(name) {
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
-  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div><i class="lg-ring"></i><i class="lg-ring"></i></div><div class="grip"></div>`;
+  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div><i class="lg-ring"></i><i class="lg-ring"></i><i class="lg-ring"></i></div><div class="grip"></div>`;
   document.getElementById("widgets").appendChild(root);
   const w = { root, face: root.querySelector(".face"), bd: root.querySelector(".bd"), tag: root.querySelector(".tag") };
   if (name === "chat") {
@@ -156,27 +156,54 @@ addEventListener("pointermove", e => {
 }, { passive: true });
 document.documentElement.addEventListener("pointerleave", () => { lit?.classList.remove("pt"); lit = null; });
 
-// Liquid Glass: a click anywhere in a widget sends a ring of light out to its
-// edges. Each widget owns two rings and uses them in turn; a third click
-// restarts the older one, so nothing piles up. Placed once per click, then
-// only transform and opacity animate.
-function ripple(root, x, y) {
+// Liquid Glass: a click is a drop in a pond. Wavelets of water spread from
+// the click across the widget's glass (three layers per widget, a beat apart;
+// the next click restarts them, so nothing piles up), and every control rises
+// and bobs as the wave reaches it, then settles. All of it is decided once per
+// click; after that only transform, translate, scale and opacity animate.
+const BOBS = ".sp-ctl button, .power, .gear, .st-close, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go, " +
+  ".cc-pk-go, .cc-ask-b, .port, .upd, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .dp-file, .st-card, " +
+  ".tk-row, .sp-qi.jump, .cc-tool-h, .say, .cc-in, .sp-select, .sp-input";
+const WAVE_SPEED = .32;           // px per ms: a slow pond, not a flash
+function ripple(root, x, y, target) {
   const r = rects[root.dataset.w]; if (!r) return;
-  const rings = root.querySelectorAll(":scope > .face > .lg-ring"); if (!rings.length) return;
-  const i = root._ring = ((root._ring || 0) + 1) % rings.length, ring = rings[i];
   const lx = x - r[0], ly = y - r[1];
-  const R = Math.hypot(Math.max(lx, r[2] - lx), Math.max(ly, r[3] - ly)) + 8;    // to the farthest corner
-  ring._anim?.cancel();
-  Object.assign(ring.style, { left: (lx - R) + "px", top: (ly - R) + "px", width: 2 * R + "px", height: 2 * R + "px" });
-  ring._anim = ring.animate([
-    { transform: "scale(.04)", opacity: 1 },
-    { transform: "scale(.62)", opacity: 1, offset: .45 },
-    { transform: "scale(1)", opacity: 0 }],
-    { duration: 640 + R * .35, easing: "cubic-bezier(.2, .7, .2, 1)" });
+  const R = Math.hypot(Math.max(lx, r[2] - lx), Math.max(ly, r[3] - ly)) + 12;    // to the farthest corner
+  const T = R / WAVE_SPEED;
+  root.querySelectorAll(":scope > .face > .lg-ring").forEach((ring, k) => {
+    ring._anim?.cancel();
+    Object.assign(ring.style, { left: (lx - R) + "px", top: (ly - R) + "px", width: 2 * R + "px", height: 2 * R + "px" });
+    const a = [1, .6, .35][k] ?? .3;
+    ring._anim = ring.animate([
+      { transform: "scale(.02)", opacity: 0 },
+      { transform: "scale(.1)", opacity: a, offset: .06 },
+      { transform: "scale(.6)", opacity: a * .8, offset: .6 },
+      { transform: "scale(1)", opacity: 0 }],
+      { duration: T, delay: k * 260, easing: "linear" });
+  });
+  // The controls ride the wave: each rises when the leading crest reaches it,
+  // dips in the trough, bobs once more for the next wavelet, and settles.
+  const own = target?.closest?.(BOBS);
+  for (const el of root.querySelectorAll(BOBS)) {
+    if (el === own || !el.offsetParent) continue;            // the one you pressed keeps its squish
+    const b = el.getBoundingClientRect();
+    const d = Math.hypot(b.left + b.width / 2 - x, b.top + b.height / 2 - y);
+    if (d > R) continue;
+    const amp = 8 * (1 - .5 * d / R), s = .06 * (1 - .5 * d / R);
+    el._wave?.cancel();
+    // a damped bob: up as the crest arrives (at 30%), under in the trough, a smaller second rise, settled
+    el._wave = el.animate([
+      { translate: "0 0", scale: "1" },
+      { translate: `0 ${-amp}px`, scale: `${1 + s}`, offset: .3 },
+      { translate: `0 ${amp * .2}px`, scale: `${1 - s * .2}`, offset: .55 },
+      { translate: `0 ${-amp * .3}px`, scale: `${1 + s * .25}`, offset: .75 },
+      { translate: "0 0", scale: "1" }],
+      { duration: 950, delay: Math.max(0, d / (.94 * WAVE_SPEED) - 285), easing: "ease-in-out" });   // the crest rides at 94% of the ring
+  }
 }
 document.addEventListener("pointerdown", e => {
   if (theme !== "liquid_glass" || e.button !== 0) return;
-  const w = e.target.closest?.(".w"); if (w) ripple(w, e.clientX, e.clientY);
+  const w = e.target.closest?.(".w"); if (w) ripple(w, e.clientX, e.clientY, e.target);
 }, true);
 
 // Liquid Glass: a dragged widget lifts, and stretches along the way it moves,

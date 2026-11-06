@@ -167,9 +167,12 @@ another.
   (buttons, chips, tabs, switches, rows, text boxes): each control glows by how near the pointer
   is, and the slab between them stays unlit (one radial gradient pinned to the viewport at the
   pointer; desk.js writes its position on the hovered widget or panel, once a frame at most).
-- **Clicks ripple:** a click anywhere in a widget sends a ring of light, a thin bright edge
-  with a faint colour fringe, out from the click to the widget's edges, clipped to its rounded
-  shape. Each widget owns two rings and reuses them, and only transform and opacity animate.
+- **Clicks are a drop in a pond:** a click anywhere in a widget sends slow wavelets of water
+  across its glass, under the content (bright crests with soft troughs, strongest at the front,
+  fading as they reach the rounded edges), and every control rises and bobs as the crest
+  reaches it, then settles. Each widget owns three wave layers and the next click restarts
+  them; everything is decided once per click and only transform, translate, scale and opacity
+  animate. The content itself isn't refracted (that would need a per-frame displacement filter).
 - **Blur:** the wallpaper is outside the page, so nothing in CSS can blur it; widgets carry the
   glass with tint and light instead, and have no `backdrop-filter` (it would cost a blur per
   repaint for nothing). Menus, the settings panel, the drawer and the flow editor do blur and

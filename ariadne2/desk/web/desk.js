@@ -932,6 +932,8 @@ let drag = null;
 document.addEventListener("pointerdown", e => {
   const root = e.target.closest(".w");
   if (!root) { if (raised) post({ t: "drop" }); return; }
+  // Left button only: a right-click (its menu takes the release) left the widget stuck to the pointer.
+  if (e.button !== 0) return;
   const name = root.dataset.w, isGrip = e.target.classList.contains("grip");
   if (!isGrip && !e.target.closest(".hd") && !(name === "core" && !e.target.closest("input"))) return;
   drag = { name, mode: isGrip ? "size" : "move", x0: e.clientX, y0: e.clientY, r0: rects[name].slice(), t: e.timeStamp, px: e.clientX, py: e.clientY };

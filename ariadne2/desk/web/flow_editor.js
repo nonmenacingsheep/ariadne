@@ -130,6 +130,7 @@ const FlowEditor = (() => {
     body.append(left, right); el.appendChild(body);
     head.addEventListener("pointerdown", e => {
       e.stopPropagation(); select(n.id);
+      if (e.button !== 0) return;               // a right-click selects it, doesn't pick it up
       moving = { id: n.id, x0: e.clientX, y0: e.clientY, p0: [...n.pos] };
     });
     el.addEventListener("pointerdown", e => { e.stopPropagation(); select(n.id); });

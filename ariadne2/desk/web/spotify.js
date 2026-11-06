@@ -49,6 +49,7 @@ const Spotify = (() => {
     };
     const fromX = x => { const r = vt.getBoundingClientRect(); return (x - r.left) / r.width * 100; };
     vt.addEventListener("pointerdown", e => {
+      if (e.button !== 0) return;               // left button only (a right-click set the volume)
       e.stopPropagation(); vt.setPointerCapture(e.pointerId); dragging = true; setVol(fromX(e.clientX));
       const move = ev => setVol(fromX(ev.clientX));
       const up = () => { dragging = false; vt.removeEventListener("pointermove", move); vt.removeEventListener("pointerup", up); };

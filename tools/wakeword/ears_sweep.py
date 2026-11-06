@@ -93,16 +93,16 @@ async def main() -> None:
     ap.add_argument("clips", type=Path)
     ap.add_argument("--seeds", type=int, default=3)
     a = ap.parse_args()
-    peaks = {"pos": [], "cmd": [], "neg": []}
+    peaks = {k: [] for k in ("pos", "cmd", "neg", "old") if (a.clips / k).is_dir()}
     for seed in range(a.seeds):
         rng = np.random.default_rng(seed)
         for kind in peaks:
             for clip in sorted((a.clips / kind).glob("*.wav")):
                 peaks[kind].append(await peak_score(a.model, clip, rng))
-    print(f"{'thr':>5} {'phrase woke':>12} {'with command':>13} {'near miss woke':>15}")
+    print(f"{'thr':>5} {'phrase woke':>12} {'with command':>13} {'near miss woke':>15} {'old phrase':>11}")
     for t in THRESHOLDS:
         cells = [f"{sum(p >= t for p in v)}/{len(v)}" for v in peaks.values()]
-        print(f"{t:>5} {cells[0]:>12} {cells[1]:>13} {cells[2]:>15}")
+        print(f"{t:>5} {cells[0]:>12} {cells[1]:>13} {cells[2]:>15} {(cells[3:] or ['-'])[0]:>11}")
 
 
 if __name__ == "__main__":

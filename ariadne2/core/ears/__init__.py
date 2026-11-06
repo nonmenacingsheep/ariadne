@@ -3,10 +3,10 @@
     ears = Ears(voice=voice, on_heard=handle_text, on_listening=on_mic)
     await ears.start()
     ears.push_to_talk(True) ... ears.push_to_talk(False)    # a hotkey drives these
-    ears.set_wake_word(False)                               # stop holding the mic for "wake Aries"
+    ears.set_wake_word(False)                               # stop holding the mic for "hey Aries"
     await ears.stop()
 
-"Wake Aries" is heard by a small model of its own (wakeword.py: openWakeWord,
+"Hey Aries" is heard by a small model of its own (wakeword.py: openWakeWord,
 on the CPU), so nothing is transcribed and no Whisper model is loaded until
 she has been woken. The wake starts loading the command model while he is
 still talking, and Whisper models nobody has used for IDLE_UNLOAD_S (five
@@ -196,7 +196,7 @@ class Ears:
 
     def set_name(self, name: str) -> None:
         """Answer to a different name ("hey <name>"). Takes effect for the next thing heard.
-        The wake model only knows "wake Aries": any other name is listened for by Whisper."""
+        The wake model only knows "hey Aries": any other name is listened for by Whisper."""
         self.names = Names(name, self.names.aliases)
         self.dialogue.names = self.names
         if self.available:

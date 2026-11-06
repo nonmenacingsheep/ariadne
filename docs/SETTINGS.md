@@ -97,7 +97,7 @@ button: send `set` with `true`; nothing is stored.
 |---|---|---|---|
 | `personality` | choice (files in `personalities/`) | `aries` | `Conversation.personality`, from the next turn |
 | `wake_word` | bool | true | `Ears.set_wake_word`: hold the mic open for the phrase |
-| `wake_phrase` | text | `hey Aries` | greeting (hey, hi, okay, yo, wake) + her name; stored normalised to `hey <name>`; `Ears.set_name(name)`. While the name is Aries her wake model (`ears/wakeword.py`, openWakeWord) listens for "wake Aries" and Whisper isn't loaded until she is woken; any other name is listened for by Whisper as "hey <name>" |
+| `wake_phrase` | text | `hey Aries` | greeting (hey, hi, okay, yo) + her name; stored normalised to `hey <name>`; `Ears.set_name(name)`. While the name is Aries her wake model (`ears/wakeword.py`, openWakeWord) listens for "hey Aries" and Whisper isn't loaded until she is woken; any other name is listened for by Whisper as "hey <name>" |
 | `ptt_key` | key, readonly | `Meta+S` | display only |
 | `mic` | text | `` | capture device from `pactl list short sources`; blank is the system default; `Ears.set_mic` reopens the recorder |
 
@@ -163,7 +163,7 @@ always present in the file; clamp to the ranges anyway.
 
 - "Wake phrase" is the name: 1.x's wake phrase was always "hey <name>", so one text field takes a
   greeting plus a name and the greeting is normalised to "hey". The phrase itself is fixed by the
-  wake model for Aries ("wake Aries", trained in `tools/wakeword/`); the sensitivity is
+  wake model for Aries ("hey Aries", trained in `tools/wakeword/`); the sensitivity is
   `THRESHOLD` in `ears/wakeword.py` and how long idle Whisper models stay loaded is
   `IDLE_UNLOAD_S` in `ears/transcribe.py`, constants rather than settings.
 - "Push-to-talk key display" and "raise hotkey shown" are read-only `key` rows; KWin owns the bindings.

@@ -1,6 +1,6 @@
-"""Synthesise the clips the wake model learns from: "wake Aries", and what it must not be.
+"""Synthesise the clips the wake model learns from: "hey Aries", and what it must not be.
 
-    python make_clips.py --piper <piper-sample-generator> --out <run>/wake_aries [--voices voices.json]
+    python make_clips.py --piper <piper-sample-generator> --out <run>/hey_aries [--voices voices.json]
 
 Writes 16 kHz WAVs into the four folders openWakeWord's train.py expects
 (positive_train, positive_test, negative_train, negative_test), so its own
@@ -17,7 +17,7 @@ low voices -- his), three in four clips come from low voices, a third of all
 clips from Piper's own voices (male singles and every speaker of the
 multi-speaker ones), a fifth are muffled and quieter, and the phrase is also
 said with a pause and at the end of a sentence. Near misses get the same voice
-mix, so "a low voice" can't be what it learns as "wake Aries".
+mix, so "a low voice" can't be what it learns as "hey Aries".
 """
 from __future__ import annotations
 
@@ -30,38 +30,37 @@ import uuid
 import wave
 from pathlib import Path
 
-POSITIVE = ("wake Aries", "wake Aries.", "Wake Aries!", "wake, Aries.", "Wake Aries?",
-            "wake Aries,", "Wake Aries...", "wake aries")
+POSITIVE = ("hey Aries", "hey Aries.", "Hey Aries!", "hey, Aries.", "Hey Aries?",
+            "hey Aries,", "Hey Aries...", "hey aries")
 # Round 2: a pause in the middle, and the phrase at the end of something longer.
-PAUSED = ("wake, Aries", "Wake, Aries!", "wake... Aries", "Wake... Aries.", "Wake. Aries.",
-          "wake -- Aries")
-LEAD_INS = ("okay", "okay,", "alright,", "hey,", "right,", "uh,", "um,", "so,", "come on,",
+PAUSED = ("hey, Aries", "Hey, Aries!", "hey... Aries", "Hey... Aries.", "Hey. Aries.",
+          "hey -- Aries")
+LEAD_INS = ("okay", "okay,", "alright,", "so,", "right,", "uh,", "um,", "so,", "come on,",
             "yo,", "okay so", "hang on,")
 
 # Said near the machine all day, and close enough to the phrase to be worth
-# teaching as "no". Homophones of the phrase ("wake Ares", "wake airies") are
+# teaching as "no". Homophones of the phrase ("hey Ares", "hey airies") are
 # left out on purpose: they are the phrase, and teaching them as negatives
 # would only make it deaf.
 NEAR_MISSES = (
-    "make a ruse", "make a ruse.", "wake up", "wake up!", "wake", "awake", "Aries", "Aries.",
-    "wait, Harry's", "wait, Harry's here", "hey Aries", "hey Aries.", "hi Aries", "okay Aries",
-    "yo Aries", "Aries, wake up", "wake Larry's", "wake Harry", "wake Harry's", "wake Gary's",
-    "wake Mary's", "wake every", "wake her", "wake her up", "wake theories", "wake Ari",
-    "wake Iris", "wake arrays", "wake area", "wake Eric", "wake Aaron", "wake Arizona",
-    "make airy", "take a rest", "take a reason", "bake a pie", "make it easy", "make a reservation",
-    "what's that", "way carries", "great series", "the series", "rake the leaves", "wait, it is",
-    "wake Erin's", "make a wish", "weekend series", "a wake of ease", "make Harry's", "fake Aries",
-    "lake Erie's", "wake Siri", "hey Siri", "Alexa", "okay Google", "hey Jarvis", "wake word",
-    "wait a second", "wait, really?", "waiting", "wakeful", "Wake Forest", "awakening", "Ariel",
-    "Arya", "Aries is my sign", "aerial", "hairy", "carries", "berries", "cherries", "ferries",
-    "wake the kids", "it's late, Harry", "we carry these", "way to go", "make dinner",
+    "hey", "hey.", "hey there", "hey, you", "hey Ari", "hey Harry", "hey Siri", "hey Alexa", "hey Google", "hey Jarvis",
+    "hey arrays", "hay is", "hey, are you", "hey, are you there", "hey, is it", "hey, everyone",
+    "hey, easy", "hey, ease", "hey, I'm here", "hey, what's that", "hey, wait", "hey, really?",
+    "hey, carries", "hey, berries", "hey Iris", "hey Ariel",
+    "Aries", "Aries.", "Aries, hey", "okay Aries", "okay, Aries", "hi Aries", "yo Aries",
+    "wake Aries", "wake Aries.", "Wake Aries!", "wake, Aries", "wake up, Aries", "Aries is my sign",
+    "say Aries", "play Aries", "stay, Aries", "they carry", "they're ready", "hey, ready?",
+    "a razor", "the series", "great series", "weekend series", "hairy", "carries", "berries",
+    "cherries", "ferries", "aerial", "Ariel", "Arya", "Okay Google", "Alexa", "wake up", "wait a second",
+    "wait, Harry's", "hey, it's late", "hey, we carry these", "hey, that's fine", "hey, what's up",
+    "hey, hey", "hey, how are you", "hey, are you okay", "hey buddy", "hey man", "hey, listen",
 )
 # Round 2: what it woke on, and the nearest neighbours of the new pause and lead-in forms.
 NEAR_MISSES_2 = (
     "wake Harry", "Wake Harry.", "wake, Harry", "wake... Harry", "wake Ari", "wake, Ari",
     "wake carries", "Wake carries.", "make Aries", "Make Aries.", "make, Aries", "take Aries",
     "bake Aries", "wake Larry", "wake Gary", "wake Barry", "wake Carrie's", "okay, wake Harry",
-    "okay, make Aries", "okay, wake up", "alright, wake up", "hey, Aries", "okay, Aries",
+    "okay, make Aries", "okay, wake up", "alright, wake up", "okay, Aries",
     "wake... Harry's", "wait, Aries", "wait... Harry", "make a ruse, okay",
 )
 
@@ -174,8 +173,9 @@ def phrases_for_negatives(n: int, round2: bool = False) -> list[str]:
     """Half the hand list, half openWakeWord's phoneme-overlap generator. Round 2:
     a third the new near misses, a third the old list, a third generated."""
     from openwakeword.data import generate_adversarial_texts
-    made = list(generate_adversarial_texts(input_text="wake aries", N=n // (3 if round2 else 2),
+    made = list(generate_adversarial_texts(input_text="hey aries", N=n // (3 if round2 else 2),
                                            include_partial_phrase=1.0, include_input_words=0.2))
+    made = [t for t in made if t.lower().strip(" .,!?") not in ("hey aries", "hay aries")]
     if round2:
         made += [random.choice(NEAR_MISSES_2) for _ in range(n // 3)]
     return [random.choice(NEAR_MISSES) for _ in range(n - len(made))] + made

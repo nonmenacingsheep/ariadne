@@ -458,7 +458,7 @@ The transcript comes over as it is.
 | Part | Why it stays |
 |---|---|
 | Voice (Cartesia streaming, sentence chunking, emotion tags, named streams) | works, tuned |
-| Ears (wake word, push-to-talk, the audio-footprint fixes, Bluetooth guard) | works, tuned; "wake Aries" by its own openWakeWord model on the CPU (2026-11-05), Whisper's command model rests in RAM, is back on the card ~1 s after a wake (nothing he says is lost meanwhile) and leaves it after five idle minutes |
+| Ears (wake word, push-to-talk, the audio-footprint fixes, Bluetooth guard) | works, tuned; "hey Aries" by its own openWakeWord model on the CPU (2026-11-05; retrained on his own voice 2026-11-06), Whisper's command model rests in RAM, is back on the card ~1 s after a wake (nothing he says is lost meanwhile) and leaves it after five idle minutes |
 | Recall (MiniLM index, measured thresholds) | the fixed version |
 | KWin control (window list, placement, keep-below) | the desk needs it |
 | Project mode, `edit_file`, todo | how she builds things |

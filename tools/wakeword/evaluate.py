@@ -1,6 +1,6 @@
 """How good the trained wake model is, at a few thresholds.
 
-    python evaluate.py --model <run>/wake_aries.onnx --run <run>/wake_aries --val <validation_set_features.npy>
+    python evaluate.py --model <run>/hey_aries.onnx --run <run>/hey_aries --val <validation_set_features.npy>
 
 * False accepts per hour: the ~11.3 h validation set (speech, music, noise),
   counted as events -- a run of firing frames within REFRACTORY_FRAMES of each
@@ -8,8 +8,8 @@
   stricter count).
 * Recall on held-out synthetic positives, augmented (noise, reverb, as
   trained) and clean through the real openWakeWord pipeline on the WAVs.
-* Near misses: the share of held-out adversarial clips ("make a ruse", "hey
-  Aries", "wake up", ...) that fire.
+* Near misses: the share of held-out adversarial clips ("hey there", "hey
+  Harry", "Aries", ...) that fire.
 * --unseen DIR: WAVs in DIR/pos and DIR/neg, ideally voices it never trained
   on (other Piper voices, or real recordings), end to end and clip by clip.
 """

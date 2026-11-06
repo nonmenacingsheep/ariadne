@@ -3,8 +3,9 @@
 
     python unseen_clips.py <dir of the six .onnx voices> <out dir>
 
-Writes out/pos ("wake Aries" three ways), out/cmd (the phrase with a command after it) and
-out/neg (near misses and ordinary sentences), each at three speeds: 54, 18 and 180 clips.
+Writes out/pos ("hey Aries" three ways), out/cmd (the phrase with a command after it),
+out/neg (near misses and ordinary sentences) and out/old (the retired "wake Aries"), each at
+three speeds: 54, 18, 180 and 54 clips.
 """
 import io
 import sys
@@ -15,20 +16,21 @@ import numpy as np
 from piper import PiperVoice, SynthesisConfig
 from scipy.signal import resample_poly
 
-POS = ["Wake Aries.", "wake Aries", "Wake, Aries!"]
-NEG = ["Make a ruse.", "Hey Aries.", "Wake up.", "Aries.", "Wait, Harry's here.", "Wake Harry.",
-       "The weather is nice today.", "Make a reservation for two.", "Okay Aries.", "Wake every one of them."]
-CMD = ["Wake Aries, play some music."]
+POS = ["Hey Aries.", "hey Aries", "Hey, Aries!"]
+NEG = ["Hey there.", "Hey Harry.", "Hey Siri.", "Hey Ari.", "Aries.", "Okay Aries.",
+       "Hey, are you ready?", "Hey!", "The weather is nice today.", "Make a reservation for two."]
+CMD = ["Hey Aries, play some music."]
+OLD = ["Wake Aries.", "wake Aries", "Wake, Aries!"]    # the retired phrase: should no longer wake her
 
 
 def main() -> None:
     voices, out = Path(sys.argv[1]), Path(sys.argv[2])
-    for d in ("pos", "neg", "cmd"):
+    for d in ("pos", "neg", "cmd", "old"):
         (out / d).mkdir(parents=True, exist_ok=True)
     for vp in sorted(voices.glob("*.onnx")):
         v = PiperVoice.load(str(vp))
         for scale in (0.85, 1.0, 1.2):
-            for kind, texts in (("pos", POS), ("neg", NEG), ("cmd", CMD)):
+            for kind, texts in (("pos", POS), ("neg", NEG), ("cmd", CMD), ("old", OLD)):
                 for i, t in enumerate(texts):
                     buf = io.BytesIO()
                     with wave.open(buf, "wb") as w:

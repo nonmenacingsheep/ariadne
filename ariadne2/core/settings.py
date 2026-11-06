@@ -48,7 +48,7 @@ EYES_MODELS = (("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 
                ("claude-opus-5-5", "Opus 5.5"), ("deepseek-flash", "DeepSeek Flash"))
 
 # What can open a wake phrase; the same list the ears match (ears/wake.py GREETINGS).
-GREETINGS = ("hey there", "hey", "hay", "hi", "high", "okay", "ok", "yo", "wake")
+GREETINGS = ("hey there", "hey", "hay", "hi", "high", "okay", "ok", "yo")
 _NAME = re.compile(r"[A-Za-z0-9' ]{1,24}")
 _VOICE_NAMES = {"skylar": "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"}
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
@@ -165,7 +165,7 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
                     "Keep the mic open for the wake phrase; off leaves push-to-talk only."))
     s.append(_entry("general", "wake_phrase", "Wake phrase", "text", "hey Aries",
                     "A greeting (hey, hi, okay, yo) then her name. As Aries her wake model "
-                    "hears \"wake Aries\" instead."))
+                    "hears only \"hey Aries\"."))
     s.append(_entry("general", "ptt_key", "Push-to-talk key", "key", "Meta+S",
                     "Press, speak, press. Rebind it in System Settings, Shortcuts.", readonly=True))
     s.append(_entry("general", "mic", "Microphone", "text", "",

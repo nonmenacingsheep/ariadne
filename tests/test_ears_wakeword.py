@@ -12,7 +12,7 @@ from ariadne2.core.ears.transcribe import Transcriber
 from ariadne2.core.ears.wakeword import Spotter
 from tests.test_ears import Base, FakeTranscriber, speech, until
 
-MARK = 2345                       # a loud frame the fake spotter takes for "wake Aries"
+MARK = 2345                       # a loud frame the fake spotter takes for "hey Aries"
 
 
 def phrase(ms=600):
@@ -64,8 +64,8 @@ class WakeModel(Spotting):
         self.assertTrue(await until(lambda: self.listening == [True]))
         self.assertEqual(self.tr.calls, [])                      # nothing was transcribed
         self.assertIn("cmd", self.tr.prefetched)                 # but the command model is on its way
-        self.assertEqual(self.ears.wake_phrase, "wake Aries")
-        self.assertIn("listening for wake Aries", self.status)
+        self.assertEqual(self.ears.wake_phrase, "hey Aries")
+        self.assertIn("listening for hey Aries", self.status)
 
     async def test_at_start_the_command_model_is_warmed_and_parked(self):
         self.build()
@@ -84,13 +84,13 @@ class WakeModel(Spotting):
 
     async def test_a_command_in_the_same_breath(self):
         self.build([10] * 20 + phrase() + speech(800) + [10] * 200,
-                   texts=["Wake Aries, play something."])
+                   texts=["Hey Aries, play something."])
         await self.go()
         self.assertTrue(await until(lambda: self.heard))
         self.assertEqual(self.heard, ["play something"])
         self.assertEqual(self.listening[0], True)
         model, hint, _n = self.tr.calls[0]
-        self.assertEqual((model, hint.split(" ")[:2]), ("cmd", ["Wake", "Aries."]))
+        self.assertEqual((model, hint.split(" ")[:2]), ("cmd", ["Hey", "Aries."]))
 
     async def test_when_whisper_misspells_the_phrase_only_what_followed_is_kept(self):
         self.build([10] * 20 + phrase() + speech(800) + [10] * 200,
@@ -194,7 +194,7 @@ class Fallback(Spotting):
     async def test_a_missing_model_logs_once_and_whisper_listens(self):
         script = [10] * 20 + speech(900)
         self.build(script, texts=["hey aries open firefox", "hey aries open firefox"],
-                   spotter=Spotter(model="/nonexistent/wake_aries.onnx"))
+                   spotter=Spotter(model="/nonexistent/hey_aries.onnx"))
         with self.assertLogs("ariadne2.ears", "WARNING") as logs:
             await self.go()
         self.assertEqual(len([o for o in logs.output if "wake model" in o]), 1)
@@ -332,7 +332,7 @@ class SpotterUnit(unittest.TestCase):
 
         def predict(self, x):
             self.seen.append(len(x))
-            return {"wake_aries": self.scores.pop(0) if self.scores else 0.0}
+            return {"hey_aries": self.scores.pop(0) if self.scores else 0.0}
 
         def reset(self):
             self.resets += 1
@@ -347,7 +347,7 @@ class SpotterUnit(unittest.TestCase):
         self.assertEqual(model.resets, 1)                  # starts afresh after a wake
 
     def test_missing_names_what_is_absent(self):
-        self.assertIn("wake_aries.onnx", Spotter.missing("/nonexistent/wake_aries.onnx"))
+        self.assertIn("hey_aries.onnx", Spotter.missing("/nonexistent/hey_aries.onnx"))
         with mock.patch("importlib.util.find_spec", return_value=None):
             self.assertIn("openwakeword", Spotter.missing())
 

@@ -1,9 +1,9 @@
-## openWakeWord training config for "wake Aries" (read by openwakeword/train.py; see README.md).
+## openWakeWord training config for "hey Aries" (read by openwakeword/train.py; see README.md).
 ## Paths are where the data lives on Ronald's Storage drive; change WW below if it moves.
 
-model_name: "wake_aries"
+model_name: "hey_aries"
 target_phrase:
-  - "wake aries"
+  - "hey aries"
 # make_clips.py writes the adversarial clips itself (NEAR_MISSES there); this list is only
 # read by train.py's own generator, which is not used.
 custom_negative_phrases: []
@@ -17,7 +17,7 @@ augmentation_batch_size: 16
 
 # train.py imports generate_samples from here; the shim beside this file stands in.
 piper_sample_generator_path: "/home/Nonmenacinghseep/Claude Projects/ariadne2/tools/wakeword"
-output_dir: "/var/mnt/storage/Software/AI/wakeword/run"
+output_dir: "/var/mnt/storage/Software/AI/wakeword/run_hey"
 
 rir_paths:
   - "/var/mnt/storage/Software/AI/wakeword/data/mit_rirs"

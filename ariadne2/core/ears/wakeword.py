@@ -3,7 +3,7 @@
 Listening for her name with Whisper meant transcribing everything said near
 the machine and keeping the big model on the card in case she was addressed
 (2.3 GB of his VRAM, all day). This is a few hundred kilobytes that scores
-every 80 ms of sound for one phrase, "wake Aries", and nothing else: no words
+every 80 ms of sound for one phrase, "hey Aries", and nothing else: no words
 come out of it, so nothing said in the room is ever written down until she
 has been woken. Whisper is only loaded once she has been.
 
@@ -22,18 +22,18 @@ from pathlib import Path
 log = logging.getLogger("ariadne2.ears")
 
 MODELS = Path(__file__).with_name("models")
-MODEL = MODELS / "wake_aries.onnx"
+MODEL = MODELS / "hey_aries.onnx"
 # openWakeWord's shared front end: sound to a melspectrogram to Google's speech embedding.
 MELSPEC = MODELS / "melspectrogram.onnx"
 EMBEDDING = MODELS / "embedding_model.onnx"
-PHRASE = "wake Aries"
-HINT = "Wake Aries."             # Whisper's prompt for a breath that started with it
+PHRASE = "hey Aries"
+HINT = "Hey Aries."             # Whisper's prompt for a breath that started with it
 NAME = "aries"                   # the only name the model was trained on
 
 # The score that counts as the phrase. tools/wakeword/evaluate.py prints false
 # accepts per hour and recall at several; lower hears him more often and
 # wakes on the room more often.
-THRESHOLD = 0.1
+THRESHOLD = 0.3
 CHUNK = 1280                     # samples per prediction (80 ms), what the model is built around
 
 

@@ -12,7 +12,7 @@ from ariadne2.core.ears.transcribe import Heard, Transcriber
 from ariadne2.core.ears.wakeword import Spotter
 
 # These run the Whisper wake path (the fallback); test_ears_wakeword.py runs the wake model's.
-NO_SPOTTER = Spotter(model="/nonexistent/wake_aries.onnx")
+NO_SPOTTER = Spotter(model="/nonexistent/hey_aries.onnx")
 
 
 def frame(amp):

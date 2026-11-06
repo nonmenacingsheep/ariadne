@@ -6,7 +6,7 @@ reason most always-listening assistants are unpleasant:
 * Only transcribe speech: a gate on loudness means Whisper runs on utterances,
   not continuously (the difference between a warm CPU and a hot one).
 * Only act on her name: with the wake model (wakeword.py) nothing is
-  transcribed at all until it hears "wake Aries"; without it, the transcript is
+  transcribed at all until it hears "hey Aries"; without it, the transcript is
   dropped unless it opens with the wake word. Nothing else is kept, logged, or
   sent anywhere.
 * Never listen to herself: while she speaks, only her name or a skip gets through.
@@ -37,7 +37,7 @@ SHORT_UTTERANCE_S = 2.0          # at or under this, check for "send"/"nevermind
 BLUETOOTH_RECHECK_S = 30.0       # the default source can change; asking costs a process
 MAX_BACKOFF_S = 60.0
 # After the wake phrase, this much more speech in the same breath is a command
-# said with it ("wake Aries, play something"); less is a breath or the phrase's tail.
+# said with it ("hey Aries, play something"); less is a breath or the phrase's tail.
 WOKE_WORDS_MS = 250
 UNLOAD_CHECK_S = 2.0             # how often idle Whisper models are looked at
 
@@ -286,7 +286,7 @@ class Listener:
     def _woken(self, spotter, seg, her_voice: bool) -> None:
         """The wake model heard the phrase. Load what will hear the words now, so it
         loads while he says them. Mid-sentence, opening waits for him to finish:
-        the chime and its deafness would cut off "wake Aries, play something"."""
+        the chime and its deafness would cut off "hey Aries, play something"."""
         log.info("ears: heard the wake phrase (%.2f)", spotter.score)
         t = self.transcriber
         for name in dict.fromkeys((t.command_model(), t.control_model())):

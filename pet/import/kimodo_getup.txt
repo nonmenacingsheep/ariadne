@@ -1,0 +1,6 @@
+# Getting up after a tumble (pet/ragdoll.gd, docs/PET_PLAY_PLAN.md): pet.gd picks
+# one by how the ragdoll came to rest and eases her from it into the clip's first
+# frame, so each starts pinned to a lying pose of that kind and ends standing.
+getup_front_1|4|A woman lying flat on her stomach on the floor pushes herself up onto her hands and knees and stands up.|lie_idle_1:0|idle_calm_1:0
+getup_back_1|4|A woman lying on her back on the floor sits up, rolls onto one knee and stands up.|lie_idle_2:0|idle_calm_1:0
+getup_side_1|4|A woman lying curled on her side on the floor props herself up on one arm, gets her feet under her and stands up.|bed_lie_side_1:-1|idle_calm_1:0

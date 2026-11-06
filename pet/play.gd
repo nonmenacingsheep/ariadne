@@ -366,11 +366,11 @@ func let_go() -> void:
 
 
 # Back on her feet after being thrown: dizzy if he shook her, a glare if it was hard.
-func landed(hard: bool) -> void:
+func landed(hard: bool, after := -1.0) -> void:
 	var n := after_landing if after_landing != "" else ("glare" if hard else "")
 	after_landing = ""
 	if n != "":
-		get_tree().create_timer(3.4 if hard else 0.8).timeout.connect(run.bind(n))
+		get_tree().create_timer(after if after >= 0.0 else (3.4 if hard else 0.8)).timeout.connect(run.bind(n))
 
 
 # --- marks on the glass -------------------------------------------------------------

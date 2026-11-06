@@ -22,3 +22,8 @@ enabled=PackedStringArray("res://addons/vrm/plugin.cfg", "res://addons/Godot-MTo
 renderer/rendering_method="mobile"
 viewport/transparent_background=true
 anti_aliasing/quality/msaa_3d=1
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+common/physics_ticks_per_second=120

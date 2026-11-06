@@ -201,12 +201,11 @@ var drag_moved := false
 # hangs from it), and a pendulum swing about it.
 var grab_bone := -1
 var grab_local := Vector3.ZERO
-var grab_b := Vector3(0, 1.3, 0)            # that point, in her body's space
-var grab_chain: Array = []                 # [bone, child] pairs aimed up
 var grab_at := Vector2.ZERO                # the pointer, while he holds her
 var grab_prev := Vector2.ZERO
-var grab_k := 0.0                          # 0..1, eases the limb up
-var held_w := 0.0                          # swing speed, rad/s
+var grab_z := 0.0                          # depth of the point he holds, drawn to the glass
+var ragdoll                                # ragdoll.gd: her physical bones while held and tumbling
+const RAGDOLL := ["held", "tumble"]
 var last_rect := Rect2()
 var snapshot_path := OS.get_environment("PET_SNAPSHOT")
 
@@ -307,6 +306,7 @@ func _load_body(path: String) -> void:
 	if glb:
 		_toonify(body)
 	_add_jiggle()
+	_add_ragdoll()
 	if fill:
 		fill.environment.ambient_light_energy = TOON_FILL if glb else 0.0
 	weapon = null                              # went with the old body
@@ -414,6 +414,17 @@ const WAG_SIDE := -1.0                     # away from the leading foot (measure
 var tail_rest: Array[Quaternion] = []
 
 
+func _add_ragdoll() -> void:
+	if ragdoll:
+		ragdoll.anchor.queue_free()
+		ragdoll.env.queue_free()
+		ragdoll.queue_free()
+	ragdoll = load("res://ragdoll.gd").new()
+	add_child(ragdoll)
+	ragdoll.build(self, skel)
+	ragdoll.build_env(screen / PPM, room_depth, floors)
+
+
 func _add_jiggle() -> void:
 	var have := func(b: String) -> bool: return skel.find_bone(b) >= 0
 	var chains := JIGGLE.filter(func(c): return have.call(c[0]) and have.call(c[1]))
@@ -496,6 +507,8 @@ func _tail_frame() -> void:
 		# The ground she's on (the room's floor, the bed, the cushion); on a
 		# widget's edge there's nothing below, so her tail hangs free.
 		var ground := pos.y + lift if floor_y < 0.01 and state not in ["held", "fall"] else -100.0
+		if state == "tumble":
+			ground = 0.0                       # on the floor in a heap: her tail lies on it
 		if state in ["held", "fall"]:
 			ground = 0.0                       # dangling or flying: only the room's floor
 		floor_plane.global_transform = Transform3D(Basis.IDENTITY, Vector3(body.global_position.x, ground, body.global_position.z))
@@ -704,6 +717,8 @@ func _camera() -> void:
 func _read_layout() -> void:
 	floors = [[0.0, 0.0, screen.x / PPM]]
 	widget_x.clear()
+	if ragdoll:
+		ragdoll.build_env(screen / PPM, room_depth, floors)    # her walls and floor for tumbling
 	var path := OS.get_environment("HOME") + "/.config/ariadne2/layout.json"
 	var f := FileAccess.open(path, FileAccess.READ)
 	if not f:
@@ -1381,7 +1396,7 @@ func _play_variant(pick: String, blend: float) -> void:
 const MIN_BLEND := 0.6
 const QUICK := ["Jump", "fall_", "held_", "land_", "knocked_", "Death01", "Held"]
 func _calm_blend(pick: String) -> float:
-	if state in ["fall", "held", "knocked"] or QUICK.any(func(q): return pick.begins_with(q)):
+	if state in ["fall", "held", "tumble", "knocked"] or QUICK.any(func(q): return pick.begins_with(q)):
 		return 0.0
 	if gait_velocity.has(pick) or pick.begins_with("stop_") or _is_move(pick):
 		return 0.4
@@ -1573,7 +1588,7 @@ var ground_lift := 0.0
 
 
 func _ground() -> float:
-	if state in ["held", "fall"] or floor_y > 0.01 or flesh.is_empty():
+	if state in ["held", "fall", "tumble"] or floor_y > 0.01 or flesh.is_empty():
 		ground_lift = 0.0                      # dangling, flying, on a widget's edge: no floor under her
 		return 0.0
 	var origin := body.global_position.y
@@ -1806,12 +1821,12 @@ func _process(delta: float) -> void:
 	_place_body()
 	_update_click_area()
 	_tell(delta)
-	var busy: bool = state in ["wander", "fall", "held", "react", "dance", "knocked"] or speaking or t < mood_until or (slab and slab.visible)
+	var busy: bool = state in ["wander", "fall", "held", "tumble", "getup", "react", "dance", "knocked"] or speaking or t < mood_until or (slab and slab.visible)
 	Engine.max_fps = FPS_BUSY if busy else FPS_IDLE
 
 
 func _think(_delta: float) -> void:
-	if state in ["fall", "held"] or (state == "knocked" and t < state_until):
+	if state in ["fall", "held", "tumble"] or (state in ["knocked", "getup"] and t < state_until):
 		return
 	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit", "rest"]:
 		_set_state("sleep", 1e9)
@@ -1917,8 +1932,10 @@ func _move(delta: float) -> void:
 					roll = 0.0
 					_set_state("react", 0.6)
 					_play("Jump_Land", 0.1)
-		"held":
-			depth = lerpf(depth, 0.0, clampf(delta * 8.0, 0.0, 1.0))   # picked up: pulled to the front
+		"held", "tumble":
+			pass                               # her physical bones have her (ragdoll.gd)
+		"getup":
+			pos.y = floor_y
 		"knocked":
 			pos.y = floor_y
 			if t > state_until - 1.4 and clip != "LayToIdle":
@@ -2051,6 +2068,10 @@ func _pause() -> float:
 
 
 func _place_body() -> void:
+	if state in RAGDOLL and ragdoll and ragdoll.on:
+		if shadow:
+			shadow.visible = false
+		return                                 # the ragdoll is in the world; her frame stays put
 	# Seated on a widget, her body drops by the seat height; sitting down and
 	# getting up, it follows the clip's hips so she lowers onto the edge and
 	# rises off it instead of popping.
@@ -2073,22 +2094,13 @@ func _place_body() -> void:
 	var pivot := Vector3(0, 1.3, 0)
 	var spin := _chair_spin()
 	body.rotation = Vector3(0, yaw + spin, 0.0)
-	if state in ["held", "fall"]:              # rolled on the screen, whichever way she faces
+	if state == "fall":                        # rolled on the screen, whichever way she faces
 		body.basis = Basis(Vector3.BACK, roll) * Basis(Vector3.UP, yaw + spin)
 	if spin != 0.0:                            # round the chair's centre, not her feet
 		var c: Vector3 = (room.items["chair"] as Node3D).position
 		var off := body.position - Vector3(c.x, body.position.y, c.z)
 		body.position = Vector3(c.x, body.position.y, c.z) + off.rotated(Vector3.UP, spin)
-	if state == "held":
-		# The point he grabbed sits under the pointer; she hangs from it.
-		var off: Vector3 = body.basis * grab_b
-		var hit = Plane(Vector3.BACK, depth + off.z).intersects_ray(cam.project_ray_origin(grab_at), cam.project_ray_normal(grab_at))
-		if hit != null:
-			body.position = (hit as Vector3) - off
-		# Where her feet would be for the fall's pivot, so letting go doesn't jump.
-		var p := body.position - Vector3(0, lift, 0) - (pivot - pivot.rotated(Vector3.BACK, roll))
-		pos = Vector2(p.x, p.y)
-	elif state == "fall":
+	if state == "fall":
 		body.position += pivot - pivot.rotated(Vector3.BACK, roll)
 
 
@@ -2232,7 +2244,13 @@ func _emotion_key(em: String) -> String:
 func _update_click_area() -> void:
 	if snapshot_path != "":
 		return
-	if state in ["held", "fall"] and skel:
+	if state in RAGDOLL and ragdoll and ragdoll.on:
+		var box := Rect2(cam.unproject_position(ragdoll.at("Hips")), Vector2.ZERO)
+		for b in ragdoll.parts:
+			box = box.expand(cam.unproject_position(ragdoll.at(b)))
+		_set_click_rect(box.grow(40))
+		return
+	if state == "fall" and skel:
 		var box := Rect2(cam.unproject_position(body.global_position), Vector2.ZERO)
 		for b in ["Head", "LeftHand", "RightHand", "LeftFoot", "RightFoot", "Hips"]:
 			if skel.find_bone(b) >= 0:
@@ -2280,15 +2298,13 @@ func _input(event: InputEvent) -> void:
 			pressing = false
 			if play.holding_still:
 				play.let_go()
-			elif drag_moved:
+			elif drag_moved and state == "held":
 				if shakes >= 6:
 					play.after_landing = "shaken"
-				# Let go: she keeps the speed you threw her with, and spins with it.
-				_set_state("fall", 99.0)
-				vel = held_vel.limit_length(MAX_THROW)
-				spin = clampf(held_w - vel.x * 1.6, -9.0, 9.0)
-				_play("Jump", 0.15)
-				if vel.length() > 4.0:
+				# Let go: she keeps whatever speed and spin your hand gave her, and tumbles.
+				ragdoll.let_go()
+				_set_state("tumble", 99.0)
+				if held_vel.length() > 4.0:
 					_feel("surprised", 0.8, 1.2)
 			elif state != "held":              # a click, not a drag
 				_clicked(play.press_part)
@@ -2297,13 +2313,20 @@ func _input(event: InputEvent) -> void:
 			drag_moved = true
 			brain.drop()
 			_unperch_now()
+			if state in RAGDOLL and ragdoll.on:
+				ragdoll.stop()                 # caught again mid-tumble: picked up afresh
+			if grab_bone < 0:
+				return
+			var at: Vector3 = skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local
 			_set_state("held", 1e9)
 			_feel("surprised", 0.4, 1.0)
-			_play("Held", 0.15)               # dangling while held
-			grab_prev = drag_from
-			grab_k = 0.0
-			held_w = 0.0
+			_play("Held", 0.15)
 			roll = 0.0
+			grab_prev = drag_from
+			grab_at = event.position
+			grab_z = at.z
+			held_vel = Vector2.ZERO
+			ragdoll.start(skel.get_bone_name(grab_bone), at)
 		if state != "held":
 			return
 		var v: Vector2 = event.velocity / PPM
@@ -2322,7 +2345,6 @@ const GRAB_SEGS := [["Hips", "Spine"], ["Spine", "Chest"], ["Chest", "UpperChest
 		["RightUpperLeg", "RightLowerLeg"], ["RightLowerLeg", "RightFoot"], ["RightFoot", "RightToes"]]
 func _pick_grab(p: Vector2) -> void:
 	grab_bone = -1
-	grab_chain = []
 	grab_at = p
 	if skel == null or cam == null:
 		return
@@ -2357,59 +2379,73 @@ func _pick_grab(p: Vector2) -> void:
 	if hit != null:
 		at = hit
 	grab_local = (skel.global_transform * skel.get_bone_global_pose(grab_bone)).affine_inverse() * at
-	# Held by an arm or a leg: that limb goes up over her, straight, as she hangs from it.
-	var side := "Left" if (seg[0] as String).begins_with("Left") else "Right"
-	if (seg[0] as String).contains("Arm") or (seg[0] as String).contains("Hand"):
-		grab_chain = [[side + "UpperArm", side + "LowerArm"], [side + "LowerArm", side + "Hand"]]
-	elif (seg[0] as String).contains("Leg") or (seg[0] as String).contains("Foot"):
-		grab_chain = [[side + "UpperLeg", side + "LowerLeg"], [side + "LowerLeg", side + "Foot"]]
 
 
-# Held: the limb he has her by is pulled up toward his pointer, and she swings
-# under the point he grabbed like a pendulum, pushed by how he moves it.
+# Held: the point he grabbed follows his pointer (drawn to the glass); let go,
+# she tumbles till she's still, then gets up the way she's lying.
 func _held_frame(delta: float) -> void:
-	if state != "held" or grab_bone < 0 or delta <= 0.0:
-		grab_b = Vector3(0, 1.3, 0)
+	if not (ragdoll and ragdoll.on) or delta <= 0.0:
 		return
-	grab_k = move_toward(grab_k, 1.0, delta / 0.35)
-	var up := (skel.global_transform.basis.inverse() * Vector3.UP).normalized()
-	for c in grab_chain:
-		var i := skel.find_bone(c[0])
-		var j := skel.find_bone(c[1])
-		if i < 0 or j < 0:
-			continue
-		var g := skel.get_bone_global_pose(i)
-		var cur := (skel.get_bone_global_pose(j).origin - g.origin).normalized()
-		var want := cur.slerp(up, smoothstep(0.0, 1.0, grab_k) * 0.95)
-		var turned := Basis(Quaternion(cur, want)) * g.basis
-		var parent := skel.get_bone_parent(i)
-		var parent_g := skel.get_bone_global_pose(parent).basis if parent >= 0 else Basis()
-		skel.set_bone_pose_rotation(i, (parent_g.inverse() * turned).get_rotation_quaternion())
-	var inv := body.global_transform.affine_inverse()
-	grab_b = inv * (skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local)
-	var hips := inv * (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Hips")).origin)
-	var chest := inv * (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Spine")).origin)
-	# His pointer's speed and push, in metres (screen y is down).
-	var v := (grab_at - grab_prev) / delta / PPM
-	v.y = -v.y
-	grab_prev = grab_at
-	var before := held_vel
-	held_vel = held_vel.lerp(v, clampf(delta * 14.0, 0.0, 1.0))
-	var acc := (held_vel - before) / delta
-	# Her weight (between hips and belly) hangs below the grab point at rest.
-	var d := Basis(Vector3.UP, yaw) * ((hips + chest) / 2.0 - grab_b)
-	var arm := maxf(Vector2(d.x, d.y).length(), 0.3)
-	var rest := -PI / 2.0 - atan2(d.y, d.x)
-	var e := wrapf(roll - rest, -PI, PI)
-	if absf(e) > 2.9 and absf(held_w) < 0.6:
-		e = 2.9 * signf(e + 0.001)             # balanced upside down: tips one way
-	var grav := maxf(GRAVITY + clampf(acc.y, -20.0, 20.0) * 0.5, 2.0)
-	var push := clampf(acc.x, -40.0, 40.0) * 0.6
-	# Gravity eases in as the limb comes up, so a hand at her side doesn't fling her sideways first.
-	grav *= 0.25 + 0.75 * grab_k * grab_k
-	held_w += (-(grav / arm) * sin(e) - (push / arm) * cos(e) - 2.6 * held_w) * delta
-	held_w = clampf(held_w, -12.0, 12.0)
-	roll += held_w * delta
+	if state not in RAGDOLL and state != "getup":
+		ragdoll.stop()                         # something else took her over (a verb from Aries): back to her clips
+		return
+	if state == "held":
+		grab_z = lerpf(grab_z, 0.0, clampf(delta * 3.0, 0.0, 1.0))
+		var hit = Plane(Vector3.BACK, grab_z).intersects_ray(cam.project_ray_origin(grab_at), cam.project_ray_normal(grab_at))
+		if hit != null:
+			ragdoll.target = hit
+		var v := (grab_at - grab_prev) / delta / PPM
+		grab_prev = grab_at
+		held_vel = held_vel.lerp(Vector2(v.x, -v.y), clampf(delta * 14.0, 0.0, 1.0))
+	elif state == "tumble" and ((ragdoll.still_for > 0.6 and ragdoll.since_drop > 0.8) or ragdoll.since_drop > 8.0):
+		_get_up()
+
+
+# Up from wherever she ended: the get-up for how she's lying, her frame put
+# under where she lies (and turned the way her head points), the ragdoll
+# easing into the clip's first pose.
+const GETUP := {"back": ["getup_back_", "get_up_"], "front": ["getup_front_", "get_up_"],
+		"side": ["getup_side_", "tr_lie_stand_", "get_up_"], "sit": ["tr_floor_stand_", "get_up_"]}
+func _get_up() -> void:
+	var how: String = ragdoll.lie()
+	var pick := ""
+	for pre in GETUP[how]:
+		pick = _variant_of(pre)
+		if pick != "":
+			break
+	var hips_w: Vector3 = ragdoll.joint("Hips")
+	var head_w: Vector3 = ragdoll.joint("Head")
+	# The clip's first frame, in her own frame (yaw 0): where its hips and head are.
+	ap.play(pick, 0.0)
+	ap.seek(0.0, true)
+	var to_body := body.global_transform.affine_inverse() * skel.global_transform
+	var unturn := Basis(Vector3.UP, -yaw)
+	var hips_c: Vector3 = unturn * (to_body * skel.get_bone_global_pose(skel.find_bone("Hips")).origin)
+	var head_c: Vector3 = unturn * (to_body * skel.get_bone_global_pose(skel.find_bone("Head")).origin)
+	var dc := head_c - hips_c
+	var dr := head_w - hips_w
+	if how == "sit":                           # sitting up: face the way her chest does
+		yaw = atan2(ragdoll.fwd_now().x, ragdoll.fwd_now().z)
+	else:
+		yaw = atan2(dr.x, dr.z) - atan2(dc.x, dc.z)
+	yaw_target = yaw
+	var at := hips_w - Basis(Vector3.UP, yaw) * hips_c
+	pos = Vector2(at.x, 0.0)
+	depth = clampf(at.z, -room_depth, 0.0)
+	_land()
+	pos.y = floor_y
+	roll = 0.0
+	clip = "Idle"
+	variant = pick
+	pending = ""
+	var a := ap.get_animation(pick)
+	variant_until = t + a.length - 0.4
+	look_until = t + a.length + 1.0
+	_set_state("getup", a.length - 0.3)
+	ragdoll.ease_out(0.7)
+	play.landed(ragdoll.impact > HARD_LANDING, a.length)
+	if OS.get_environment("PET_SNAPSHOT_SEQ").begins_with("grab:"):
+		print("GETUP %s %s impact %.1f yaw %.2f at %s" % [how, pick, ragdoll.impact, yaw, at])
 
 
 # --- the window slab ---------------------------------------------------------
@@ -2473,7 +2509,7 @@ func _make_slab() -> void:
 
 
 func _slab_show(widget: String) -> void:
-	if state in ["held", "fall", "knocked", "sleep"]:
+	if state in ["held", "fall", "tumble", "knocked", "sleep"]:
 		return
 	slab_widget = widget
 	slab_sending = false
@@ -2522,7 +2558,7 @@ func _sample_carry_pose() -> void:
 func _carry_frame(delta: float) -> void:
 	if not slab.visible:
 		return
-	if state not in ["held", "fall", "knocked"]:
+	if state not in ["held", "fall", "tumble", "knocked"]:
 		for i in carry_pose:
 			skel.set_bone_pose_rotation(i, carry_pose[i])
 	var l := skel.find_bone("LeftHand")
@@ -2737,7 +2773,7 @@ func _snapshot_seq(what: String) -> void:
 					tail_low[k] = minf(tail_low[k], (skel.global_transform * skel.get_bone_global_pose(b).origin).y))
 	var dt := float(OS.get_environment("PET_SEQ_DT")) if OS.get_environment("PET_SEQ_DT") != "" else 0.4
 	var feet := OS.get_environment("PET_SEQ_FEET") != ""      # log where her feet are, for slide checks
-	for i in 14:
+	for i in (int(OS.get_environment("PET_SEQ_N")) if OS.get_environment("PET_SEQ_N") != "" else 14):
 		await get_tree().create_timer(dt).timeout
 		await RenderingServer.frame_post_draw
 		if OS.get_environment("PET_SEQ_HEAD") != "":      # head and hips heights: catches her upside down
@@ -2766,18 +2802,32 @@ func _grab_test(bone: String) -> void:
 	e.pressed = true
 	e.position = p
 	_input(e)
-	for i in 150:
-		var at := p + Vector2(0, -minf(i, 30) * 8.0)
+	for i in 160:
+		var at := p + Vector2(0, -minf(i, 30) * 10.0)
 		if i >= 50 and i < 110:
 			at.x += sin((i - 50) * 0.2) * 160.0
+		if i >= 140:
+			at += Vector2((i - 140) * 25.0, -(i - 140) * 6.0)     # a toss to the right
 		var m := InputEventMouseMotion.new()
 		m.position = at
 		m.velocity = (at - grab_at) * 30.0
 		_input(m)
 		await get_tree().process_frame
 		if i % 10 == 0 and state == "held":
-			var gp := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local)
-			print("GRAB %d %s roll %.2f gap %.1f px" % [i, bone, roll, gp.distance_to(grab_at)])
+			var pb: Node3D = ragdoll.parts[ragdoll._part_for(bone)]
+			print("GRAB %d %s gap %.1f px state %s" % [i, bone, cam.unproject_position(pb.global_position).distance_to(grab_at), state])
+	e = InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = false
+	e.position = grab_at
+	_input(e)
+	for i in 600:
+		await get_tree().process_frame
+		if i % 20 == 0:
+			print("TUMBLE %d state %s still %.2f landed %s hips %s" % [i, state, ragdoll.still_for, ragdoll.landed, ragdoll.at("Hips")])
+		if state not in RAGDOLL and state != "getup":
+			print("UP after %d frames: %s" % [i, state])
+			break
 
 
 # A test run's pointer: stroking her head, tickling her, circling her, held still, clicks on her parts.

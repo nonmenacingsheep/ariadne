@@ -294,7 +294,7 @@ class Lazy(unittest.TestCase):
         self.now[0] = transcribe.IDLE_UNLOAD_S
         self.assertEqual(t.unload_idle(), ("large-v3-turbo", transcribe.WAKE_MODEL))
         self.assertEqual((t.parked(), t.loaded()), (("large-v3-turbo",), ()))   # tiny.en (CPU) dropped
-        self.assertEqual(moves, [("park", True)])
+        self.assertEqual(moves, [("park", transcribe.KEEP_IN_RAM)])
         self.assertEqual(t.unload_idle(), ())                    # parked once, not again
         t.hear(b"\0" * 3200, "large-v3-turbo", "")
         self.assertEqual(moves[-1], ("back",))

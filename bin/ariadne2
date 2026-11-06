@@ -49,7 +49,9 @@ for p in "$PWD/.venv/bin/python" "$HOME/Claude Projects/ariadne/.venv-3.12/bin/p
   [ -z "$PY" ] && [ -x "$p" ] && PY=$p
 done
 [ -n "$PY" ] || PY=python3
-"$PY" -m ariadne2.core "$@" &
+# Her core runs ~70 threads, and glibc gives each its own malloc arena: 80 of
+# them, 2.3 GB, most of it freed space kept back from the system. Two will do.
+MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2} "$PY" -m ariadne2.core "$@" &
 core=$!
 trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 # Her body (pet/, Godot on the GPU), if its model is there. Started through

@@ -44,14 +44,16 @@ CONTROL_HINT = "Send. Send it. Send that. Nevermind. Go ahead. That's all."
 # heard. Below this average log probability it was guessing.
 UNSURE_BELOW = -0.85
 # With the wake model listening, Whisper is only needed after a wake: a model
-# untouched this long leaves the card. One on the GPU is parked in system RAM
-# rather than dropped (CTranslate2 moves its weights across): large-v3-turbo
-# comes back in 0.7-1.1 s that way, against 2.1-3.5 s to load it afresh, and
-# the card keeps only the CUDA context (~170 MB) instead of 2.3 GB. The price is
-# ~1.6 GB of RAM. CPU models are simply dropped; tiny.en reloads in a moment.
-# Back that fast (and what he says meanwhile held, listener.py), it can go 20 s
-# after she last spoke: the card is free nearly all the time.
+# untouched this long leaves the card, which keeps only the CUDA context
+# (~200 MB) instead of 2.3 GB. CTranslate2 keeps the model to load back; CPU
+# models are simply dropped (tiny.en reloads in a moment). What he says while
+# it loads is held (listener.py), so it can go 20 s after she last spoke.
 IDLE_UNLOAD_S = 20.0
+# Resting in RAM cost 1.5 GB of it, all the time, to come back in 0.46 s; dropped
+# (CTranslate2 reloads from its files, in the page cache) it comes back in 1.4 s,
+# measured with a first transcription. The load starts at the wake phrase and
+# he's still saying what he wants, so it mostly hides behind his words: dropped.
+KEEP_IN_RAM = False
 # Whisper is markedly better on well-levelled audio (about nine points on quiet
 # input). Capped so near-silence is not amplified into hiss it hallucinates from.
 TARGET_PEAK = 0.7
@@ -66,6 +68,16 @@ class Heard:
     @property
     def sure(self) -> bool:
         return self.confidence >= UNSURE_BELOW
+
+
+def _give_back() -> None:
+    """Hand freed memory back to the system: glibc otherwise keeps a dropped
+    model's 1.5 GB in its arenas, free but still counted against her."""
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass                                    # not glibc: nothing to do
 
 
 def levelled(pcm: bytes):
@@ -130,7 +142,7 @@ class Transcriber:
             if name in self._models:
                 if name in self._parked:
                     began = time.monotonic()
-                    self._models[name].model.load_model()       # RAM back to the card
+                    self._models[name].model.load_model()       # back to the card (from RAM or its files)
                     self._parked.discard(name)
                     log.info("ears: %s back on the card in %.2f s", name, time.monotonic() - began)
                     self._used[name] = self.clock()
@@ -203,13 +215,15 @@ class Transcriber:
         return tuple(self._parked)
 
     def _park(self, name: str) -> bool:
-        """Move a GPU model's weights to system RAM. Under the lock. False if it can't be."""
+        """Take a GPU model's weights off the card (to RAM with KEEP_IN_RAM, else out
+        altogether), keeping the model to load back. Under the lock. False if it can't be."""
         engine = getattr(self._models.get(name), "model", None)
         if name in CPU_MODELS or self.device()[0] == "cpu" or not hasattr(engine, "unload_model"):
             return False
         if name not in self._parked:
-            engine.unload_model(to_cpu=True)
+            engine.unload_model(to_cpu=KEEP_IN_RAM)
             self._parked.add(name)
+            _give_back()
         return True
 
     def unload_idle(self, idle_s: float = IDLE_UNLOAD_S) -> tuple[str, ...]:

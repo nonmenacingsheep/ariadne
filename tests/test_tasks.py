@@ -163,6 +163,20 @@ class Parsing(unittest.TestCase):
         self.assertIsNone(tasks.parse_gpu_apps("NVIDIA-SMI has failed because it couldn't communicate"))
         self.assertEqual(tasks.parse_gpu_apps("7, [N/A]\n"), {7: 0.0})
 
+    def test_gpu_table(self):
+        table = """+-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|=========================================================================================|
+|    0   N/A  N/A            2931    C+G   /usr/bin/kwin_wayland                   156MiB |
+|    0   N/A  N/A          918475      C   ...ariadne/.venv-3.12/bin/python        204MiB |
+|    0   N/A  N/A          918568      G   ...ebkitgtk-6.0/WebKitWebProcess       1060MiB |
++-----------------------------------------------------------------------------------------+
+"""
+        self.assertEqual(tasks.parse_gpu_table(table), {2931: 156.0, 918475: 204.0, 918568: 1060.0})
+        self.assertEqual(tasks.parse_gpu_table("| Processes: |\n|  No running processes found  |\n"), {})
+        self.assertIsNone(tasks.parse_gpu_table("NVIDIA-SMI has failed"))
+
 
 class Grouping(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

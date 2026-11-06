@@ -501,9 +501,42 @@ def parse_gpu_apps(text: str) -> dict[int, float] | None:
     return out
 
 
+# A row of plain `nvidia-smi`'s process table: GPU, GI, CI, PID, type (C, G or
+# C+G), name, memory. The compute-apps query leaves out graphics-only processes
+# (a WebKit renderer, a game), so per-app VRAM read from it was far too low.
+_SMI_ROW = re.compile(r"^\|\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(?:C\+G|C|G)\s+.*?(\d+)MiB\s*\|\s*$")
+
+
+def parse_gpu_table(text: str) -> dict[int, float] | None:
+    """{pid: MiB} from plain `nvidia-smi`, graphics and compute alike. None when it
+    isn't that output (no driver, no process table); {} when nothing uses the GPU."""
+    text = text or ""
+    if "Processes:" not in text:
+        return None
+    out: dict[int, float] = {}
+    for line in text.splitlines():
+        m = _SMI_ROW.match(line.rstrip())
+        if m:
+            pid = int(m.group(1))
+            out[pid] = out.get(pid, 0.0) + float(m.group(2))
+    return out
+
+
 async def read_gpu_apps() -> dict[int, float] | None:
     if not shutil.which("nvidia-smi"):
         return None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "nvidia-smi",
+            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await asyncio.wait_for(proc.communicate(), 4)
+    except (OSError, asyncio.TimeoutError):
+        return None
+    if proc.returncode == 0:
+        table = parse_gpu_table(out.decode("utf-8", "replace"))
+        if table is not None:
+            return table
     try:
         proc = await asyncio.create_subprocess_exec(
             "nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits",

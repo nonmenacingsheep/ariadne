@@ -83,6 +83,36 @@ const MMD_FACE := {
 	"sweat": {"Sweat1": 1.0, "Eyebrow_Sad": 0.4, "Mouth_Narrow": 0.2},
 	"a": {"Mouth_A": 1.0}, "i": {"Mouth_I": 1.0}, "u": {"Mouth_U": 1.0}, "e": {"Mouth_E": 1.0}, "o": {"Mouth_O": 1.0},
 }
+# Booth avatars (Kuromoji, Shiromoji: pet/import/avatar_export.py) carry the
+# standard MMD morphs by their Japanese names, and VRChat's mouth shapes.
+# Eyes: まばたき blink, 笑い smiling, なごみ soft, はぅ >< , びっくり wide,
+# じと目 half-lidded, ｷﾘｯ sharp, はぁと hearts, 星目 stars, 瞳小 small pupils,
+# ハイライト消 dull. Brows: 真面目 serious, 困る troubled, にこり cheerful,
+# 怒り angry, 上 raised, 下 lowered. Mouth: にやり smirk, にっこり smile, ワ
+# wide, 口角上げ / 口角下げ corners up / down.
+const BOOTH_FACE := {
+	"blink": {"まばたき": 1.0},
+	"joy": {"笑い": 0.8, "にっこり": 0.8, "にこり": 0.6},
+	"sorrow": {"困る": 1.0, "口角下げ": 0.7},
+	"angry": {"怒り": 1.0, "ｷﾘｯ": 0.6, "口角下げ": 0.7, "瞳小": 0.3},
+	"surprised": {"びっくり": 1.0, "上": 0.8, "vrc.v_oh": 0.4, "瞳小": 0.4},
+	"fun": {"なごみ": 0.5, "にやり": 0.4},
+	"hearts": {"はぁと": 1.0, "にっこり": 0.6},
+	"blush": {"なごみ": 0.4, "にっこり": 0.4, "困る": 0.3},
+	"smirk": {"にやり": 1.0, "じと目": 0.3},
+	"tears": {"困る": 1.0, "口角下げ": 0.8},
+	"gloom": {"ハイライト消": 1.0, "困る": 0.6, "じと目": 0.5},
+	"sleepy": {"まばたき": 0.55, "下": 0.3},
+	"thoughtful": {"じと目": 0.3, "真面目": 0.5},
+	"bored": {"じと目": 1.0},
+	"dizzy": {"ハイライト消": 1.0, "瞳小": 0.7, "困る": 0.5, "ワ": 0.3},
+	"stars": {"星目": 1.0, "ワ": 0.6},
+	"squint": {"まばたき": 0.4, "じと目": 0.4, "真面目": 0.5},
+	"flung": {"びっくり": 1.0, "瞳小": 0.7, "ワ": 0.6, "上": 1.0},
+	"wince": {"はぅ": 1.0, "困る": 0.6},
+	"sweat": {"困る": 0.4},
+	"a": {"vrc.v_aa": 1.0}, "i": {"vrc.v_ih": 1.0}, "u": {"vrc.v_ou": 1.0}, "e": {"vrc.v_e": 1.0}, "o": {"vrc.v_oh": 1.0},
+}
 const MMD_LOOK := {"stars": "stars", "hearts": "hearts", "blush": "blush", "smirk": "smirk", "tears": "tears",
 		"gloom": "gloom", "sleepy": "sleepy", "thoughtful": "thoughtful", "eyeroll": "bored", "dizzy": "dizzy"}
 const MMD_EMOTION := {"affectionate": "hearts", "flirtatious": "smirk", "embarrassed": "blush", "shy": "blush",
@@ -350,8 +380,9 @@ func _load_body(path: String) -> void:
 	# Which face set: MMD-style names if it has them, else VRoid's. Each key ->
 	# [[mesh, index, weight], ...]; every slot is written every frame (_face_apply).
 	var mmd := not _find_shapes(body, "Eye_Joyful").is_empty()
+	var booth := not mmd and not _find_shapes(body, "まばたき").is_empty()
 	mmd_face = mmd
-	var map: Dictionary = MMD_FACE if mmd else FACE
+	var map: Dictionary = MMD_FACE if mmd else (BOOTH_FACE if booth else FACE)
 	face = {}
 	face_slots = {}
 	raw_shapes = {}
@@ -445,6 +476,22 @@ const JIGGLE := [
 	["WaistBag", "WaistBag_Zipper", 1.2, 0.4, 0.5, 0.02],
 	["Shoe_A_1.L", "Shoe_A_2.L", 0.7, 0.4, 0.7, 0.008], ["Shoe_A_1.R", "Shoe_A_2.R", 0.7, 0.4, 0.7, 0.008],
 	["Shoe_B_1.L", "Shoe_B_2.L", 0.7, 0.4, 0.7, 0.008], ["Shoe_B_1.R", "Shoe_B_2.R", 0.7, 0.4, 0.7, 0.008],
+	# Booth avatars (Kuromoji, Shiromoji): twin tails, back, side and top hair,
+	# bangs, cat ears, a cat's tail (4 bones, else 3), earrings, a necklace.
+	["Hair_Twintails_1_L", "Hair_Twintails_3_L", 0.6, 0.35, 0.4, 0.03], ["Hair_Twintails_1_R", "Hair_Twintails_3_R", 0.6, 0.35, 0.4, 0.03],
+	["Hair_Back_1_1", "Hair_Back_1_2", 0.9, 0.4, 0.3, 0.02],
+	["Hair_Back_2_1_L", "Hair_Back_2_2_L", 0.9, 0.4, 0.3, 0.018], ["Hair_Back_2_1_R", "Hair_Back_2_2_R", 0.9, 0.4, 0.3, 0.018],
+	["Hair_Side_1_1_L", "Hair_Side_1_2_L", 1.0, 0.45, 0.25, 0.015], ["Hair_Side_1_1_R", "Hair_Side_1_2_R", 1.0, 0.45, 0.25, 0.015],
+	["Hair_Side_2_1_L", "Hair_Side_2_2_L", 1.0, 0.45, 0.25, 0.015], ["Hair_Side_2_1_R", "Hair_Side_2_2_R", 1.0, 0.45, 0.25, 0.015],
+	["Hair_Bang_1_1", "hair_bang_1_3", 1.4, 0.5, 0.15, 0.01],
+	["Hair_Bang_2_1_L", "Hair_Bang_2_2_L", 1.4, 0.5, 0.15, 0.01], ["Hair_Bang_2_1_R", "Hair_Bang_2_2_R", 1.4, 0.5, 0.15, 0.01],
+	["Hair_Top_1", "Hair_Top_2", 1.2, 0.45, 0.2, 0.015],
+	["Kemomimi_L", "Kemomimi_L", 0.8, 0.22, 0.04, 0.01], ["Kemomimi_R", "Kemomimi_R", 0.8, 0.22, 0.04, 0.01],
+	["Tail_1", "Tail_4", 0.6, 0.3, 0.35, 0.02], ["Tail_1", "Tail_3", 0.6, 0.3, 0.35, 0.02],
+	["Earrings_1_L", "Earrings_2_L", 1.0, 0.3, 0.5, 0.008], ["Earrings_1_R", "Earrings_2_R", 1.0, 0.3, 0.5, 0.008],
+	["Necklace_1", "Necklace_2", 0.9, 0.4, 0.6, 0.01],
+	["Breast_L", "Breast_L", 2.6, 0.32, 0.35, 0.03], ["Breast_R", "Breast_R", 2.6, 0.32, 0.35, 0.03],
+	["Butt_L", "Butt_L", 4.0, 0.55, 0.0, 0.03], ["Butt_R", "Butt_R", 4.0, 0.55, 0.0, 0.03],
 ]
 # What hair and tail bump against, so they never pass through her: [humanoid
 # bone, radius m, capsule along the bone to its child (true) or a ball].
@@ -529,7 +576,13 @@ func _ramp(root: float, tip: float) -> Curve:
 
 func _add_jiggle() -> void:
 	var have := func(b: String) -> bool: return skel.find_bone(b) >= 0
-	var chains := JIGGLE.filter(func(c): return have.call(c[0]) and have.call(c[1]))
+	var roots := {}
+	var chains := JIGGLE.filter(func(c):
+		# (one chain per root: a 4-bone tail, else its 3-bone fallback)
+		if not (have.call(c[0]) and have.call(c[1])) or roots.has(c[0]):
+			return false
+		roots[c[0]] = true
+		return true)
 	jiggle = null
 	squish = null
 	tail_bones.clear()
@@ -558,9 +611,11 @@ func _add_jiggle() -> void:
 		sim.set_radius(i, c[5])
 		if String(c[0]).begins_with("Breast"):
 			breast_chains.append(i)
+		if String(c[0]).begins_with("Breast") and c[0] != c[1]:
 			# Weighted toward the tip: firm where they meet her chest, softer, heavier
 			# and slower to settle further out, so the near part barely moves and the
-			# outer part sways and lags behind her.
+			# outer part sways and lags behind her. (A one-bone breast, as on the
+			# Booth avatars, has no length to ramp along: the curve came out NaN.)
 			sim.set_stiffness_damping_curve(i, _ramp(1.0, 0.3))
 			sim.set_gravity_damping_curve(i, _ramp(0.15, 1.0))
 			sim.set_drag_damping_curve(i, _ramp(1.0, 0.55))

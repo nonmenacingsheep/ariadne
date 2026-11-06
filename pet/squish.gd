@@ -27,6 +27,9 @@ func setup(sk: Skeleton3D) -> void:
 	for s in ["L", "R"]:
 		var b1 := sk.find_bone("Breast_1." + s)
 		var b2 := sk.find_bone("Breast_2." + s)
+		if b1 < 0:                              # a one-bone breast (the Booth avatars: Breast_L)
+			b1 = sk.find_bone("Breast_" + s)
+			b2 = b1
 		if b1 >= 0 and b2 >= 0:
 			sides.append([b1, b2, [Vector3.ZERO, Vector3.ZERO], [0.0, 0.0], Vector3.UP])
 	for a in [["UpperArm", "LowerArm", 0.05], ["LowerArm", "Hand", 0.045], ["Hand", "", 0.045]]:
@@ -58,6 +61,8 @@ func _process_modification_with_delta(delta: float) -> void:
 	for s in sides:
 		var j1: Vector3 = xf * sk.get_bone_global_pose(s[0]).origin
 		var j2: Vector3 = xf * sk.get_bone_global_pose(s[1]).origin
+		if s[0] == s[1]:                        # one bone: along its own length
+			j2 = j1 + (xf.basis * sk.get_bone_global_pose(s[0]).basis.y).normalized() * TIP
 		var tip := j2 + (j2 - j1).normalized() * TIP
 		# The deepest any arm is into her soft zone, and which way it pushes.
 		var push := Vector3.ZERO

@@ -9,6 +9,14 @@ tools/*
 pet/models/jane*
 !pet/models/jane_bonemap.tres
 !pet/models/jane.glb.import
+pet/models/kuromoji*
+!pet/models/kuromoji_bonemap.tres
+!pet/models/kuromoji.glb.import
+!pet/models/kuromoji.json
+pet/models/shiromoji*
+!pet/models/shiromoji_bonemap.tres
+!pet/models/shiromoji.glb.import
+!pet/models/shiromoji.json
 
 # Kimodo clips: generated ones are committed; the NVIDIA sample test stays local
 pet/assets/anims/kimodo/test.glb*

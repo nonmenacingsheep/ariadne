@@ -30,7 +30,7 @@ class Hooked(ToolsCase):
             self.fetched.append((url, data))
             got = self.answers.get(url) or self.answers.get(url.split("?")[0]) or ""
             return got
-        for name, val in (("FETCH_HOOK", fetch), ("CLAUDE_SEARCH_HOOK", None)):
+        for name, val in (("FETCH_HOOK", fetch), ("CLAUDE_SEARCH_HOOK", None), ("_ddg_blocked_until", 0.0)):
             p = mock.patch.object(web, name, val)
             p.start()
             self.addCleanup(p.stop)
@@ -106,6 +106,33 @@ class Search(Hooked):
         out = web.web_search("some thing")
         self.assertIn("Via Claude", out)
         self.assertEqual(asked, [("some thing", 8)])
+
+    def test_a_bot_check_is_remembered_and_later_searches_skip_duckduckgo(self):
+        check = "<html>anomaly detected: complete the captcha challenge</html>"
+        self.answers[web.DDG_HTML] = check
+        self.answers[web.DDG_LITE] = check
+        web.CLAUDE_SEARCH_HOOK = lambda q, n: [{"title": "Via Claude", "url": "https://e.org/c", "snippet": "s"}]
+        web.web_search("first")
+        self.fetched.clear()
+        self.assertIn("Via Claude", web.web_search("second"))
+        self.assertEqual(self.fetched, [])
+
+    def test_duckduckgo_erroring_falls_back_too(self):
+        def down(url, data):
+            raise ToolError(f"{url} returned 403 Forbidden")
+        web.FETCH_HOOK = down
+        web.CLAUDE_SEARCH_HOOK = lambda q, n: [{"title": "Via Claude", "url": "https://e.org/c", "snippet": "s"}]
+        self.assertIn("Via Claude", web.web_search("some thing"))
+
+    def test_fallback_reads_the_list_it_wrote_when_there_are_no_result_blocks(self):
+        web.CLAUDE_SEARCH_HOOK = None
+        text = mock.Mock(type="text", text="Y | https://e.org/y | found through code")
+        client = mock.Mock()
+        client.messages.create.return_value = mock.Mock(content=[text])
+        with mock.patch.object(models, "client_kwargs", return_value={"api_key": "k"}), \
+                mock.patch("anthropic.Anthropic", return_value=client):
+            got = web.claude_search("q", 5)
+        self.assertEqual(got, [{"title": "Y", "url": "https://e.org/y", "snippet": "found through code"}])
 
     def test_fallback_is_keyed_like_models_and_says_so_without_a_key(self):
         web.CLAUDE_SEARCH_HOOK = None

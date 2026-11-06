@@ -36,6 +36,15 @@ CACHE_S = 3600.0
 JUNK_DOMAINS = ("pinterest.", "facebook.com", "tiktok.com", "instagram.com", "x.com",
                 "twitter.com", "linkedin.com/pulse")
 SEARCH_MODEL = "claude-haiku-5-5"
+# The plain web search tool: its results come back as blocks, in ~6 s. The
+# newer one (web_search_20260209) filters through code, took twice as long,
+# and with thinking on ran out of tokens before it had results: "nothing found".
+SEARCH_TOOL = "web_search_20250305"
+SEARCH_TOKENS = 2000
+# Once DuckDuckGo shows its bot check, it keeps showing it for a while: skip it
+# (two wasted round trips a search) and go straight to Claude's search.
+DDG_REST_S = 1800.0
+_ddg_blocked_until = 0.0
 
 # Tests hand pages and search answers in here instead of the network.
 FETCH_HOOK = None            # (url, data) -> str | bytes | (bytes, ctype, final_url)
@@ -285,20 +294,21 @@ def claude_search(query: str, limit: int) -> list[dict]:
     extra = models._THINKING_OFF.get(SEARCH_MODEL)
     try:
         msg = client.messages.create(
-            model=SEARCH_MODEL, max_tokens=1200,
+            model=SEARCH_MODEL, max_tokens=SEARCH_TOKENS,
             **({"extra_body": {"thinking": extra}} if extra else {}),
-            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
+            tools=[{"type": SEARCH_TOOL, "name": "web_search", "max_uses": 3}],
             messages=[{"role": "user", "content": (
                 f"Search the web for: {query}\nThen list the results, one per line, exactly as: "
                 f"title | url | one-line summary. Nothing else.")}])
     except Exception as exc:
         raise ToolError(f"the fallback search failed ({type(exc).__name__})")
-    summaries = {}
+    summaries, listed = {}, []
     for b in msg.content:
         for line in str(getattr(b, "text", "") or "").splitlines():
             bits = [x.strip() for x in line.split("|")]
             if len(bits) >= 3 and bits[1].startswith("http"):
                 summaries[bits[1].rstrip("/")] = bits[2]
+                listed.append({"title": bits[0] or bits[1], "url": bits[1], "snippet": bits[2]})
     out = []
     for b in msg.content:
         if getattr(b, "type", "") == "web_search_tool_result" and isinstance(b.content, list):
@@ -307,7 +317,7 @@ def claude_search(query: str, limit: int) -> list[dict]:
                 if url:
                     out.append({"title": str(getattr(r, "title", "") or url), "url": url,
                                 "snippet": summaries.get(url.rstrip("/"), str(getattr(r, "page_age", "") or ""))})
-    return out[:limit]
+    return (out or listed)[:limit]      # no result blocks (it searched through code): the list it wrote
 
 
 def search(query: str, limit: int = 8, recent: str = "", site: str = "") -> list[dict]:
@@ -322,8 +332,9 @@ def search(query: str, limit: int = 8, recent: str = "", site: str = "") -> list
     if df:
         params["df"] = df
     data = urllib.parse.urlencode(params).encode()
-    found, errors, blocked = [], [], False
-    for url, lite in ((DDG_HTML, False), (DDG_LITE, True)):
+    global _ddg_blocked_until
+    found, errors, blocked, answered = [], [], time.time() < _ddg_blocked_until, False
+    for url, lite in (() if blocked else ((DDG_HTML, False), (DDG_LITE, True))):
         try:
             raw, _ct, _f = _http(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
         except ToolError as exc:
@@ -335,11 +346,13 @@ def search(query: str, limit: int = 8, recent: str = "", site: str = "") -> list
         if "anomaly" in low and any(w in low for w in ("captcha", "challenge", "bots")):
             errors.append("DuckDuckGo is blocking searches from this machine with a bot check")
             blocked = True
+            _ddg_blocked_until = time.time() + DDG_REST_S
             continue
+        answered = True
         found = _parse_ddg(page, lite)
         if found:
             break
-    if not found and blocked:
+    if not found and (blocked or not answered):      # blocked, or unreachable / erroring
         found = claude_search(q, limit)
     seen, out = set(), []
     for r in found:

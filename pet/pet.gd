@@ -2503,8 +2503,15 @@ func _update_click_area() -> void:
 	_set_click_rect(Rect2(Vector2(feet.x - wide / 2.0, head.y - 10), Vector2(wide, feet.y - head.y + 20)))
 
 
+# The click region goes to the window system (X11 shape, KWin) on every change,
+# which while she walked was nearly every frame. Snapped outward to a coarse
+# grid, it changes only when she has moved a fair way: the same clicks land.
+const CLICK_GRID := 48.0
 func _set_click_rect(r: Rect2) -> void:
-	if r.position.distance_to(last_rect.position) < 3 and r.size.distance_to(last_rect.size) < 3:
+	var lo := (r.position / CLICK_GRID).floor() * CLICK_GRID
+	var hi := (r.end / CLICK_GRID).ceil() * CLICK_GRID
+	r = Rect2(lo, hi - lo)
+	if r == last_rect:
 		return
 	last_rect = r
 	DisplayServer.window_set_mouse_passthrough(PackedVector2Array([
@@ -3189,6 +3196,8 @@ func _gesture(g: String) -> void:
 # PET_SNAPSHOT=path: render her in a few clips, one image each, then quit.
 func _snapshot() -> void:
 	floors.append([0.9, 0.0, 99.0])
+	if OS.get_environment("PET_FPS_CAP") != "":
+		Engine.max_fps = int(OS.get_environment("PET_FPS_CAP"))     # a test run at her live frame rate (the cap is set in _process, which tests skip)
 	if OS.get_environment("PET_SNAPSHOT_SEQ") != "":
 		await _snapshot_seq(OS.get_environment("PET_SNAPSHOT_SEQ"))
 		return

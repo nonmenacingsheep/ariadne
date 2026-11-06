@@ -55,6 +55,10 @@ const PARTS := [
 	["RightUpperLeg", "RightLowerLeg", 0.062, 5.0, "cone", 60, 25, 0.7],
 	["RightLowerLeg", "RightFoot", 0.05, 3.5, "knee", -5, 140, 0.9],
 	["RightFoot", "RightToes", 0.04, 2.0, "cone", 30, 10, 0.3]]
+# Physics only matters while she's a ragdoll (her joints need 120 Hz to hold
+# under her weight); the rest of the time it ticks slowly, saving the CPU.
+const RAG_TICKS := 120
+const IDLE_TICKS := 30
 const ENV_LAYER := 1
 const BODY_LAYER := 4
 # Which way each hinge bends at rest (she faces +Z in a T-pose): knees fold the
@@ -184,6 +188,7 @@ func build(p, sk: Skeleton3D) -> void:
 		var a1 := Vector3(randf_range(-1, 1), randf_range(-0.3, 0.3), randf_range(-1, 1)).normalized()
 		var a2 := a1.cross(Vector3.UP).normalized()
 		wiggle[b] = [a1, a2, randf() * TAU, randf() * TAU, randf_range(2.2, 3.8)]
+	Engine.physics_ticks_per_second = IDLE_TICKS
 	anchor = StaticBody3D.new()
 	anchor.collision_layer = 0
 	anchor.collision_mask = 0
@@ -236,6 +241,7 @@ func _box(at: Vector3, size: Vector3) -> void:
 func start(bone: String, at: Vector3) -> void:
 	if on:
 		stop()                             # caught again while getting up
+	Engine.physics_ticks_per_second = RAG_TICKS
 	var b := _part_for(bone)
 	sim.active = true
 	rigid.active = true
@@ -337,6 +343,7 @@ func stop() -> void:
 	sim.physical_bones_stop_simulation()
 	sim.active = false
 	rigid.active = false
+	Engine.physics_ticks_per_second = IDLE_TICKS
 
 
 # Where a part is, in the world (its middle).

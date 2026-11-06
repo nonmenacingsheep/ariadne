@@ -3527,6 +3527,20 @@ func _faces_test() -> void:
 # to side, hold still. Logs how far the grabbed point is from the pointer.
 func _grab_test(bone: String) -> void:
 	await get_tree().create_timer(0.6).timeout
+	if OS.get_environment("PET_CHESTCAM") != "":
+		# (a close look at her chest from the side the whole time: does it hang the right way?)
+		var c := Camera3D.new()
+		c.fov = 22.0
+		add_child(c)
+		c.current = true
+		get_tree().process_frame.connect(func():
+			if ragdoll and ragdoll.on and ragdoll.parts.has("Chest"):
+				var at: Vector3 = ragdoll.at("Chest")
+				var f: Vector3 = ragdoll.fwd_now()
+				c.global_position = at + f * 1.3 + f.cross(Vector3.UP).normalized() * 0.9
+				c.look_at(at)
+				if squish and Engine.get_process_frames() % 20 == 0:
+					print("HANG %.3f m tip %.2f rad flat %.2f" % [(squish.sides[0][5][0] as Vector3).length(), (squish.sides[0][5][5] as Vector3).length(), float(squish.sides[0][5][6])]))
 	var p := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(skel.find_bone(bone)).origin)
 	var e := InputEventMouseButton.new()
 	e.button_index = MOUSE_BUTTON_LEFT

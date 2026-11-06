@@ -49,7 +49,7 @@ function build(name) {
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
-  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div><i class="lg-spot"></i><i class="lg-edge"><b></b></i></div><div class="grip"></div>`;
+  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div><i class="lg-ring"></i><i class="lg-ring"></i></div><div class="grip"></div>`;
   document.getElementById("widgets").appendChild(root);
   const w = { root, face: root.querySelector(".face"), bd: root.querySelector(".bd"), tag: root.querySelector(".tag") };
   if (name === "chat") {
@@ -137,24 +137,47 @@ function setTheme(t, instant) {
   if (typeof Settings !== "undefined") Settings.restyle();
 }
 
-// Liquid Glass: a spot of light follows the pointer over a widget's face and
-// along its rim. Only `translate` changes, once a frame at most.
+// Liquid Glass: the pointer's light falls on the controls of the widget or
+// panel it's over (glass.css lights them from --gx/--gy), not on the glass.
+// One style write a frame at most, on that one container.
+const LIGHTS = ".fmenu, .cc-picker, .fe-palette, .setpanel, .drawer, .w";
 let lit = null, litXY = null, litQueued = false;
 function moveLight() {
   litQueued = false;
   if (!lit || !litXY) return;
-  const r = rects[lit.dataset.w]; if (!r) return;
-  const v = `${litXY[0] - r[0]}px ${litXY[1] - r[1]}px`;
-  for (const e of lit.querySelectorAll(":scope > .face > .lg-spot, :scope > .face > .lg-edge > b")) e.style.translate = v;
+  lit.style.setProperty("--gx", litXY[0] + "px"); lit.style.setProperty("--gy", litXY[1] + "px");
 }
 addEventListener("pointermove", e => {
   if (theme !== "liquid_glass") return;
-  const w = e.target.closest?.(".w") || null;
+  const w = e.target.closest?.(LIGHTS) || null;
   if (w !== lit) { lit?.classList.remove("pt"); lit = w; w?.classList.add("pt"); }
   litXY = [e.clientX, e.clientY];
   if (lit && !litQueued) { litQueued = true; requestAnimationFrame(moveLight); }
 }, { passive: true });
 document.documentElement.addEventListener("pointerleave", () => { lit?.classList.remove("pt"); lit = null; });
+
+// Liquid Glass: a click anywhere in a widget sends a ring of light out to its
+// edges. Each widget owns two rings and uses them in turn; a third click
+// restarts the older one, so nothing piles up. Placed once per click, then
+// only transform and opacity animate.
+function ripple(root, x, y) {
+  const r = rects[root.dataset.w]; if (!r) return;
+  const rings = root.querySelectorAll(":scope > .face > .lg-ring"); if (!rings.length) return;
+  const i = root._ring = ((root._ring || 0) + 1) % rings.length, ring = rings[i];
+  const lx = x - r[0], ly = y - r[1];
+  const R = Math.hypot(Math.max(lx, r[2] - lx), Math.max(ly, r[3] - ly)) + 8;    // to the farthest corner
+  ring._anim?.cancel();
+  Object.assign(ring.style, { left: (lx - R) + "px", top: (ly - R) + "px", width: 2 * R + "px", height: 2 * R + "px" });
+  ring._anim = ring.animate([
+    { transform: "scale(.04)", opacity: 1 },
+    { transform: "scale(.62)", opacity: 1, offset: .45 },
+    { transform: "scale(1)", opacity: 0 }],
+    { duration: 640 + R * .35, easing: "cubic-bezier(.2, .7, .2, 1)" });
+}
+document.addEventListener("pointerdown", e => {
+  if (theme !== "liquid_glass" || e.button !== 0) return;
+  const w = e.target.closest?.(".w"); if (w) ripple(w, e.clientX, e.clientY);
+}, true);
 
 // Liquid Glass: a dragged widget lifts, and stretches along the way it moves,
 // then springs back when it stops or is let go.

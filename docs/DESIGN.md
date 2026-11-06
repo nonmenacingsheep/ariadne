@@ -163,8 +163,13 @@ another.
 - **Material:** a thin dark tint, denser in the middle where text sits and clearer toward the
   edges; a top-left specular wash; light pooling inside the top edge and a darker bottom edge
   with a thin caustic line (thickness); a 1.5 px gradient rim, bright where light strikes the
-  top-left and leaves the bottom-right. A spot of light follows the pointer across the face and
-  along the rim (desk.js moves it with `translate`, once a frame at most).
+  top-left and leaves the bottom-right. The pointer's light falls only on what you can click
+  (buttons, chips, tabs, switches, rows, text boxes): each control glows by how near the pointer
+  is, and the slab between them stays unlit (one radial gradient pinned to the viewport at the
+  pointer; desk.js writes its position on the hovered widget or panel, once a frame at most).
+- **Clicks ripple:** a click anywhere in a widget sends a ring of light, a thin bright edge
+  with a faint colour fringe, out from the click to the widget's edges, clipped to its rounded
+  shape. Each widget owns two rings and reuses them, and only transform and opacity animate.
 - **Blur:** the wallpaper is outside the page, so nothing in CSS can blur it; widgets carry the
   glass with tint and light instead, and have no `backdrop-filter` (it would cost a blur per
   repaint for nothing). Menus, the settings panel, the drawer and the flow editor do blur and

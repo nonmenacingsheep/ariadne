@@ -56,9 +56,6 @@ html.lg {
 }
 .lg body { font-family: Inter, "Noto Sans", Cantarell, sans-serif; -webkit-font-smoothing: antialiased; }
 
-/* The light that follows the pointer: a spot on the face and a brighter one
-   on the rim. Hidden outside Liquid Glass. */
-.lg-spot, .lg-edge { display: none; }
 
 /* ======================= widgets ======================= */
 .lg .w { border-radius: var(--lg-r); transition: scale .55s var(--lg-spring), box-shadow .3s; }
@@ -82,16 +79,49 @@ html.lg {
     rgba(255, 255, 255, .02) 66%, rgba(255, 200, 208, .35) 88%, rgba(255, 255, 255, .85));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; }
-.lg .lg-spot { display: block; position: absolute; left: 0; top: 0; width: 380px; height: 380px; margin: -190px 0 0 -190px;
-  border-radius: 50%; pointer-events: none; z-index: 3; opacity: 0; transition: opacity .45s ease; mix-blend-mode: plus-lighter;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, .30), rgba(255, 255, 255, .10) 45%, rgba(255, 255, 255, 0)); }
-.lg .lg-edge { display: block; position: absolute; inset: 0; border-radius: inherit; padding: 2px; pointer-events: none; z-index: 5;
-  opacity: 0; transition: opacity .45s ease;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude; }
-.lg .lg-edge b { position: absolute; left: 0; top: 0; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, 1), rgba(255, 255, 255, .35) 45%, rgba(255, 255, 255, 0)); }
-.lg .w.pt .lg-spot, .lg .w.pt .lg-edge { opacity: 1; }
+/* The pointer's light falls on the controls, never on the glass itself.
+   Every clickable thing carries a ::before lit by one radial gradient pinned
+   to the viewport (background-attachment: fixed) at the pointer (--gx, --gy,
+   set by desk.js on the widget or panel under the pointer, once a frame at
+   most), so each control glows by how near the pointer is and the slab
+   between them stays dark. Text boxes take the same light as a background layer. */
+.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
+    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h) { isolation: isolate; }
+.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
+    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h):not(.power, .gear, .upd, .st-play, .port.ghost, .tk-row, .cl-row) { position: relative; }
+.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
+    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h)::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  opacity: 0; transition: opacity .35s ease; }
+/* buttons, chips, tabs, switches: the light catches their rim, like an edge of glass */
+.lg :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
+    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace)::before { padding: 1.2px;
+  background: radial-gradient(105px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .9), rgba(255, 255, 255, .25) 40%, rgba(255, 255, 255, 0) 64%) fixed;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+/* list rows: a soft wash, shaped by the row's own rounded box */
+.lg :is(.br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h) { border-radius: 10px; }
+.lg :is(.br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h)::before {
+  background: radial-gradient(120px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .13), rgba(255, 255, 255, 0) 70%) fixed; }
+.lg .pt :is(.sp-ctl button, .power, .gear, .st-close, .st-play, .br-btn, .fl-btn, .ask-opts button, .cl-btn, .fe-btn, .cc-sess, .cc-go,
+    .cc-pk-go, .cc-ask-b, .port, .upd, .sp-tab, .dp-chip, .chip, .fl-switch, .brace, .br-tab, .fl-row, .cl-row, .cc-pk-row, .fm-item, .fe-item, .tk-row, .dp-file, .st-card, .sp-qi.jump, .cc-tool-h)::before { opacity: 1; }
+.lg .pt :is(.say, .cc-in, .sp-input, .fe-search, .fm-input, .fe-val, .fe-name) {
+  background-image: radial-gradient(150px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 70%);
+  background-attachment: fixed; }
+.lg .pt .sp-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23fff' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"),
+    radial-gradient(150px circle at var(--gx, -999px) var(--gy, -999px), rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 70%);
+  background-attachment: scroll, fixed; background-repeat: no-repeat; background-position: right 10px center, 0 0; background-size: 10px 6px, auto; }
+
+/* A click sends a ring of light across the whole widget: a thin bright
+   leading edge with a faint colour fringe, scaled out from the click by the
+   compositor and clipped by the face's rounded corners. Two rings per widget,
+   reused in turn, so rapid clicks never add nodes. */
+.lg-ring { display: none; }
+.lg .lg-ring { display: block; position: absolute; left: 0; top: 0; width: 0; height: 0; border-radius: 50%; pointer-events: none; z-index: 6;
+  opacity: 0; mix-blend-mode: plus-lighter;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0) 62%, rgba(255, 120, 170, .10) 76%, rgba(255, 255, 255, .42) 88%,
+    rgba(150, 235, 255, .16) 94%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(closest-side, rgba(220, 235, 255, .12), rgba(220, 235, 255, 0) 82%); }
 
 .lg .hd { padding: 14px 20px 8px; }
 .lg .ttl { font: 650 15px/1.1 Inter, "Noto Sans", sans-serif; letter-spacing: -.01em; text-transform: none; color: #fff; }

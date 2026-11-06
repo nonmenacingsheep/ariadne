@@ -60,7 +60,8 @@ const MMD_FACE := {
 	"blink": {"Eye_Closed": 1.0},
 	"joy": {"Eye_Joyful": 1.0, "Mouth_Smile": 0.8, "Eyebrow_Up": 0.3},
 	"sorrow": {"Eyebrow_Sad": 1.0, "Eye_Inner_Up": 0.5, "Mouth_Sad": 0.8},
-	"angry": {"Eyebrow_Angry": 1.0, "Eye_Sharp": 0.7, "Mouth_Narrow": 0.4},
+	"angry": {"Eyebrow_Angry": 0.7, "Eyebrow_Furious": 1.0, "Eyebrow_Close": 0.6, "Eye_Sharp": 1.0, "Eye_Inner_Down": 0.6,
+			"Eye_Tail_Up": 0.4, "Pupil_Small": 0.45, "Mouth_Sad": 0.85, "Mouth_Narrow": 0.35, "CheekPuff": 0.4},
 	"surprised": {"Eyebrow_Surprised": 1.0, "Eye_Surprised": 1.0, "Pupil_Small": 0.5, "Mouth_O": 0.4},
 	"fun": {"Eye_Calm": 0.35, "Mouth_Cat": 0.6},
 	"hearts": {"Pupil_Heart": 1.0, "Mouth_Smile": 0.6, "Blush": 0.6},
@@ -74,6 +75,11 @@ const MMD_FACE := {
 	"dizzy": {"Pupil_HL_Off": 1.0, "Pupil_Small": 0.7, "Eye_Surprised": 0.6, "Eyebrow_Sad": 0.5, "Sweat1": 1.0,
 			"Sweat2": 1.0, "Mouth_Wide": 0.4},
 	"stars": {"Eye_Joyful": 0.5, "Pupil_Large": 0.6, "Mouth_Joyful": 0.8},
+	# Not moods: driven by her body (_face_frame): hands up by her eyes, flung
+	# about, landed hard.
+	"squint": {"Eye_Sharp": 0.5, "Eye_Closed": 0.4, "Eyebrow_Close": 0.5, "Eye_Inner_Down": 0.4, "Mouth_Narrow": 0.2},
+	"flung": {"Eyebrow_Surprised": 1.0, "Eye_Surprised": 1.0, "Pupil_Small": 0.7, "Mouth_Wide": 0.5, "Mouth_O": 0.3},
+	"wince": {"Eye_Closed": 0.75, "Eyebrow_Sad": 0.6, "Eye_Inner_Up": 0.4, "Mouth_Narrow": 0.5, "Mouth_Sad": 0.3},
 	"sweat": {"Sweat1": 1.0, "Eyebrow_Sad": 0.4, "Mouth_Narrow": 0.2},
 	"a": {"Mouth_A": 1.0}, "i": {"Mouth_I": 1.0}, "u": {"Mouth_U": 1.0}, "e": {"Mouth_E": 1.0}, "o": {"Mouth_O": 1.0},
 }
@@ -83,7 +89,7 @@ const MMD_EMOTION := {"affectionate": "hearts", "flirtatious": "smirk", "embarra
 		"sarcastic": "smirk", "ironic": "smirk", "bored": "bored", "tired": "sleepy", "contemplative": "thoughtful",
 		"anxious": "sweat", "nervous": "sweat", "confused": "dizzy", "euphoric": "stars", "excited": "stars",
 		"hurt": "tears", "melancholic": "gloom", "dejected": "gloom"}
-const MOUTH_KEYS := ["blink", "a", "i", "u", "e", "o"]
+const MOUTH_KEYS := ["blink", "a", "i", "u", "e", "o", "squint", "flung", "wince"]
 const LOOK_FACE := {
 	"smile": "joy", "stars": "joy", "hearts": "joy", "blush": "fun", "soft": "fun", "smirk": "fun",
 	"angry": "angry", "tears": "sorrow", "gloom": "sorrow", "sleepy": "sorrow", "thoughtful": "sorrow",
@@ -149,6 +155,18 @@ var t := 0.0
 var last_activity := 0.0
 var next_blink := 2.0
 var blink := 0.0
+var blink_again := false                   # a double blink's second
+var raw_shapes := {}                       # face shape name -> [[mesh, index]], for the living layer
+var micro := ""                            # a passing micro-expression (_alive_face)
+var micro_at := -9.0
+var micro_len := 1.0
+var micro_next := 4.0
+var squint := 0.0
+var flung := 0.0
+var wince := 0.0
+var pupil_big := 0.0
+var mmd_face := false                      # the MMD face set (her own shapes by name for the living layer)
+var face_test := ""                        # a test run (PET_SNAPSHOT_SEQ=faces) holds one face
 var moods := {"joy": 0.0, "sorrow": 0.0, "angry": 0.0, "surprised": 0.0, "fun": 0.1}
 var mood_target := {}
 var mood_until := 0.0
@@ -276,9 +294,11 @@ func _load_body(path: String) -> void:
 	# Which face set: MMD-style names if it has them, else VRoid's. Each key ->
 	# [[mesh, index, weight], ...]; every slot is written every frame (_face_apply).
 	var mmd := not _find_shapes(body, "Eye_Joyful").is_empty()
+	mmd_face = mmd
 	var map: Dictionary = MMD_FACE if mmd else FACE
 	face = {}
 	face_slots = {}
+	raw_shapes = {}
 	for key in map:
 		var blend: Dictionary = map[key] if map[key] is Dictionary else {map[key]: 1.0}
 		face[key] = []
@@ -361,7 +381,7 @@ const JIGGLE := [
 	["Hair_Back_D.R", "Hair_Back_D.R", 1.2, 0.45, 0.2, 0.015], ["Hair_Back_F.L", "Hair_Back_F.L", 1.2, 0.45, 0.2, 0.015],
 	["Hair_Back_F.R", "Hair_Back_F.R", 1.2, 0.45, 0.2, 0.015],
 	["Ear.L", "Ear.L", 0.8, 0.22, 0.04, 0.01], ["Ear.R", "Ear.R", 0.8, 0.22, 0.04, 0.01],     # soft: they wobble after a flick
-	["Breast_1.L", "Breast_2.L", 4.0, 0.55, 0.0, 0.03], ["Breast_1.R", "Breast_2.R", 4.0, 0.55, 0.0, 0.03],
+	["Breast_1.L", "Breast_2.L", 2.6, 0.32, 0.35, 0.03], ["Breast_1.R", "Breast_2.R", 2.6, 0.32, 0.35, 0.03],   # soft; firm at her chest (_add_jiggle)
 	["Butt.L", "Butt.L", 4.0, 0.55, 0.0, 0.03], ["Butt.R", "Butt.R", 4.0, 0.55, 0.0, 0.03],      # firm: a bounce, not a swing
 	["JacketBelt_1.L", "JacketBelt_3.L", 0.6, 0.4, 0.6, 0.01], ["JacketBelt_1.R", "JacketBelt_3.R", 0.6, 0.4, 0.6, 0.01],
 	["Necktie_1", "Necktie_3", 0.8, 0.4, 0.5, 0.012],
@@ -425,6 +445,14 @@ func _add_ragdoll() -> void:
 	ragdoll.build_env(screen / PPM, room_depth, floors)
 
 
+# A straight line along a spring chain, root to tip.
+func _ramp(root: float, tip: float) -> Curve:
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, root))
+	c.add_point(Vector2(1.0, tip))
+	return c
+
+
 func _add_jiggle() -> void:
 	var have := func(b: String) -> bool: return skel.find_bone(b) >= 0
 	var chains := JIGGLE.filter(func(c): return have.call(c[0]) and have.call(c[1]))
@@ -448,6 +476,13 @@ func _add_jiggle() -> void:
 		sim.set_drag(i, c[3])
 		sim.set_gravity(i, c[4])
 		sim.set_radius(i, c[5])
+		if String(c[0]).begins_with("Breast"):
+			# Weighted toward the tip: firm where they meet her chest, softer, heavier
+			# and slower to settle further out, so the near part barely moves and the
+			# outer part sways and lags behind her.
+			sim.set_stiffness_damping_curve(i, _ramp(1.0, 0.3))
+			sim.set_gravity_damping_curve(i, _ramp(0.15, 1.0))
+			sim.set_drag_damping_curve(i, _ramp(1.0, 0.55))
 	for c in JIGGLE_COLLIDE:
 		if not have.call(c[0]):
 			continue
@@ -1051,6 +1086,13 @@ func _without_eyes(src: Animation) -> Animation:
 # clip that starts or ends lying gets a copy turned half round ("<name>@r"),
 # and _play_variant plays whichever starts the way she's lying now.
 var lie_head := {}                         # clip -> [start, end] head direction on the floor (x, z), or ZERO when not lying
+# Head direction isn't all: lying on her back, front or side, a clip that
+# starts lying another way rolls her torso round in the blend. So each clip's
+# pelvis tilt at both ends (which way is up, in her pelvis's own frame; the
+# same however she's turned on the floor), and lying, the next clip must start
+# tilted near the way she lies now (_variant, _vary).
+var lie_up := {}                           # clip -> [start, end] up in her pelvis
+var yaw_glide := [0.0, 0.0, -9.0, 1.0]     # [from, to, start, seconds]
 
 
 func _lying_heads(name: String, anim: Animation) -> void:
@@ -1060,6 +1102,13 @@ func _lying_heads(name: String, anim: Animation) -> void:
 			hips = tr
 	if hips < 0:
 		return
+	var hi := skel.find_bone("Hips")
+	var root := skel.get_bone_global_rest(skel.get_bone_parent(hi)).basis if hi >= 0 and skel.get_bone_parent(hi) >= 0 else Basis()
+	var tilt := []
+	for at in [0.0, anim.length]:
+		tilt.append(((root * Basis(anim.rotation_track_interpolate(hips, at))).orthonormalized().inverse() * Vector3.UP).normalized())
+	lie_up[name] = tilt
+	lie_up[name + "@r"] = tilt
 	var ends := []
 	for at in [0.0, anim.length]:
 		var up := Basis(anim.rotation_track_interpolate(hips, at)) * Vector3.UP
@@ -1265,6 +1314,20 @@ func _is_move(name: String) -> bool:
 func _transition(from: String, to: String) -> String:
 	if from == to:
 		return ""
+	if from == "lie" and to == "stand" and _lying_now():
+		# Up off the floor: whichever get-up starts lying the way she lies now
+		# (on her back, the face-down one would roll her over first).
+		var best := ""
+		var off := INF
+		for a in ap.get_animation_list():
+			var n := String(a)
+			if not n.contains("@") and (n.begins_with("tr_lie_stand_") or GETUPS.any(func(g): return n.begins_with(g))):
+				var o := _tilt_off(n)
+				if o < off:
+					off = o
+					best = n
+		if best != "":
+			return best
 	var tr := _variant_of("tr_%s_%s_" % [from, to])
 	if tr == "" and TRANSITION_EXTRA.has(from + ">" + to):
 		tr = _variant_of(TRANSITION_EXTRA[from + ">" + to])
@@ -1289,6 +1352,25 @@ func _feeling(f: String) -> float:
 		"light": return 0.15 + 3.0 * float(moods.get("joy", 0.0)) + 2.0 * float(moods.get("stars", 0.0)) \
 				+ 2.0 * float(moods.get("hearts", 0.0)) + maxf(0.0, float(n.get("energy", 0.8)) - 0.6) * 2.0
 	return 0.0
+
+
+const TILT_OK := 0.8                       # radians: near enough to blend without a roll
+
+
+# How far a clip's first frame is tilted from the way her pelvis is now.
+func _tilt_off(pick: String) -> float:
+	if not lie_up.has(pick) or not bones.has("Hips"):
+		return 0.0
+	var now := skel.get_bone_global_pose(bones["Hips"]).basis.orthonormalized().inverse() * Vector3.UP
+	return now.angle_to(lie_up[pick][0])
+
+
+func _lying_now() -> bool:
+	if not bones.has("Hips"):
+		return false
+	var now := skel.get_bone_global_pose(bones["Hips"]).basis.orthonormalized().inverse() * Vector3.UP
+	var rest := skel.get_bone_global_rest(bones["Hips"]).basis.orthonormalized().inverse() * Vector3.UP
+	return now.angle_to(rest) > 1.0
 
 
 func _variant(role: String) -> String:
@@ -1320,10 +1402,18 @@ func _variant(role: String) -> String:
 			weights.append(w / names.size())        # a prefix's weight is shared by its variants
 	if pool.size() > 1 and variant in pool:
 		weights[pool.find(variant)] = 0.0             # not the same one twice running
+	if _lying_now() and pool.size() > 1:
+		# Lying: only clips that start lying the way she is (else her torso rolls round).
+		for i in pool.size():
+			if _tilt_off(pool[i]) > TILT_OK and pool.any(func(a): return _tilt_off(a) <= TILT_OK):
+				weights[i] = 0.0
 	var total := 0.0
 	for w in weights:
 		total += w
 	if total <= 0.0:
+		if _lying_now() and pool.size() > 1:   # none left that lies her way but this one: keep lying as she is
+			var tilts := pool.map(func(a): return _tilt_off(a))
+			return pool[tilts.find(tilts.min())]
 		return pool[0] if pool.size() > 0 else ""
 	var r := randf() * total
 	for i in pool.size():
@@ -1383,8 +1473,17 @@ func _play_variant(pick: String, blend: float) -> void:
 		if perch.has("yaw"):
 			perch["yaw"] = wrapf(float(perch["yaw"]) + PI, -PI, PI)
 		blend = 0.0
+	# Lying to lying with her head pointing a little another way: her body turns
+	# by the difference over the blend, so her head stays put on the floor
+	# instead of the blend swinging her round.
+	var head_to: Vector2 = (lie_head.get(pick, none) as Array)[0]
+	var bl := maxf(blend, _calm_blend(pick))
+	if head_now != Vector2.ZERO and head_to != Vector2.ZERO and bl > 0.0:
+		var d := wrapf(atan2(head_now.x, head_now.y) - atan2(head_to.x, head_to.y), -PI, PI)
+		if absf(d) > 0.1:
+			yaw_glide = [yaw, yaw + d, t, bl]
 	variant = pick
-	ap.play(pick, maxf(blend, _calm_blend(pick)))
+	ap.play(pick, bl)
 	var a := ap.get_animation(pick)
 	# A looping clip gets a cycle or three before a change; a one-shot plays out.
 	variant_until = t + (a.length * randi_range(1, 3) if a.loop_mode != Animation.LOOP_NONE else a.length) - minf(0.4, a.length * 0.3)
@@ -1671,6 +1770,10 @@ func _vary() -> void:
 	if pending != "":                          # a transition ended: on to what it led to
 		var next := pending
 		pending = ""
+		if _lying_now() and _tilt_off(next) > TILT_OK:
+			var alt := _variant(clip)              # picked before the transition: one lying this way instead
+			if alt != "" and _tilt_off(alt) < _tilt_off(next):
+				next = alt
 		_play_variant(next, 0.35)
 		return
 	if not (ROLES.has(clip) or _is_state_role(clip) or clip.begins_with("play:")) or clip in ONE_SHOT or clip.ends_with(":react"):
@@ -1947,9 +2050,14 @@ func _move(delta: float) -> void:
 	pos.x = clampf(pos.x, 0.3, screen.x / PPM - 0.3)
 	if perched != "":
 		yaw_target = float(perch.get("yaw", yaw_target))   # at the desk, in bed: facing the way it faces
-	elif t > look_until and state not in ["wander", "stopping"]:
+	elif t > look_until and state not in ["wander", "stopping"] and not _lying_now():   # lying, a glance would spin her on the floor
 		yaw_target = sin(t * 0.17) * 0.25
-	yaw = lerp_angle(yaw, yaw_target, clampf(delta * 5.0, 0.0, 1.0))
+	if t < yaw_glide[2] + yaw_glide[3]:
+		# Turning in step with a blend between two lying clips (_play_variant).
+		yaw = lerp_angle(yaw_glide[0], yaw_glide[1], clampf((t - yaw_glide[2]) / yaw_glide[3], 0.0, 1.0))
+		yaw_target = yaw
+	else:
+		yaw = lerp_angle(yaw, yaw_target, clampf(delta * 5.0, 0.0, 1.0))
 
 
 # --- reacting to him (docs/PET_AI_PLAN.md, phase 4) ---------------------------
@@ -2162,9 +2270,17 @@ func _turn_head(bone: String, v: Vector2) -> void:
 func _face_frame(delta: float) -> void:
 	if t >= next_blink:
 		blink = 1.0
-		next_blink = t + randf_range(2.2, 5.5)
-	blink = maxf(0.0, blink - delta * 9.0)
+		# Now and then a double blink; slower and further apart when she's calm or tired.
+		blink_again = not blink_again and randf() < 0.15
+		var slow: float = 1.0 + float(moods.get("sleepy", 0.0)) + float(moods.get("fun", 0.0))
+		next_blink = t + (0.22 if blink_again else randf_range(2.0, 5.5) * slow)
+	blink = maxf(0.0, blink - delta * (9.0 if moods.get("sleepy", 0.0) < 0.3 else 5.0))
 	var eyes := 1.0 if state == "sleep" else clampf(blink * 1.6, 0.0, 1.0)
+	if face_test != "":
+		_shape(face_test, 1.0)
+		_alive_face(delta)
+		_face_apply()
+		return
 
 	if t > mood_until:
 		for k in mood_target:
@@ -2173,12 +2289,117 @@ func _face_frame(delta: float) -> void:
 		moods[k] = lerpf(moods[k], mood_target[k], clampf(delta * 6.0, 0.0, 1.0))
 
 	_speech_frame(delta)
-	_shape("blink", eyes * (1.0 - moods["joy"]))
+	_body_face(delta)
+	_shape("blink", eyes * (1.0 - moods["joy"]) * (1.0 - wince))
 	for k in moods:
-		_shape(k, moods[k])
+		# Anger counts for more: at the weight a voice line gives it (0.6) it barely showed.
+		_shape(k, moods[k] * (1.5 if k == "angry" else 1.0) * (1.0 - flung * 0.8))
 	for v in mouth:
 		_shape(v, mouth[v] if allow["lip_sync"] else 0.0)
+	_shape("squint", squint * (1.0 - flung))
+	_shape("flung", flung)
+	_shape("wince", wince)
+	if state != "sleep":
+		_alive_face(delta)
 	_face_apply()
+
+
+# What her body is doing shows on her face: hands up by her eyes make her
+# squint; held or flying through the air she's wide-eyed; landed, she winces
+# till she's up.
+func _body_face(delta: float) -> void:
+	var sq := 0.0
+	if not (ragdoll and ragdoll.on) and bones.has("Head"):
+		var head := skel.get_bone_global_pose(bones["Head"]).origin
+		for h in ["LeftHand", "RightHand"]:
+			var i := skel.find_bone(h)
+			if i >= 0:
+				sq = maxf(sq, 1.0 - smoothstep(0.13, 0.3, skel.get_bone_global_pose(i).origin.distance_to(head) / _stride()))
+	squint = lerpf(squint, sq, clampf(delta * 8.0, 0.0, 1.0))
+	var air: bool = state == "held" or (state == "tumble" and ragdoll and not ragdoll.landed)
+	var down: bool = state == "tumble" and ragdoll and ragdoll.landed
+	flung = lerpf(flung, 1.0 if air else 0.0, clampf(delta * (12.0 if air else 4.0), 0.0, 1.0))
+	wince = lerpf(wince, 1.0 if down else 0.0, clampf(delta * 6.0, 0.0, 1.0))
+
+
+# Her face is never quite still: brows, lids and the corners of her mouth
+# drift a little, her pupils widen when his pointer moves near, and every few
+# seconds a passing micro-expression, picked by her mood (a brow flick, a
+# smirk, a pout, a squint of a smile, a wink, a puffed cheek).
+func _alive_face(delta: float) -> void:
+	if not mmd_face:
+		return                                 # the drift layer is for the MMD face's shapes
+	var joy: float = moods.get("joy", 0.0) + moods.get("stars", 0.0)
+	var fun: float = moods.get("fun", 0.0) + moods.get("smirk", 0.0)
+	var cross: float = moods.get("angry", 0.0)
+	var low: float = moods.get("sorrow", 0.0) + moods.get("bored", 0.0) + moods.get("gloom", 0.0)
+	var busy := clampf(flung + wince + float(moods.get("surprised", 0.0)), 0.0, 1.0)
+	var drift := func(rate: float, off: float) -> float:
+		return 0.6 * sin(t * rate + off) + 0.4 * sin(t * rate * 2.37 + off * 1.7)
+	var calm := 1.0 - busy
+	_raw("Eyebrow_Up", maxf(0.0, 0.1 + 0.12 * drift.call(0.31, 1.0)) * calm)
+	_raw("Eye_Calm", maxf(0.0, 0.12 * drift.call(0.23, 2.0) + low * 0.2) * calm)
+	_raw("Eye_Tail_Up", maxf(0.0, 0.15 * joy + 0.08 * drift.call(0.17, 5.0)) * calm)
+	if not speaking:
+		_raw("Mouth_Smile.L", maxf(0.0, 0.08 + 0.1 * drift.call(0.19, 3.0) + 0.12 * fun) * calm)
+		_raw("Mouth_Smile.R", maxf(0.0, 0.05 + 0.1 * drift.call(0.21, 4.0)) * calm)
+		_raw("Mouth_Move_Left", maxf(0.0, 0.08 * drift.call(0.13, 6.0)) * calm)
+		_raw("Mouth_Move_Right", maxf(0.0, -0.08 * drift.call(0.13, 6.0)) * calm)
+	pupil_big = lerpf(pupil_big, 0.3 if t - cursor_at < 1.5 else 0.0, clampf(delta * 3.0, 0.0, 1.0))
+	_raw("Pupil_Large", (pupil_big + 0.2 * joy) * calm)
+	# A micro-expression now and then, sooner the livelier she is.
+	if t > micro_next and busy < 0.3:
+		var pool := [["brow", 1.0], ["smirk", 0.4 + fun * 2.0], ["pout", 0.2 + low * 2.0 + cross], ["smile", 0.3 + joy * 3.0],
+				["wink", 0.1 + fun + joy * 0.5], ["puff", 0.1 + cross * 2.0 + low], ["glance", 0.6]]
+		var total := 0.0
+		for p in pool:
+			total += float(p[1])
+		var r := randf() * total
+		for p in pool:
+			r -= float(p[1])
+			if r <= 0.0:
+				micro = p[0]
+				break
+		micro_at = t
+		micro_len = randf_range(0.7, 1.6)
+		micro_next = t + randf_range(3.0, 8.0) / (1.0 + joy + fun + cross)
+	var k := smoothstep(0.0, 0.2, t - micro_at) * (1.0 - smoothstep(micro_len - 0.3, micro_len, t - micro_at)) * calm
+	if k <= 0.0:
+		return
+	match micro:
+		"brow": _raw("Eyebrow_Up", 0.55 * k)
+		"smirk":
+			if not speaking:
+				_raw("Mouth_Smile.L", 0.6 * k); _raw("Mouth_Turn.L", 0.3 * k)
+			_raw("Eye_Sharp", 0.25 * k)
+		"pout":
+			if not speaking:
+				_raw("Mouth_U", 0.25 * k); _raw("CheekPuff", 0.2 * k)
+			_raw("Eyebrow_Sad", 0.35 * k)
+		"smile":
+			_raw("Eye_Joyful", 0.45 * k)
+			if not speaking:
+				_raw("Mouth_Smile", 0.5 * k)
+		"wink":
+			_raw("Eye_Closed.L", k)
+			if not speaking:
+				_raw("Mouth_Smile.L", 0.5 * k); _raw("Tongue_Out", 0.35 * k)
+		"puff":
+			if not speaking:
+				_raw("CheekPuff", 0.55 * k)
+			_raw("Eyebrow_Angry", 0.3 * k)
+		"glance": _raw("Eye_Tail_Down", 0.3 * k); _raw("Eyebrow_Close", 0.2 * k)
+
+
+# One of the face's own shapes by name, added on top of this frame's faces.
+func _raw(shape: String, w: float) -> void:
+	if not raw_shapes.has(shape):
+		raw_shapes[shape] = _find_shapes(body, shape)
+		for pair in raw_shapes[shape]:
+			face_slots[[pair[0], pair[1]]] = face_slots.get([pair[0], pair[1]], 0.0)
+	for pair in raw_shapes[shape]:
+		var slot := [pair[0], pair[1]]
+		face_slots[slot] = face_slots.get(slot, 0.0) + w
 
 
 # a i u e o: step through the vowels of the sentence she's saying, at the
@@ -2714,6 +2935,9 @@ func _snapshot_seq(what: String) -> void:
 		_set_state("idle", 99.0)
 		play.test = true
 		_gesture(what.substr(8))
+	if what == "faces":                          # her face close up: each face, then each emote
+		_faces_test()
+		return
 	if what.begins_with("grab:"):                # picked up by a bone, lifted, swung, held still
 		depth = -0.3
 		_set_state("idle", 99.0)
@@ -2809,6 +3033,48 @@ func _snapshot_seq(what: String) -> void:
 				var g := skel.global_transform * skel.get_bone_global_pose(skel.find_bone(b)).origin
 				print("FOOT %d %s %.3f %.3f %s %s %.2f" % [i, b, g.x, g.y, state, variant, pos.x])
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_seq_%02d.png" % i))
+	get_tree().quit()
+
+
+# A test run's close look at her face: each of her body-driven faces and a few
+# moods held a moment (face_test), then every emote in turn; one picture each.
+func _faces_test() -> void:
+	brain_quiet = true
+	_set_state("idle", 1e9)
+	_play("Idle", 0.0)
+	var c := Camera3D.new()
+	add_child(c)
+	await get_tree().process_frame
+	var head := skel.global_transform * skel.get_bone_global_pose(bones["Head"]).origin
+	c.fov = 14.0
+	ap.speed_scale = 0.0                       # held still, so each face is framed the same
+	for f in ["", "angry", "squint", "flung", "wince", "joy", "surprised", "sorrow", "fun"]:
+		c.global_position = head + Vector3(0.0, 0.05, 1.6)
+		c.look_at(head + Vector3(0, 0.03, 0))
+		c.current = true
+		face_test = f
+		for k in 20:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_face_%s.png" % (f if f != "" else "neutral")))
+	face_test = ""
+	# Her chest at rest and just after a hop, side on: how the softer springs hang and swing.
+	var chest := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Chest")).origin
+	for shot in ["rest", "side"]:
+		c.global_position = chest + (Vector3(0.0, 0.0, 2.2) if shot == "rest" else Vector3(2.2, 0.0, 0.3))
+		c.look_at(chest)
+		for k in 30:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_chest_%s.png" % shot))
+	for e in play.emote_tex:
+		c.global_position = head + Vector3(0.15, 0.3, 1.6)
+		c.look_at(head + Vector3(0.13, 0.33, 0))
+		play.show_emote(e)
+		for k in 9:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_emote_%s.png" % e))
 	get_tree().quit()
 
 

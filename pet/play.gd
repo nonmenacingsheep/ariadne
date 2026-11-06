@@ -28,6 +28,11 @@ var after_landing := ""                    # what she does once she's back on he
 var emote: Node3D
 var emote_at := -99.0
 var emote_tex := {}
+var emote_kind := ""
+const EMOTE_SECS := 2.4
+# Small companions that float up beside the main one (hearts in a little
+# trio, a second note, more z's), and how each kind moves.
+const EMOTE_KIDS := {"heart": 2, "note": 1, "zzz": 1, "sparkle": 2, "star": 1}
 var bone_ids := {}
 
 
@@ -445,13 +450,17 @@ func _fog_tex(kind: String) -> ImageTexture:
 
 
 # --- emotes ----------------------------------------------------------------------
-# A little picture over her head for a second or two: a heart, a note, a
-# sparkle... drawn here (no emoji font where she runs).
+# A little picture over her head for a couple of seconds: a heart, a note, a
+# sparkle... drawn here (no emoji font where she runs), shaded and glossy with
+# a soft white outline and shadow, and each kind with its own motion.
 func show_emote(kind: String) -> void:
 	if not emote_tex.has(kind):
 		return
-	var s := emote.get_child(0) as Sprite3D
-	s.texture = emote_tex[kind]
+	emote_kind = kind
+	for c in emote.get_children():
+		(c as Sprite3D).texture = emote_tex[kind]
+	for k in emote.get_child_count():
+		(emote.get_child(k) as Sprite3D).visible = k == 0 or k <= int(EMOTE_KIDS.get(kind, 0))
 	emote_at = pet.t
 	emote.visible = true
 
@@ -461,46 +470,105 @@ func emote_frame() -> void:
 	if emote == null or not emote.visible:
 		return
 	var age: float = pet.t - emote_at
-	if age > 1.8 or pet.skel == null:
+	if age > EMOTE_SECS or pet.skel == null:
 		emote.visible = false
 		return
-	emote.global_position = _bone("Head") + Vector3(0.12, 0.32 + age * 0.06, 0.0)
-	var pop := 1.0 + 0.35 * sin(minf(age / 0.25, 1.0) * PI)      # pops in a little big
-	emote.scale = Vector3.ONE * pop * minf(age / 0.12, 1.0)
-	(emote.get_child(0) as Sprite3D).modulate.a = 1.0 - smoothstep(1.3, 1.8, age)
+	emote.global_position = _bone("Head") + Vector3(0.13, 0.33 + age * 0.05, 0.05)
+	# Pops in past full size and settles, then fades as it drifts up.
+	var pop := 1.0 + 0.3 * sin(minf(age / 0.32, 1.0) * PI) * exp(-age * 2.0)
+	var grow := smoothstep(0.0, 0.14, age)
+	var fade := 1.0 - smoothstep(EMOTE_SECS - 0.6, EMOTE_SECS, age)
+	var main := emote.get_child(0) as Sprite3D
+	var sc := pop * grow
+	var off := Vector3.ZERO
+	var roll := 0.0
+	match emote_kind:
+		"heart": sc *= 1.0 + 0.13 * pow(maxf(0.0, sin(age * 8.0)), 6.0)          # beating
+		"note": off.x = sin(age * 4.5) * 0.025; roll = sin(age * 4.5) * 0.3
+		"anger": sc *= 1.0 + 0.14 * absf(sin(age * 11.0)); off.x = sin(age * 37.0) * 0.004
+		"dizzy": roll = age * 5.0
+		"sparkle", "star": roll = sin(age * 2.0) * 0.4; sc *= 1.0 + 0.1 * sin(age * 9.0)
+		"zzz": off = Vector3(age * 0.03, age * 0.02, 0.0); roll = sin(age * 2.0) * 0.15
+		"exclaim": off.y = 0.04 * exp(-age * 6.0) * sin(age * 30.0); off.x = sin(age * 45.0) * 0.006 * exp(-age * 3.0)
+		"question": roll = sin(age * 3.0) * 0.25
+		"drop": off.y = -age * 0.06; sc *= 1.0 + 0.05 * sin(age * 6.0)
+		"idea", "sun": sc *= 1.0 + 0.08 * sin(age * 7.0)
+	main.position = off
+	main.rotation.z = roll
+	main.scale = Vector3.ONE * sc
+	main.modulate = Color(1, 1, 1, fade)
+	# The little ones rise beside it, a beat behind, smaller.
+	for k in range(1, emote.get_child_count()):
+		var kid := emote.get_child(k) as Sprite3D
+		if not kid.visible:
+			continue
+		var a := age - 0.25 * k
+		var side := -1.0 if k % 2 == 1 else 1.0
+		kid.position = Vector3(side * (0.07 + a * 0.02), -0.05 + maxf(a, 0.0) * 0.11, 0.0) + Vector3(sin(a * 3.0 + k) * 0.01, 0, 0)
+		kid.rotation.z = side * 0.3 + sin(a * 3.0) * 0.2
+		kid.scale = Vector3.ONE * 0.45 * smoothstep(0.0, 0.15, a)
+		kid.modulate = Color(1, 1, 1, fade * smoothstep(0.0, 0.1, a))
 
 
 func _make_emotes() -> void:
 	emote = Node3D.new()
-	var s := Sprite3D.new()
-	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	s.pixel_size = 0.0028
-	s.shaded = false
-	s.no_depth_test = true
-	s.render_priority = 10
-	emote.add_child(s)
+	for k in 3:
+		var s := Sprite3D.new()
+		s.pixel_size = 0.0014                  # 160 px drawings, the size the 64 px ones were
+		s.shaded = false
+		s.no_depth_test = true
+		s.render_priority = 10
+		s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		emote.add_child(s)
 	emote.visible = false
 	pet.add_child.call_deferred(emote)
-	var red := Color(0.93, 0.2, 0.33)
-	var gold := Color(1.0, 0.82, 0.25)
-	var blue := Color(0.35, 0.65, 1.0)
-	emote_tex = {
-		"heart": _draw(func(x, y): return pow(x * x + y * y - 1.0, 3.0) - x * x * pow(y, 3.0) <= 0.0, red, 1.25),
-		"star": _draw(func(x, y): return sqrt(absf(x)) + sqrt(absf(y)) < 1.0, gold, 1.05),
-		"sparkle": _draw(func(x, y): return sqrt(absf(x)) + sqrt(absf(y)) < 1.0 or Vector2(x - 0.6, y - 0.6).length() < 0.18, gold, 1.05),
-		"note": _draw(func(x, y): return Vector2(x + 0.25, y + 0.55).length() < 0.32 or (x > 0.0 and x < 0.15 and y > -0.55 and y < 0.85) \
-				or (x > 0.0 and x < 0.6 and y > 0.55 and y < 0.85 - x * 0.3), Color(0.55, 0.4, 1.0), 1.05),
-		"anger": _draw(func(x, y): return (absf(absf(x) - 0.45) < 0.13 or absf(absf(y) - 0.45) < 0.13) and absf(x) < 0.85 and absf(y) < 0.85 \
-				and not (absf(x) < 0.25 or absf(y) < 0.25), red, 1.0),
-		"drop": _draw(func(x, y): return Vector2(x, y + 0.3).length() < 0.55 or (y > -0.3 and y < 0.95 and absf(x) < 0.55 * (0.95 - y) / 1.25), blue, 1.05),
-		"sun": _draw(func(x, y): return Vector2(x, y).length() < 0.5 or (Vector2(x, y).length() < 0.95 and fmod(atan2(y, x) + TAU, TAU / 8.0) < 0.22), gold, 1.05),
-		"idea": _draw(func(x, y): return Vector2(x, y - 0.15).length() < 0.6 or (absf(x) < 0.25 and y < -0.35 and y > -0.85), gold, 1.05),
-		"dizzy": _draw(func(x, y): return absf(fmod(Vector2(x, y).length() * 7.0 - atan2(y, x) * 7.0 / TAU + 20.0, 1.0) - 0.5) < 0.2 and Vector2(x, y).length() < 0.95, Color(0.6, 0.6, 0.9), 1.0),
-		"exclaim": _draw(func(x, y): return (absf(x) < 0.16 + (y + 0.0) * 0.06 and y > -0.15 and y < 0.95) or Vector2(x, y + 0.6).length() < 0.18, red, 1.0),
-		"question": _draw(func(x, y): return (absf(Vector2(x, y - 0.35).length() - 0.42) < 0.13 and not (x < 0.0 and y < 0.35)) \
-				or (absf(x) < 0.12 and y > -0.35 and y < 0.0) or Vector2(x, y + 0.65).length() < 0.15, blue, 1.0),
-		"zzz": _draw(func(x, y): return _zed(x + 0.4, y + 0.35, 0.45) or _zed(x - 0.35, y - 0.4, 0.35), Color(0.7, 0.75, 1.0), 1.0),
+	var red := Color(0.95, 0.24, 0.38)
+	var gold := Color(1.0, 0.78, 0.22)
+	var blue := Color(0.32, 0.62, 1.0)
+	var shapes := {
+		"heart": [func(x, y): return pow(x * x + y * y - 1.0, 3.0) - x * x * pow(y, 3.0) <= 0.0, red, 1.25],
+		"star": [func(x, y): return _star(x, y, 5, 0.42), gold, 1.0],
+		"sparkle": [func(x, y): return sqrt(absf(x)) + sqrt(absf(y)) < 1.0 or sqrt(absf(x - 0.62)) + sqrt(absf(y - 0.62)) < 0.42, gold, 1.05],
+		"note": [func(x, y): return Vector2((x + 0.25) * 0.85, y + 0.55).length() < 0.3 or (x > 0.0 and x < 0.14 and y > -0.55 and y < 0.85) \
+				or (x > 0.0 and x < 0.62 and y > 0.5 - x * 0.25 and y < 0.85 - x * 0.25), Color(0.6, 0.42, 1.0), 1.05],
+		"anger": [func(x, y): return _vein(x, y), red, 1.0],
+		"drop": [func(x, y): return Vector2(x, y + 0.3).length() < 0.55 or (y > -0.3 and y < 0.95 and absf(x) < 0.55 * (0.95 - y) / 1.25), blue, 1.05],
+		"sun": [func(x, y): return Vector2(x, y).length() < 0.48 or (Vector2(x, y).length() < 0.92 and Vector2(x, y).length() > 0.6 \
+				and fmod(atan2(y, x) + TAU, TAU / 8.0) < 0.3), gold, 1.05],
+		"idea": [func(x, y): return Vector2(x, y - 0.15).length() < 0.6 or (absf(x) < 0.26 and y < -0.35 and y > -0.85 and fmod(y + 2.0, 0.17) > 0.04), gold, 1.05],
+		"dizzy": [func(x, y): return _spiral(x, y), Color(0.62, 0.6, 0.95), 1.0],
+		"exclaim": [func(x, y): return (absf(x) < 0.15 + y * 0.07 and y > -0.15 and y < 0.95) or Vector2(x, y + 0.6).length() < 0.18, red, 1.0],
+		"question": [func(x, y): return (absf(Vector2(x, y - 0.35).length() - 0.42) < 0.14 and not (x < 0.0 and y < 0.35)) \
+				or (absf(x) < 0.13 and y > -0.35 and y < 0.0) or Vector2(x, y + 0.65).length() < 0.16, blue, 1.0],
+		"zzz": [func(x, y): return _zed(x + 0.4, y + 0.35, 0.45) or _zed(x - 0.35, y - 0.4, 0.35), Color(0.62, 0.7, 1.0), 1.0],
 	}
+	for kind in shapes:
+		emote_tex[kind] = _draw(kind, shapes[kind][0], shapes[kind][1], shapes[kind][2])
+
+
+func _star(x: float, y: float, points: int, inner: float) -> bool:
+	var a := fposmod(atan2(x, y), TAU / points) / (TAU / points)       # 0 at a tip, 0.5 between two
+	return Vector2(x, y).length() < lerpf(0.95, inner, 1.0 - absf(a * 2.0 - 1.0))
+
+
+# The cross-popping vein mark: four arcs, each bowed out from the middle.
+func _vein(x: float, y: float) -> bool:
+	if absf(x) < 0.16 or absf(y) < 0.16 or absf(x) > 0.9 or absf(y) > 0.9:
+		return false
+	var c := Vector2(signf(x), signf(y)) * 0.95
+	return absf(Vector2(x, y).distance_to(c) - 0.62) < 0.15
+
+
+# A thick spiral line winding out from the middle, two and a half turns.
+func _spiral(x: float, y: float) -> bool:
+	var r := Vector2(x, y).length()
+	if r > 0.95:
+		return false
+	var turn := fposmod(atan2(y, x), TAU) / TAU
+	for k in 3:
+		if absf(r - 0.34 * (turn + k)) < 0.075:
+			return true
+	return false
 
 
 func _zed(x: float, y: float, s: float) -> bool:
@@ -509,20 +577,77 @@ func _zed(x: float, y: float, s: float) -> bool:
 	return y > s * 0.7 or y < -s * 0.7 or absf(x + y) < s * 0.28
 
 
-# A 64 px picture of a shape (inside(x, y) over -1..1, y up), white-outlined.
-func _draw(inside: Callable, col: Color, zoom: float) -> ImageTexture:
-	var n := 64
-	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
-	var at := func(i: int, j: int) -> bool:
-		var x := (i / float(n - 1) * 2.0 - 1.0) * zoom
-		var y := (1.0 - j / float(n - 1) * 2.0) * zoom
-		return inside.call(x, y)
+# A shape (inside(x, y) over -1..1, y up) drawn big and scaled down smooth:
+# lit from the top left (lighter above, darker at the bottom and round its
+# rim), a gloss on its upper left, a soft white outline and a drop shadow.
+# Kept in user://emotes so it's only drawn once.
+const EMOTE_N := 160
+const EMOTE_VER := 3
+func _draw(kind: String, inside: Callable, col: Color, zoom: float) -> ImageTexture:
+	var path := "user://emotes/v%d_%s.png" % [EMOTE_VER, kind]
+	if FileAccess.file_exists(path):
+		var cached := Image.load_from_file(ProjectSettings.globalize_path(path))
+		if cached:
+			cached.generate_mipmaps()
+			return ImageTexture.create_from_image(cached)
+	var n := EMOTE_N * 2
+	var m := PackedByteArray()
+	m.resize(n * n)
+	var top := n
+	var bottom := 0
 	for j in n:
 		for i in n:
-			if at.call(i, j):
-				img.set_pixel(i, j, col)
-			elif at.call(i + 3, j) or at.call(i - 3, j) or at.call(i, j + 3) or at.call(i, j - 3):
-				img.set_pixel(i, j, Color(1, 1, 1, 0.95))
+			var x := (i / float(n - 1) * 2.0 - 1.0) * zoom / 0.78         # room round it for the outline and shadow
+			var y := (1.0 - j / float(n - 1) * 2.0) * zoom / 0.78
+			if inside.call(x, y):
+				m[j * n + i] = 255
+				top = mini(top, j)
+				bottom = maxi(bottom, j)
+	# A soft copy for the outline, shadow and rim: halved down step by step
+	# (one big bilinear step skips pixels and leaves the edge ragged), then up.
+	var soft := Image.create_from_data(n, n, false, Image.FORMAT_L8, m)
+	for step in 3:
+		soft.resize(soft.get_width() / 2, soft.get_height() / 2, Image.INTERPOLATE_BILINEAR)
+	soft.resize(n, n, Image.INTERPOLATE_CUBIC)
+	var b := soft.get_data()
+	var out := PackedByteArray()
+	out.resize(n * n * 4)
+	var h := maxf(1.0, bottom - top)
+	var light := col.lightened(0.4)
+	var dark := col.darkened(0.25)
+	for j in n:
+		for i in n:
+			var k := j * n + i
+			var fill := m[k] / 255.0
+			var blur := b[k] / 255.0
+			var si := clampi(i - 7, 0, n - 1)
+			var sj := clampi(j - 11, 0, n - 1)
+			var shadow := 0.3 * smoothstep(0.08, 0.6, b[sj * n + si] / 255.0)
+			var ring := smoothstep(0.03, 0.2, blur)
+			var v := clampf((j - top) / h, 0.0, 1.0)
+			var c := light.lerp(dark, v)
+			c = c.darkened(0.3 * (1.0 - smoothstep(0.45, 0.9, blur)))            # its rim, rounder
+			var gx := (i / float(n) - 0.38) / 0.2
+			var gy := ((j - top) / h - 0.24) / 0.13
+			var gloss := clampf(1.0 - (gx * gx + gy * gy), 0.0, 1.0) * smoothstep(0.75, 0.95, blur)
+			c = c.lerp(Color.WHITE, 0.55 * gloss)
+			# Over: shadow, then the white outline, then the fill.
+			var a := shadow
+			var rgb := Color(0.1, 0.05, 0.15)
+			var oa := ring * 0.97
+			rgb = rgb.lerp(Color.WHITE, oa / maxf(oa + a * (1.0 - oa), 1e-4))
+			a = oa + a * (1.0 - oa)
+			rgb = rgb.lerp(c, fill / maxf(fill + a * (1.0 - fill), 1e-4))
+			a = fill + a * (1.0 - fill)
+			out[k * 4] = int(rgb.r * 255.0)
+			out[k * 4 + 1] = int(rgb.g * 255.0)
+			out[k * 4 + 2] = int(rgb.b * 255.0)
+			out[k * 4 + 3] = int(clampf(a, 0.0, 1.0) * 255.0)
+	var img := Image.create_from_data(n, n, false, Image.FORMAT_RGBA8, out)
+	img.resize(EMOTE_N, EMOTE_N, Image.INTERPOLATE_LANCZOS)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://emotes"))
+	img.save_png(ProjectSettings.globalize_path(path))
+	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 
 

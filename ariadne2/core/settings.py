@@ -38,6 +38,10 @@ _SOUND_LABELS = {
     "raise": "The desk rising", "drop": "The desk dropping away",
 }
 
+# The desk's looks (desk/web/desk.css): classic is the red cyberpunk acrylic slabs, liquid_glass the
+# Apple-style glass (html.lg). The value goes straight to the page as a class, so keep these word-safe.
+THEMES = (("classic", "Classic (red cyberpunk)"), ("liquid_glass", "Liquid Glass"))
+
 CONVERSATION_MODELS = (("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-opus-5-5", "Opus 5.5"),
                        ("deepseek-flash", "DeepSeek Flash"), ("deepseek-v4-pro", "DeepSeek V4 Pro"))
 EYES_MODELS = (("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5"),
@@ -208,6 +212,9 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
                     readonly=True))
     s.append(_entry("desktop", "reset_layout", "Reset the layout", "bool", False,
                     "Put every widget back where it starts.", action=True, confirm=True))
+    s.append(_entry("desktop", "theme", "Theme", "choice", "classic",
+                    "How every widget, menu and panel looks. Changes at once, no restart.",
+                    options=_choices(THEMES)))
     s.append(_entry("desktop", "body", "Her body", "bool", True,
                     "Show her walking about on the desktop."))
     s.append(_entry("desktop", "quiet_fullscreen", "Quiet while fullscreen", "bool", True,

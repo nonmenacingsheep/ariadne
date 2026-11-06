@@ -138,6 +138,16 @@ class ValidationTests(Tmp):
         self.bad("general", "personality", "nobody")
         self.assertEqual(self.s.validate("general", "personality", "ida"), "ida")
 
+    def test_theme(self):
+        spec = next(e for e in self.s.schema() if (e["section"], e["key"]) == ("desktop", "theme"))
+        self.assertEqual(spec["default"], "classic")        # the red cyberpunk look stays the default
+        self.assertEqual([o["value"] for o in spec["options"]], ["classic", "liquid_glass"])
+        self.assertEqual(self.s.get("desktop", "theme"), "classic")
+        self.bad("desktop", "theme", "neon")
+        self.bad("desktop", "theme", "classic lg")           # it becomes a class on the page
+        self.assertEqual(self.s.set("desktop", "theme", "liquid_glass"), "liquid_glass")
+        self.assertEqual(make(self.dir).get("desktop", "theme"), "liquid_glass")   # saved
+
     def test_wake_phrase(self):
         self.bad("general", "wake_phrase", "Aries")
         self.bad("general", "wake_phrase", "hey")

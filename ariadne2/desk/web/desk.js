@@ -49,7 +49,7 @@ function build(name) {
   } else {
     inner = `<div class="face"><div class="hd"><span class="ttl">${TITLES[name]}</span><span class="tag"></span></div><div class="bd"></div>`;
   }
-  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div></div><div class="grip"></div>`;
+  root.innerHTML = inner + `<div class="sheen"></div><div class="rim"></div><i class="lg-spot"></i><i class="lg-edge"><b></b></i></div><div class="grip"></div>`;
   document.getElementById("widgets").appendChild(root);
   const w = { root, face: root.querySelector(".face"), bd: root.querySelector(".bd"), tag: root.querySelector(".tag") };
   if (name === "chat") {
@@ -103,6 +103,7 @@ function place(name) {
 // The slab's thickness: stacked 1px shadows toward the side facing away from
 // her core, lit red near the face and darker further back.
 function extrusion(name) {
+  if (theme === "liquid_glass") return "var(--lg-shadow)";     // glass floats on a soft shadow instead (glass.css)
   const c = rects.core, [x, , w] = rects[name];
   const off = (x + w / 2) - (c[0] + c[2] / 2);
   const dx = name === "core" || Math.abs(off) < c[2] / 2 ? 0 : Math.sign(off);
@@ -115,6 +116,53 @@ function extrusion(name) {
   // repaint without a GPU; crisp rings cost almost nothing.
   layers.push("0 0 0 1px rgba(255,90,105,.45)", "0 0 0 3px rgba(255,42,61,.12)");
   return layers.join(",");
+}
+
+/* ---------------- theme ---------------- */
+// Settings > Desktop > Theme: "classic" (desk.css alone) or "liquid_glass"
+// (glass.css, all of it under html.lg). Switching is live: the class flips,
+// the slabs' shadows are redone, and each widget melts and re-forms.
+let theme = "classic";
+function setTheme(t, instant) {
+  t = t === "liquid_glass" ? "liquid_glass" : "classic";
+  if (t === theme) return;
+  theme = t;
+  const html = document.documentElement;
+  html.classList.toggle("lg", t === "liquid_glass");
+  if (!instant) {
+    html.classList.remove("theme-shift"); void html.offsetWidth; html.classList.add("theme-shift");
+    clearTimeout(setTheme.done); setTheme.done = setTimeout(() => html.classList.remove("theme-shift"), 1100);
+  }
+  for (const n of Object.keys(rects)) if (W[n]) place(n);
+  if (typeof Settings !== "undefined") Settings.restyle();
+}
+
+// Liquid Glass: a spot of light follows the pointer over a widget's face and
+// along its rim. Only `translate` changes, once a frame at most.
+let lit = null, litXY = null, litQueued = false;
+function moveLight() {
+  litQueued = false;
+  if (!lit || !litXY) return;
+  const r = rects[lit.dataset.w]; if (!r) return;
+  const v = `${litXY[0] - r[0]}px ${litXY[1] - r[1]}px`;
+  for (const e of lit.querySelectorAll(":scope > .face > .lg-spot, :scope > .face > .lg-edge > b")) e.style.translate = v;
+}
+addEventListener("pointermove", e => {
+  if (theme !== "liquid_glass") return;
+  const w = e.target.closest?.(".w") || null;
+  if (w !== lit) { lit?.classList.remove("pt"); lit = w; w?.classList.add("pt"); }
+  litXY = [e.clientX, e.clientY];
+  if (lit && !litQueued) { litQueued = true; requestAnimationFrame(moveLight); }
+}, { passive: true });
+document.documentElement.addEventListener("pointerleave", () => { lit?.classList.remove("pt"); lit = null; });
+
+// Liquid Glass: a dragged widget lifts, and stretches along the way it moves,
+// then springs back when it stops or is let go.
+function stretch(root, vx, vy) {
+  const k = 0.0009, sx = Math.min(.05, Math.abs(vx) * k), sy = Math.min(.05, Math.abs(vy) * k);
+  root.style.scale = `${(1.018 + sx - sy * .5).toFixed(4)} ${(1.018 + sy - sx * .5).toFixed(4)}`;
+  clearTimeout(stretch.rest);
+  stretch.rest = setTimeout(() => { root.style.scale = ""; }, 90);
 }
 
 function setState(name, data) {
@@ -698,7 +746,8 @@ document.addEventListener("pointerdown", e => {
   if (!root) { if (raised) post({ t: "drop" }); return; }
   const name = root.dataset.w, isGrip = e.target.classList.contains("grip");
   if (!isGrip && !e.target.closest(".hd") && !(name === "core" && !e.target.closest("input"))) return;
-  drag = { name, mode: isGrip ? "size" : "move", x0: e.clientX, y0: e.clientY, r0: rects[name].slice() };
+  drag = { name, mode: isGrip ? "size" : "move", x0: e.clientX, y0: e.clientY, r0: rects[name].slice(), t: e.timeStamp, px: e.clientX, py: e.clientY };
+  if (theme === "liquid_glass" && drag.mode === "move") root.classList.add("lifted");
   e.preventDefault();
 });
 addEventListener("pointermove", e => {
@@ -706,10 +755,16 @@ addEventListener("pointermove", e => {
   const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0, [x, y, w, h] = drag.r0;
   rects[drag.name] = clampRect(drag.mode === "move" ? [x + dx, y + dy, w, h] : [x, y, w + dx, h + dy]);
   relayout(false);
+  if (theme === "liquid_glass" && drag.mode === "move") {
+    const dt = Math.max(8, e.timeStamp - drag.t);
+    stretch(W[drag.name].root, (e.clientX - drag.px) / dt * 16, (e.clientY - drag.py) / dt * 16);
+    drag.t = e.timeStamp; drag.px = e.clientX; drag.py = e.clientY;
+  }
 });
 addEventListener("pointerup", () => {
   if (!drag) return;
   const [x, y, w, h] = rects[drag.name];
+  const lifted = W[drag.name]?.root; if (lifted) { lifted.classList.remove("lifted"); lifted.style.scale = ""; }
   rects[drag.name] = clampRect(drag.mode === "move" ? [snap(x), snap(y), w, h] : [x, y, snap(x + w) - x, snap(y + h) - y]);
   drag = null;
   relayout(true);
@@ -871,7 +926,7 @@ window.desk = {
       case "flow": flowEvent(msg); FlowEditor.message(msg); break;
       case "catalog": case "flow_graph": case "flow_saved": case "flow_tested": FlowEditor.message(msg); break;
       case "menu": FileMenu.reply(msg); break;
-      case "settings": Settings.message(msg); Claude.hello(); post({ t: "send", msg: { t: "update_do", op: "hello" } }); break;     // sent on every (re)connect
+      case "settings": setTheme(((msg.values || {}).desktop || {}).theme); Settings.message(msg); Claude.hello(); post({ t: "send", msg: { t: "update_do", op: "hello" } }); break;     // sent on every (re)connect
       case "cc": Claude.message(msg); break;
       case "update": showUpdate(msg); break;
       case "downloads": downloads(msg.items || [], msg.ended || []); break;
@@ -890,6 +945,7 @@ window.desk = {
     if (up && W.chat) W.chat.say.focus();
   },
   sound(kind) { Sounds.play(kind); },
+  setTheme(t) { setTheme(t, true); },     // layer.py, at start: the saved look, without the melt
   configureSounds(c) { Sounds.configure(c); },
   setStatus(s) { if (W.core) W.core.line.textContent = s === "connected" ? "" : "reconnecting…"; },
 };

@@ -92,6 +92,7 @@ class Layer(Gtk.Window):
         if t == "ready":
             self.ready = True
             self._js("init", *self._layout_args(), sorted(self.hidden), dict(SOUND_DEFAULTS))
+            self._js("setTheme", _saved_theme())      # the look he chose, before the core says so
             self.link.start()
         elif t == "send":
             out = msg["msg"]
@@ -177,6 +178,14 @@ def _load_hidden() -> set:
 
 # Until the core's first `settings` message arrives; the real values live in core/settings.py.
 SOUND_DEFAULTS = {"master": True, "volume": 0.5, "muted": []}
+
+
+def _saved_theme() -> str:
+    """Settings > Desktop > Theme from the file, so a restart doesn't flash the other look first."""
+    try:
+        return str(json.loads(core_settings.default_path().read_text())["desktop"]["theme"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return "classic"
 
 
 def _save_hidden(names: set) -> None:

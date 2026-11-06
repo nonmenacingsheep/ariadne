@@ -23,6 +23,7 @@ const Settings = (() => {
       b.onclick = () => { tab = k; draw(); };
       tabs.appendChild(b);
     }
+    tabs.appendChild(Object.assign(document.createElement("i"), { className: "sp-lens", innerHTML: "<b></b>" }));   // Liquid Glass's sliding lens
   }
   function message(msg) {
     schema = msg.schema || schema; values = msg.values || values;
@@ -72,7 +73,9 @@ const Settings = (() => {
     if (s.type === "number") {
       const wrap = document.createElement("div"); wrap.className = "sp-num";
       const r = document.createElement("input"); r.type = "range"; r.min = s.min; r.max = s.max; r.step = s.step || 1; r.value = v;
-      const out = document.createElement("span"); const show = x => out.textContent = `${+(+x).toFixed(2)}${s.unit || ""}`; show(v);
+      const out = document.createElement("span");
+      const show = x => { out.textContent = `${+(+x).toFixed(2)}${s.unit || ""}`; r.style.setProperty("--fill", `${100 * (x - s.min) / (s.max - s.min)}%`); };
+      show(v);
       r.oninput = () => show(r.value);
       r.onchange = () => set(s.section, s.key, Number(r.value));
       wrap.append(r, out); return wrap;
@@ -134,10 +137,21 @@ const Settings = (() => {
   function draw() {
     panel.querySelectorAll(".sp-tab").forEach(b => b.classList.toggle("live", b.dataset.k === tab));
     rows(tab, panel.querySelector(".sp-body"));
+    lens();
+  }
+  // Liquid Glass: the lens slides under the live tab and wobbles when it moves.
+  let lensAt = null;
+  function lens() {
+    const l = panel.querySelector(".sp-lens"), b = panel.querySelector(".sp-tab.live");
+    if (!l || !b || !document.documentElement.classList.contains("lg")) { lensAt = null; return; }
+    l.style.translate = `${b.offsetLeft}px 0`; l.style.width = `${b.offsetWidth}px`;
+    if (lensAt !== null && lensAt !== tab) { l.classList.remove("jelly"); void l.offsetWidth; l.classList.add("jelly"); }
+    lensAt = tab;
   }
   const isOpen = () => open;
   const rect = () => panel.getBoundingClientRect();
-  return { init, message, toggle, place, isOpen, rect, rows, value, updateStatus, onChange: fn => listeners.add(fn) };
+  const restyle = () => { if (panel) { lensAt = null; lens(); } };
+  return { init, message, toggle, place, isOpen, rect, rows, value, updateStatus, restyle, onChange: fn => listeners.add(fn) };
 })();
 
 /* ---------------- Avatar ---------------- */

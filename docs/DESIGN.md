@@ -152,6 +152,37 @@ Taken from the mock, then made to feel like one piece:
   current misregistered one, recoloured red and white with a cyan offset —
   sitting in her core widget. It twitches when she starts acting.
 
+### Second look — Liquid Glass (Settings > Desktop > Theme)
+
+Classic (above) stays the default. **Liquid Glass** is an optional second look after Apple's
+iOS 26 / macOS Tahoe material, chosen in Settings > Desktop > Theme and applied live: the page
+puts `lg` on `<html>`, and every rule for it lives in `desk/web/glass.css` under `html.lg`, so
+Classic is untouched while it's off. Switching melts each widget and re-forms it, one after
+another.
+
+- **Material:** a thin dark tint, denser in the middle where text sits and clearer toward the
+  edges; a top-left specular wash; light pooling inside the top edge and a darker bottom edge
+  with a thin caustic line (thickness); a 1.5 px gradient rim, bright where light strikes the
+  top-left and leaves the bottom-right. A spot of light follows the pointer across the face and
+  along the rim (desk.js moves it with `translate`, once a frame at most).
+- **Blur:** the wallpaper is outside the page, so nothing in CSS can blur it; widgets carry the
+  glass with tint and light instead, and have no `backdrop-filter` (it would cost a blur per
+  repaint for nothing). Menus, the settings panel, the drawer and the flow editor do blur and
+  saturate what's behind them, which is the desk's own widgets. A real wallpaper blur would
+  need the layer to ask KWin for one (org_kde_kwin_blur over the widget rects).
+- **Shape:** 28 px radii on widgets, 26 px on panels, capsules for buttons, chips, tabs and
+  switches; soft deep shadows instead of the red extrusion.
+- **Motion (springs from `linear()` curves, transform and opacity only):** panels and menus
+  grow out of the control that opened them, overshoot and settle, their content fading in
+  after the glass; presses squish and spring back past full size; the settings tabs' lens
+  slides, turning into a clear stretched drop while it travels; switches' knobs stretch while
+  held; slider knobs swell into a lens while dragged; dragged widgets lift and stretch along
+  their motion; chat bubbles pop in from their corner. Her working state is breathing glass
+  with an iridescent sweep and a running colour rim instead of crumbling edges; a failure
+  shakes and holds a red glow.
+- **Colour:** her red stays the accent (your chat bubbles, the live tab, switches, primary
+  buttons); cyan still marks what she just touched. Type is Inter, sentence case.
+
 ### Her core and the wires
 
 - A small **core** widget: her mark, a live voice waveform while she speaks,

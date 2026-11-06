@@ -348,6 +348,7 @@ func _dress() -> void:
 		var idx := (m as MeshInstance3D).find_blend_shape_by_name("Shrink_forJacket")
 		if idx >= 0:
 			(m as MeshInstance3D).set_blend_shape_value(idx, 1.0 if outfit["jacket"] else 0.0)
+	_breast_feel()
 	var wpath := body_path.replace(".glb", "_weapon.glb")
 	if outfit["weapon"] and weapon == null and body_path.ends_with(".glb") and ResourceLoader.exists(wpath) \
 			and skel and skel.find_bone("RightHand") >= 0:
@@ -445,6 +446,21 @@ func _add_ragdoll() -> void:
 	ragdoll.build_env(screen / PPM, room_depth, floors)
 
 
+# The jacket and the straps under it are bound to her chest, not her breasts:
+# with the soft springs they swung out through both. A jacket holds them in,
+# so with it on they're firm (as they were before the soft springs) and hang
+# straight; off, they're soft and weighted to the tip.
+var breast_chains: Array[int] = []
+func _breast_feel() -> void:
+	if jiggle == null:
+		return
+	var on: bool = outfit["jacket"]
+	for i in breast_chains:
+		jiggle.set_stiffness(i, 4.5 if on else 2.6)
+		jiggle.set_drag(i, 0.55 if on else 0.32)
+		jiggle.set_gravity(i, 0.0 if on else 0.35)
+
+
 # A straight line along a spring chain, root to tip.
 func _ramp(root: float, tip: float) -> Curve:
 	var c := Curve.new()
@@ -463,6 +479,7 @@ func _add_jiggle() -> void:
 		return
 	var sim := SpringBoneSimulator3D.new()
 	jiggle = sim
+	breast_chains.clear()
 	sim.name = "Jiggle"
 	skel.add_child(sim)
 	sim.set_setting_count(chains.size())
@@ -477,6 +494,7 @@ func _add_jiggle() -> void:
 		sim.set_gravity(i, c[4])
 		sim.set_radius(i, c[5])
 		if String(c[0]).begins_with("Breast"):
+			breast_chains.append(i)
 			# Weighted toward the tip: firm where they meet her chest, softer, heavier
 			# and slower to settle further out, so the near part barely moves and the
 			# outer part sways and lags behind her.
@@ -2935,6 +2953,9 @@ func _snapshot_seq(what: String) -> void:
 		_set_state("idle", 99.0)
 		play.test = true
 		_gesture(what.substr(8))
+	if what.begins_with("chest:"):               # her chest close up through a bouncy clip: does anything poke through?
+		_chest_test(what.substr(6))
+		return
 	if what == "faces":                          # her face close up: each face, then each emote
 		_faces_test()
 		return
@@ -3033,6 +3054,28 @@ func _snapshot_seq(what: String) -> void:
 				var g := skel.global_transform * skel.get_bone_global_pose(skel.find_bone(b)).origin
 				print("FOOT %d %s %.3f %.3f %s %s %.2f" % [i, b, g.x, g.y, state, variant, pos.x])
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_seq_%02d.png" % i))
+	get_tree().quit()
+
+
+# A test run's close look at her chest through a lively clip, side-on and
+# front, a picture every 0.1 s: straps and jacket against the breast springs.
+func _chest_test(pick: String) -> void:
+	brain_quiet = true
+	_set_state("react", 1e9)
+	var c := Camera3D.new()
+	add_child(c)
+	await get_tree().process_frame
+	ap.play(pick, 0.0)
+	c.fov = 16.0
+	c.current = true
+	for i in 24:
+		var chest := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Chest")).origin
+		var side := i % 2 == 0
+		c.global_position = chest + (Vector3(1.6, 0.0, 0.5) if side else Vector3(0.0, 0.05, 1.7))
+		c.look_at(chest)
+		await get_tree().create_timer(0.1).timeout
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_chest_%02d.png" % i))
 	get_tree().quit()
 
 

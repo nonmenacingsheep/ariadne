@@ -1,0 +1,41 @@
+{
+	"_doc": [
+		"Her episodes (docs/PET_EPISODES_PLAN.md), read by brain.gd: little stories with a cause, an effect and several endings.",
+		"weight: how much she likes it (plus mood: {feeling: amount}). cool: seconds before it can happen again. needs: clips it can't do without. night / day: only then.",
+		"beats, in order. go: corner | near | far | front | spot, with walk: a walk style (walk_tiptoe_, walk_hands_, ...).",
+		"play: a clip or prefix, or a list of them (the first she has: the new take before its stand-in). for: seconds, or end: true (to the clip's end). quick: a faster blend (a startle).",
+		"  with mood (and mood_w), emote, look: ground | thing | front.",
+		"thing: a kind (things.gd) appearing on the floor at: metres in front of her. thing_do: crawl (to: her) | wander | flee | fly_off | hand | hop_at.",
+		"branch: [[weight, [beats...]], ...]: one ending, picked when the episode starts."
+	],
+	"bug_in_the_corner": {
+		"weight": 1.0, "cool": 600, "needs": ["crouch_idle_"], "mood": {"bored": 0.5, "joy": 0.2},
+		"beats": [
+			{"go": "corner", "walk": "walk_hands_"},
+			{"play": "Idle", "for": 1.2, "look": "ground"},
+			{"thing": "ladybug", "at": 0.45},
+			{"play": ["crouch_peer_", "crouch_idle_"], "for": 3.5, "look": "thing", "mood": "fun", "emote": "question"},
+			{"play": ["crouch_reach_", "crouch_idle_"], "for": 2.5, "look": "thing"},
+			{"branch": [
+				[0.45, [
+					{"thing_do": "hop_at"},
+					{"play": ["fall_sit_", "play_feet_"], "end": true, "quick": true, "mood": "surprised", "mood_w": 1.0, "emote": "exclaim", "look": "thing"},
+					{"play": ["sitfloor_rub_", "floor_sit_"], "for": 3.0, "mood": "sorrow", "mood_w": 0.4},
+					{"play": ["sitfloor_laugh_", "floor_sit_"], "for": 3.0, "mood": "joy", "emote": "note"}
+				]],
+				[0.35, [
+					{"thing_do": "hand"},
+					{"play": ["rise_hand_", "Idle"], "end": true, "look": "thing", "mood": "joy"},
+					{"play": ["stand_hand_look_", "Idle"], "for": 3.5, "look": "thing", "mood": "joy", "emote": "heart"},
+					{"thing_do": "fly_off"},
+					{"play": ["wave_up_", "play_wave_back_"], "end": true, "look": "thing"}
+				]],
+				[0.2, [
+					{"thing_do": "fly_off"},
+					{"play": ["crouch_lookup_", "crouch_idle_"], "for": 2.0, "look": "thing", "mood": "surprised", "emote": "exclaim"},
+					{"play": "Idle", "for": 2.5, "look": "thing", "emote": "question"}
+				]]
+			]}
+		]
+	}
+}

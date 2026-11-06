@@ -1,0 +1,15 @@
+# An episode's beats (docs/PET_EPISODES_PLAN.md, part 4), keyed so each starts
+# where the one before it ends: crouched (crouch_idle_1:0), sitting on the
+# floor (floor_sit_1:0), standing (idle_calm_1:0), or another beat's last frame.
+# name|seconds|prompt|start pose|end pose ("-" free)   (import/kimodo_keyed.py)
+#
+# The bug in the corner.
+crouch_peer_1|5|A woman crouching low leans in close and peers curiously at a tiny bug on the floor in front of her, tilting her head from side to side.|crouch_idle_1:0|crouch_idle_1:0
+crouch_reach_1|4|A woman crouching low slowly reaches out one finger toward a tiny bug on the floor right in front of her feet.|crouch_idle_1:0|crouch_idle_1:0
+fall_sit_1|3|A crouching woman is startled, jerks back and falls backwards onto her bottom, landing sitting on the floor with her hands behind her.|crouch_idle_1:0|floor_sit_1:0
+sitfloor_rub_1|4|A woman sitting on the floor rubs her sore bottom with one hand and winces.|floor_sit_1:0|floor_sit_1:0
+sitfloor_laugh_1|4|A woman sitting on the floor laughs at herself, covering her mouth with her hand, her shoulders shaking.|floor_sit_1:0|floor_sit_1:0
+rise_hand_1|4|A crouching woman lets a little bug climb onto her finger, then slowly stands up holding her hand up in front of her face to look at it.|crouch_idle_1:0|-
+stand_hand_look_1|5|A woman stands holding her right hand up in front of her face, smiling at a little bug sitting on her finger.|rise_hand_1:-1|-
+wave_up_1|3|A woman watches something fly up and away above her and waves goodbye to it.|stand_hand_look_1:-1|idle_calm_1:0
+crouch_lookup_1|3|A crouching woman looks up in surprise, following something flying up into the air.|crouch_idle_1:0|crouch_idle_1:0

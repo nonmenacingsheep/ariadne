@@ -224,6 +224,13 @@ var grab_prev := Vector2.ZERO
 var grab_z := 0.0                          # depth of the point he holds, drawn to the glass
 var ragdoll                                # ragdoll.gd: her physical bones while held and tumbling
 var poke                                   # poke.gd: his pointer pressing on her (poke mode)
+var things                                 # things.gd: a bug, a leaf... in one of her episodes
+# How she walks this trip (docs/PET_EPISODES_PLAN.md): an episode asks for one
+# (walk_style: tiptoeing up on a bug), else her mood picks one as she sets off.
+var walk_style := ""
+var trip_style := ""
+var look_node: Node3D = null               # watching a thing (a bug crawling) till look_until
+var look_spot := Vector3.INF               # or a point (the floor in front of her)
 var poking := false
 var squish                                 # squish.gd: her arms pressing her breasts aside
 var poke_z := 0.0                          # depth of the point he's pressing
@@ -284,6 +291,9 @@ func _ready() -> void:
 	play = load("res://play.gd").new()
 	add_child(play)
 	play.setup(self)
+	things = load("res://things.gd").new()
+	add_child(things)
+	things.setup(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
 	if FileAccess.file_exists(PLACE_FILE):            # back after a game: where she was
@@ -1367,7 +1377,9 @@ const ONE_SHOT := ["Jump_Land", "Death01", "PickUp_Table", "LayToIdle", "Interac
 const STANCE_PREFIXES := [["sit_idle_", "ledge"], ["Sitting_", "ledge"], ["nap_", "floor"], ["floor_sit_", "floor"],
 		["lie_", "lie"], ["crouch_idle_", "crouch"], ["Crouch_Idle", "crouch"],
 		["work_", "ledge"], ["game_", "ledge"], ["eat_", "floor"], ["read_", "floor"], ["phone_", "floor"],
-		["meditate_", "floor"], ["sleep_bed_", "lie"]]
+		["meditate_", "floor"], ["sleep_bed_", "lie"],
+		# An episode's beats (docs/PET_EPISODES_PLAN.md): crouched, sitting on the floor.
+		["crouch_", "crouch"], ["sitfloor_", "floor"], ["fall_sit_", "floor"], ["rise_", "stand"]]
 const TRANSITION_EXTRA := {"stand>ledge": "sit_down_", "ledge>stand": "sit_up_"}
 var pending := ""                          # the clip waiting for a transition to finish
 
@@ -1390,7 +1402,8 @@ func _is_move(name: String) -> bool:
 	if places and places.is_move(name):
 		return true
 	return name.begins_with("tr_") or name.begins_with("sit_down_") or name.begins_with("sit_up_") \
-			or name.begins_with("get_up_") or name == "Sitting_Exit" or name == "LayToIdle"
+			or name.begins_with("get_up_") or name == "Sitting_Exit" or name == "LayToIdle" \
+			or name.begins_with("fall_sit_") or name.begins_with("rise_")    # an episode's own moves (startled down, up with a bug on her hand)
 
 
 func _transition(from: String, to: String) -> String:
@@ -1468,8 +1481,12 @@ func _variant(role: String) -> String:
 		# "<state>:react" when he pokes or talks to her there.
 		var s := role.get_slice(":", 0)
 		entries = places.react(s) if role.ends_with(":react") else places.pool(s, life.holding if life else "")
+	elif role == "Walk" and (walk_style if walk_style != "" else trip_style) != "":
+		entries = [[walk_style if walk_style != "" else trip_style, 1.0]]
 	elif not ROLES.has(role) and not role.begins_with("play:"):
-		return role if ap.has_animation(role) else ""
+		if not role.ends_with("_"):
+			return role if ap.has_animation(role) else ""
+		entries = [[role, 1.0]]                # a prefix: any of its takes (an episode's beat)
 	var pool := []
 	var weights := []
 	for entry in entries:
@@ -1661,6 +1678,7 @@ var gait_from := 0.0                      # when she set off: speed eases in wit
 func _set_off(seconds: float) -> void:
 	_set_state("wander", seconds)
 	gait_from = t
+	trip_style = _walk_style()
 	if floor_y > 0.01:
 		target_z = 0.0                         # on a ledge: along it
 	var to := _to_target()
@@ -1737,6 +1755,52 @@ func _begin_stop(stop: String, m: Vector2) -> void:
 	_set_state("stopping", 6.0)
 	_play_via(stop, "Idle", 0.25)
 	ap.speed_scale = GAIT_PLAYBACK
+
+
+# The walk for a trip, by her mood: hands behind her back when she's idling
+# along, a hip sway or a skip when she's happy, a slow shuffle when she's sad;
+# "" is her ordinary walks (ROLES "Walk"). Tiptoeing is for sneaking up on things.
+const WALK_STYLES := ["walk_hands_", "walk_sway_", "walk_skip_", "walk_sad_"]
+func _walk_style() -> String:
+	var joy := _feeling("joy")
+	var weights := {"": 1.0, "walk_hands_": 0.7 + _feeling("bored") * 0.4,
+			"walk_sway_": 0.25 + joy * 0.7, "walk_skip_": 0.1 + _feeling("light") * 0.9 + joy * 0.4,
+			"walk_sad_": _feeling("sorrow") * 1.6}
+	var total := 0.0
+	for k in weights.keys():
+		if k != "" and not Array(ap.get_animation_list()).any(func(a): return String(a).begins_with(k)):
+			weights.erase(k)
+		else:
+			total += weights[k]
+	var r := randf() * total
+	for k in weights:
+		r -= weights[k]
+		if r <= 0.0:
+			return k
+	return ""
+
+
+# The tip of her hand (where a bug would sit on her finger), in the world.
+func hand_point(side: String) -> Vector3:
+	var h: int = bones.get(side + "Hand", -1)
+	if h < 0:
+		return Vector3(pos.x, 1.0, depth)
+	var xf := _bone_xf(h)
+	var up := _bone_xf(skel.get_bone_parent(h)).origin
+	return xf.origin + (xf.origin - up).normalized() * 0.08
+
+
+# Looking at something in the world for a while: a point, or a thing that moves.
+func look_at_world(at: Variant, seconds: float) -> void:
+	look_node = at if at is Node3D else null
+	look_spot = at if at is Vector3 else Vector3.INF
+	look_until = t + seconds
+
+
+# A spot on the floor in front of her, `ahead` metres along her facing.
+func ground_ahead(ahead: float) -> Vector3:
+	var f := Vector3(sin(yaw), 0.0, cos(yaw))
+	return Vector3(pos.x, 0.0, depth) + f * ahead
 
 
 # How fast her body moves for the clip playing: its measured stride if it's
@@ -2328,6 +2392,11 @@ func _head() -> void:
 		# Toward the pointer, from where her head is on screen; held a moment after it stops.
 		var head := skel.global_transform * skel.get_bone_global_pose(bones["Head"]).origin
 		var d := cursor - cam.unproject_position(head)
+		look_target = Vector2(clampf(d.x / (PPM * 1.5), -1.0, 1.0), clampf(-d.y / (PPM * 1.0), -0.8, 0.8))
+	elif t < look_until and cam and bones.has("Head") and (is_instance_valid(look_node) or look_spot != Vector3.INF):
+		var at: Vector3 = look_node.global_position if is_instance_valid(look_node) else look_spot
+		var head := skel.global_transform * skel.get_bone_global_pose(bones["Head"]).origin
+		var d := cam.unproject_position(at) - cam.unproject_position(head)
 		look_target = Vector2(clampf(d.x / (PPM * 1.5), -1.0, 1.0), clampf(-d.y / (PPM * 1.0), -0.8, 0.8))
 	elif t > look_until:
 		look_target = Vector2(sin(t * 0.21) * 0.3, sin(t * 0.13) * 0.12)
@@ -3165,6 +3234,13 @@ func _snapshot_seq(what: String) -> void:
 	if what.begins_with("poke:") or what.begins_with("pin:"):   # a mode's click on a bone (_mode_test)
 		_set_state("idle", 99.0)
 		_mode_test(what.get_slice(":", 0), what.get_slice(":", 1))
+	if what.begins_with("episode:"):             # an episode (episodes.json), with ending N if given
+		depth = -0.7
+		_set_state("idle", 0.5)
+		var ep := what.split(":")
+		brain.force_branch = int(ep[2]) if ep.size() > 2 else -1
+		brain.doing = "episode"
+		brain.plan = brain._beats(brain.episodes[ep[1]]["beats"])
 	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
 		depth = -0.4
 		var act := what.substr(3)

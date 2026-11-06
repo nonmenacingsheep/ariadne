@@ -29,18 +29,32 @@ const ACTIVITIES := {
 	"play": [50.0, false], "play_more": [240.0, false],
 	# Her things anywhere (phase 9): her phone on her feet, a book on the floor.
 	"phone_about": [200.0, true], "read_floor": [240.0, true],
+	# A little story (episodes.json, docs/PET_EPISODES_PLAN.md): a few beats, and how it ends.
+	"episode": [150.0, true],
 }
+var episodes := {}                         # episodes.json
+var episode_at := {}                       # episode -> when it last ran (pet.t)
+var force_branch := -1                     # a test run's chosen ending
 var watered_at := -1e9
 
 
 func _init(owner) -> void:
 	pet = owner
+	var raw = JSON.parse_string(FileAccess.get_file_as_string("res://episodes.json")) \
+			if FileAccess.file_exists("res://episodes.json") else null
+	if raw is Dictionary:
+		for k in raw:
+			if not String(k).begins_with("_"):
+				episodes[k] = raw[k]
 
 
 # He grabbed her, gave her an order, or woke her: whatever she meant to do is off.
 func drop() -> void:
 	plan.clear()
 	follow_until = 0.0
+	pet.walk_style = ""
+	if pet.things and pet.things.is_out():
+		pet.things.do("flee")                  # whatever it was scuttles off
 
 
 # He's talking to her: she stops what she's doing, turns, and comes up to the front.
@@ -131,6 +145,10 @@ func next() -> void:
 			pet._play("Idle", 0.4)
 			return
 	plan.pop_front()
+	if step.has("walk"):
+		pet.walk_style = step["walk"] if _has(step["walk"]) else ""
+	elif not step.has("go"):
+		pet.walk_style = ""
 	if step.has("go"):
 		var g: Vector2 = step["go"]
 		if not step.get("routed", false):
@@ -166,6 +184,16 @@ func next() -> void:
 			pet._face_front(0.8)
 	elif step.has("call"):
 		pet.call(step["call"])
+	elif step.has("thing"):
+		# Something appears on the floor a little in front of her (and to one side).
+		var at: Vector3 = pet.ground_ahead(float(step.get("at", 0.45)))
+		at += Vector3(cos(pet.yaw), 0, -sin(pet.yaw)) * randf_range(-0.12, 0.12)
+		pet.things.spawn(step["thing"], at)
+		next()
+	elif step.has("thing_do"):
+		var to: Vector3 = pet.ground_ahead(0.22) if step.get("to", "") == "her" else Vector3.ZERO
+		pet.things.do(step["thing_do"], to)
+		next()
 	elif step.has("hold"):
 		var item: String = step["hold"]
 		pet.life._hold(item)
@@ -208,12 +236,96 @@ func next() -> void:
 			var at: Vector3 = pet.room.spot(step["face"]).get("drop", Vector3(pet.pos.x, 0, pet.depth - 1.0))
 			pet.yaw_target = atan2(at.x - pet.pos.x, at.z - pet.depth)
 			pet.look_until = pet.t + float(step.get("for", 2.0))
-		pet._play(step["play"], 0.4, float(step.get("speed", 1.0)))
+		pet._play(_first_clip(step["play"]), 0.25 if step.get("quick", false) else 0.4, float(step.get("speed", 1.0)))
+		if step.get("end", false):
+			# To the end of the clip (and the move into its stance before it, if any).
+			var secs := maxf(0.3, pet.variant_until - pet.t)
+			if pet.pending != "" and pet.ap.has_animation(pet.pending):
+				secs += pet.ap.get_animation(pet.pending).length / maxf(0.1, float(step.get("speed", 1.0)))
+			pet._set_state(step.get("state", "idle"), maxf(0.3, secs - 0.15))
+		var secs_for: float = float(step.get("for", 3.0))
+		if step.has("mood"):
+			pet._feel(step["mood"], float(step.get("mood_w", 0.8)), secs_for + 1.0)
+		if step.has("emote") and pet.play:
+			pet.play.show_emote(step["emote"])
+		match step.get("look", ""):
+			"ground": pet.look_at_world(pet.ground_ahead(0.45), secs_for)
+			"thing": pet.look_at_world(pet.things.thing, secs_for + 1.0)
+			"front": pet._face_front(secs_for)
 		if step.has("perch"):
 			# Onto the furniture while the move into the stance plays (sitting down, lying down).
 			pet._perch_on(step["perch"], maxf(0.4, pet.variant_until - pet.t) if pet.pending != "" else 0.4)
 		for k in step.get("gain", {}):
 			pet.life.bump(k, float(step["gain"][k]))
+
+
+# A beat's clip: the first of its choices she has ("crouch_peer_" before the
+# plain crouch, until the new takes are in).
+func _first_clip(c: Variant) -> String:
+	if c is Array:
+		for x in c:
+			if _has(x) or pet.ROLES.has(x):
+				return x
+		return (c as Array).back()
+	return c
+
+
+# An episode: the one picked from those she can do (their clips are here, the
+# hour suits, not too soon again), its beats laid out as plan steps, and one
+# of its endings chosen now.
+func _episode() -> Array:
+	var best := ""
+	var best_w := 0.0
+	for k in episodes:
+		var e: Dictionary = episodes[k]
+		if pet.t - float(episode_at.get(k, -1e9)) < float(e.get("cool", 900)):
+			continue
+		if e.get("night", false) and not _night() or e.get("day", false) and _night():
+			continue
+		if not (e.get("needs", []) as Array).all(func(c): return _has(c) or pet.ROLES.has(c)):
+			continue
+		var w: float = float(e.get("weight", 1.0))
+		for f in e.get("mood", {}):
+			w += pet._feeling(f) * float(e["mood"][f])
+		w *= randf_range(0.6, 1.4)
+		if w > best_w:
+			best = k
+			best_w = w
+	if best == "":
+		return []
+	episode_at[best] = pet.t
+	if logging:
+		print("EPISODE %.0f %s" % [pet.t, best])
+	return _beats(episodes[best]["beats"])
+
+
+func _beats(beats: Array) -> Array:
+	var out := []
+	for b in beats:
+		var d: Dictionary = (b as Dictionary).duplicate()
+		if d.has("branch"):
+			var total := 0.0
+			for c in d["branch"]:
+				total += float(c[0])
+			if force_branch >= 0 and force_branch < (d["branch"] as Array).size():
+				out += _beats(d["branch"][force_branch][1])
+				continue
+			var r := randf() * total
+			for c in d["branch"]:
+				r -= float(c[0])
+				if r <= 0.0:
+					out += _beats(c[1])
+					break
+			continue
+		if d.has("go") and d["go"] is String:
+			match d["go"]:
+				"corner": d["go"] = _corner()
+				"near": d["go"] = _spot(randf_range(0.8, 1.8))
+				"far": d["go"] = _spot(randf_range(2.5, 4.5))
+				"front": d["go"] = Vector2(clampf(pet.pos.x, _x0(), _x1()), -0.3)
+				_: d["go"] = _spot(randf_range(1.5, 3.5))
+		out.append(d)
+	return out
 
 
 func _pick() -> void:
@@ -263,7 +375,7 @@ func _score(a: String, on_widget: bool) -> float:
 	var near: bool = pet.t - pet.cursor_at < 4.0            # his pointer moving about
 	match a:
 		"idle": return 0.75
-		"wander": return (0.8 + bored * 0.5 - tired * 0.3) if allow["wander"] else 0.0
+		"wander": return (1.0 + bored * 0.5 - tired * 0.3) if allow["wander"] else 0.0       # he likes watching her walk
 		"look_around": return 0.35 + bored * 0.3 if _has("look_around_") else 0.0
 		"stretch": return (0.2 + tired * 0.4 + (1.0 if doing in ["nap", "lie", "sit_floor"] else 0.0)) \
 				if _has("stretch_") else 0.0
@@ -323,6 +435,7 @@ func _score(a: String, on_widget: bool) -> float:
 				return 0.0
 			return 0.55 + tired * 0.2 + (0.3 if pet.state == "rest" else 0.0)
 		"tidy": return (0.15 + 0.12 * pet.life.left.size() + bored * 0.2) if not pet.life.left.is_empty() else 0.0
+		"episode": return (0.45 + bored * 0.5 + joy * 0.1 - tired * 0.3) if not episodes.is_empty() and allow["wander"] else 0.0
 		"water":
 			if not (_room("plant") and _room("can") and _has("water_plant_")):
 				return 0.0
@@ -339,8 +452,9 @@ func _plan(a: String, on_widget: bool) -> Array:
 			if on_widget:
 				return [{"go": Vector2(clampf(pet.pos.x + randf_range(-1.0, 1.0), pet.floor_span.x + 0.2,
 						pet.floor_span.y - 0.2), 0.0)}, {"play": "Idle", "for": randf_range(2, 4)}]
-			return [{"go": _spot(randf_range(1.0, 3.5))}, {"play": "Idle", "for": randf_range(5, 10)}]
+			return [{"go": _spot(randf_range(1.5, 4.5))}, {"play": "Idle", "for": randf_range(4, 8)}]
 		"look_around": return [{"play": "LookAround", "for": randf_range(5, 9)}]
+		"episode": return _episode()
 		"stretch": return [{"play": "Stretch", "for": randf_range(4, 6)}]
 		"think": return [{"play": "Idle_FoldArms", "for": randf_range(5, 10)}]
 		"explore":

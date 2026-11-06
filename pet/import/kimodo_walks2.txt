@@ -1,0 +1,11 @@
+# Walk styles with character (docs/PET_EPISODES_PLAN.md, part 1): long takes,
+# cut into seamless loops by kimodo_loop.py (walk_*). Her mood picks one per trip.
+# (Not walk_back_*: that prefix is walking backwards.)
+walk_hands_1|8|A young woman strolls forward slowly with her hands clasped behind her back, looking around curiously.
+walk_hands_2|8|A woman walks forward leisurely with both hands held together behind her back, tilting her head from side to side.
+walk_sway_1|8|A woman walks forward with a pronounced sway of her hips, placing one foot in front of the other like on a runway.
+walk_sway_2|8|A playful young woman walks forward swinging her hips from side to side with a little bounce in her step.
+walk_skip_1|8|A happy young woman skips forward, hopping on each foot in turn with her arms swinging.
+walk_skip_2|8|A cheerful girl skips forward lightly and joyfully, skipping step after step.
+walk_tiptoe_1|8|A woman tiptoes forward slowly and quietly on the balls of her feet, arms raised a little, sneaking up on something.
+walk_sad_1|8|A sad woman walks forward slowly with her shoulders slumped, looking down at the ground.

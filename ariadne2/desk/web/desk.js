@@ -138,61 +138,17 @@ function setTheme(t, instant) {
 }
 
 /* ---------------- Liquid Glass: water ---------------- */
-// Real refraction is an SVG filter (feDisplacementMap) and WebKitGTK runs
-// those on the CPU, over the host's whole box, every frame it changes; on a
-// whole widget face that tripled the frame time. So it is kept to the small
-// thing: the pointer's droplet lens. A click's wave is
-// done by the compositor instead (transforms and opacity only): caustic
-// light spreading across the face, the content swaying and the controls
-// rising as the crest passes, the widget's edges flexing as it hits them.
-// Filter hosts are a face or a panel, never the small controls inside: in
-// WebKitGTK 2.52 a map filter on a nested element blanks it. The map sits in
-// the host's own coordinates and must overlap the host or parts of it blank,
-// so an idle map waits, invisible (alpha 0), in the middle.
-const SVGNS = "http://www.w3.org/2000/svg";
+// No SVG filters here. A displacement filter on a widget's face (the
+// pointer's lens) blanked the whole widget on the GPU-composited desk, and on
+// the face for a click's wave it tripled the frame time; WebKitGTK runs them on
+// the CPU and they don't mix with composited layers. Everything below is
+// compositor work: transforms, opacity, and the droplet's backdrop-filter.
 const lgNow = () => window.__lgTime ?? performance.now();      // __lgTime: frozen time, for still frames in tests
-const lgUrl = f => new URL("water/" + f, location.href).href;
-const WAVE_SPEED = .2, WAVE_POOL = 3, WAVE_R0 = 26, LENS_DISP = 18;
-// Inner scrollers first: a map filter on an element with backdrop-filter
-// (the panels) turns its blur off, so those get a denser tint while it's on.
-const LENS_HOSTS = ".face, .sp-body, .sp-tabs, .av-set, .setpanel, .drawer, .fmenu, .cc-picker, .fe-palette";
-let lgDefs = null, lgSeq = 0;
-function lgFilters() {
-  if (lgDefs) return lgDefs;
-  const svg = document.createElementNS(SVGNS, "svg");
-  svg.setAttribute("width", "0"); svg.setAttribute("height", "0");
-  svg.style.cssText = "position:absolute;left:0;top:0;pointer-events:none";
-  svg.innerHTML = "<defs></defs>";
-  document.body.appendChild(svg);
-  lgDefs = svg.firstChild;
-  const drop = document.createElement("div"); drop.id = "lg-drop"; document.body.appendChild(drop);
-  return lgDefs;
-}
-function glassOf(host) {
-  if (host._glass) return host._glass;
-  const id = `lg-glass-${++lgSeq}`;
-  lgFilters().insertAdjacentHTML("beforeend", `<filter id="${id}" x="-4%" y="-4%" width="108%" height="108%" color-interpolation-filters="sRGB">` +
-    `<feFlood flood-color="rgb(128,128,128)" result="base"/>` +
-    `<feImage href="${lgUrl("lens.png")}" preserveAspectRatio="none" x="0" y="0" width="2" height="2" result="l"/>` +
-    `<feMerge result="map"><feMergeNode in="base"/><feMergeNode in="l"/></feMerge>` +
-    `<feDisplacementMap in="SourceGraphic" in2="map" scale="${LENS_DISP}" xChannelSelector="R" yChannelSelector="G"/></filter>`);
-  const g = { id, host, img: document.getElementById(id).querySelector("feImage"), on: false };
-  park(g);
-  return (host._glass = g);
-}
-function park(g) {
-  g.img.setAttribute("x", g.host.offsetWidth / 2 - 1); g.img.setAttribute("y", g.host.offsetHeight / 2 - 1);
-  g.img.setAttribute("width", 2); g.img.setAttribute("height", 2);
-}
-function placeMap(g, cx, cy, rx, ry) {          // cx, cy in the host's own coordinates
-  g.img.setAttribute("x", (cx - rx).toFixed(1)); g.img.setAttribute("y", (cy - ry).toFixed(1));
-  g.img.setAttribute("width", (2 * rx).toFixed(1)); g.img.setAttribute("height", (2 * ry).toFixed(1));
-}
-function glassOn(g, on) {
-  g.on = on;
-  if (!on) park(g);
-  g.host.style.filter = on ? `url(#${g.id})` : "";
-  g.host.classList.toggle("lg-refract", on);
+const WAVE_SPEED = .2, WAVE_POOL = 3, WAVE_R0 = 26;
+function lgDrop() {
+  let d = document.getElementById("lg-drop");
+  if (!d) { d = document.createElement("div"); d.id = "lg-drop"; document.body.appendChild(d); }
+  return d;
 }
 
 // A click is a drop in a pond: an uneven ring of wavelets (water/caustic.png,
@@ -279,31 +235,23 @@ document.addEventListener("pointerdown", e => {
   const w = e.target.closest?.(".w"); if (w) ripple(w, e.clientX, e.clientY, e.target);
 }, true);
 
-// The pointer, over anything clickable, is a small clear droplet: the lens
-// map in the host's filter magnifies what's under the pointer, sized to the
-// control, and the meniscus ring (#lg-drop) rides on top. Over bare glass
-// there is no lens.
+// The pointer, over anything clickable, is a small clear droplet riding on
+// it: a meniscus ring with a faint colour fringe, and a backdrop-filter that
+// brightens and saturates what's under it (the control: it's in the page, so
+// unlike the wallpaper it can be filtered). Sized to the control. Over bare
+// glass there is no droplet. Only `translate` moves, once a frame at most.
 const LENSED = BOBS + ", .sp-tab, .fm-item, .fe-item, .cc-pk-row, .fe-search, .fm-input, .fe-name";
-let lens = null, lensXY = null, lensQueued = false;      // lens: { g, el, box, r }
+let lens = null, lensXY = null, lensQueued = false;
 function lensTo(el) {
-  if (el === lens?.el) return;
-  if (lens) glassOn(lens.g, false);
-  lens = null;
-  const host = el?.closest(LENS_HOSTS);
-  if (el && host) {
-    const g = glassOf(host), b = el.getBoundingClientRect();
-    lens = { g, el, box: host.getBoundingClientRect(), r: Math.max(13, Math.min(22, b.height * .72)) };
-    glassOn(g, true);
-  }
-  lgFilters(); const drop = document.getElementById("lg-drop");
-  if (drop) { drop.classList.toggle("on", !!lens); if (lens) drop.style.setProperty("--d", 2 * lens.r + "px"); }
+  if (el === lens) return;
+  lens = el || null;
+  const drop = lgDrop();
+  drop.classList.toggle("on", !!lens);
+  if (lens) drop.style.setProperty("--d", 2 * Math.max(13, Math.min(22, lens.getBoundingClientRect().height * .72)) + "px");
 }
 function moveLens() {
   lensQueued = false;
-  if (!lensXY) return;
-  const drop = document.getElementById("lg-drop");
-  if (drop) drop.style.translate = `${lensXY[0]}px ${lensXY[1]}px`;
-  if (lens) placeMap(lens.g, lensXY[0] - lens.box.left, lensXY[1] - lens.box.top, lens.r, lens.r);
+  if (lensXY) lgDrop().style.translate = `${lensXY[0]}px ${lensXY[1]}px`;
 }
 addEventListener("pointermove", e => {
   if (theme !== "liquid_glass") { if (lens) lensTo(null); return; }

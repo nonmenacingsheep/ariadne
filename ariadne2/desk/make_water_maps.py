@@ -5,9 +5,6 @@
 caustic.png  one click's wave packet as light and shade: an uneven ring of wavelets, strongest at the
              front and decaying inward, each a soft lit crest beside a darker trough (desk.js `ripple`
              spreads it across the widget).
-lens.png     displacement map of a small clear droplet: magnifies the middle, bends hard at the rim.
-             Red/green carry the offset (0.5 = none), alpha its strength, so it can be drawn "over" a
-             neutral grey (desk.js `glassOf`, an feDisplacementMap on the widget's face).
 
 Needs numpy and Pillow. Deterministic (fixed seed), so re-running gives the same files.
 """
@@ -58,25 +55,8 @@ def caustic(n=512):
     return Image.fromarray((np.clip(rgba, 0, 1) * 255 + .5).astype(np.uint8), "RGBA")
 
 
-def lens(n=128):
-    x, y, r, _ = _grid(n)
-    rim = .8
-    v = np.where(r < rim, -.55 * r / rim,                           # sample nearer the middle: magnify
-                 np.where(r < 1, .9 * np.sin((r - rim) / (1 - rim) * np.pi), 0))   # bend hard at the rim
-    with np.errstate(invalid="ignore", divide="ignore"):
-        ux, uy = np.nan_to_num(x / r), np.nan_to_num(y / r)
-    sign = np.sign(v)
-    rgba = np.zeros((n, n, 4))
-    rgba[..., 0] = .5 + .5 * ux * sign
-    rgba[..., 1] = .5 + .5 * uy * sign
-    rgba[..., 2] = .5
-    rgba[..., 3] = np.abs(v)
-    return Image.fromarray((np.clip(rgba, 0, 1) * 255 + .5).astype(np.uint8), "RGBA")
-
-
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     caustic().save(OUT / "caustic.png", optimize=True)
-    lens().save(OUT / "lens.png", optimize=True)
-    for f in ("caustic.png", "lens.png"):
+    for f in ("caustic.png",):
         print(f, (OUT / f).stat().st_size, "bytes")

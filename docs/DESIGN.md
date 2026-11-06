@@ -172,20 +172,19 @@ another.
     flexes when the wave hits it, more the nearer it is to the click. Clicks stack: up to three
     waves per widget, a fourth restarts the oldest. All of it is compositor work (transform and
     opacity), decided once per click.
-  - **The pointer is a droplet:** over anything clickable, a small lens magnifies what's under
-    the pointer for real (an SVG `feDisplacementMap` on the widget's face, only while the
-    pointer is over a control), with a meniscus ring and a faint colour fringe on top. Over bare
-    glass, nothing.
+  - **The pointer is a droplet:** over anything clickable, a small clear droplet rides on the
+    pointer: a meniscus ring with a faint colour fringe and a backdrop-filter that brightens and
+    saturates the control under it. Over bare glass, nothing. It used to magnify for real (an SVG
+    displacement filter on the widget's face), but on the GPU-composited desk that blanked the
+    whole widget, so the theme uses no SVG filters at all.
   - **Sliders, Apple's way:** pressed, the knob turns into a clear pill showing the track through
     it, enlarged, and stretches with drag speed; let go, it settles back to a knob. Sliders
     don't ripple.
-  - **Why the wave doesn't refract the content:** WebKitGTK runs SVG filters on the CPU over the
-    host's whole box every frame; on a widget face that tripled the frame time in tests, so real
-    refraction is kept to the small lens. Other limits found in WebKitGTK 2.52: a map filter on a
-    small element nested inside a widget blanks it, so the lens filter sits on the face (or the
-    settings list, a menu); an `feImage` must overlap its host or parts of the host blank; on an
-    element with `backdrop-filter` the filter turns the blur off, so panels get a denser tint
-    while the lens is on them.
+  - **Why nothing refracts the content:** WebKitGTK runs SVG filters on the CPU over the
+    element's whole box every frame; on a widget face that tripled the frame time, and under GPU
+    compositing it blanked the widget outright. Other limits seen in 2.52: a map filter on a small
+    element nested inside a widget blanks it, and an `feImage` that doesn't overlap its host
+    blanks parts of it.
 - **Blur:** the wallpaper is outside the page, so nothing in CSS can blur it; widgets carry the
   glass with tint and light instead, and have no `backdrop-filter` (it would cost a blur per
   repaint for nothing). Menus, the settings panel, the drawer and the flow editor do blur and

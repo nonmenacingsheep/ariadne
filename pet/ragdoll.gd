@@ -18,6 +18,8 @@ var reach := {}            # bone -> its length, for its moment of inertia
 var env: Node3D            # floor, walls, glass, widget ledges
 var anchor: StaticBody3D
 var pin: PinJoint3D
+var pins: Array = []       # [anchor, joint, limb] she was left hanging from (pin mode): fixed in place
+const MAX_PINS := 4
 var target := Vector3.ZERO # where the anchor goes: the point under his pointer
 var anchor_v := Vector3.ZERO  # how fast his hand is moving her, m/s
 var on := false
@@ -189,16 +191,21 @@ func build(p, sk: Skeleton3D) -> void:
 		var a2 := a1.cross(Vector3.UP).normalized()
 		wiggle[b] = [a1, a2, randf() * TAU, randf() * TAU, randf_range(2.2, 3.8)]
 	Engine.physics_ticks_per_second = IDLE_TICKS
-	anchor = StaticBody3D.new()
-	anchor.collision_layer = 0
-	anchor.collision_mask = 0
+	anchor = _new_anchor()
+	env = Node3D.new()
+	pet.add_child(env)
+
+
+func _new_anchor() -> StaticBody3D:
+	var a := StaticBody3D.new()
+	a.collision_layer = 0
+	a.collision_mask = 0
 	var dot := CollisionShape3D.new()
 	dot.shape = SphereShape3D.new()
 	(dot.shape as SphereShape3D).radius = 0.01
-	anchor.add_child(dot)
-	pet.add_child(anchor)
-	env = Node3D.new()
-	pet.add_child(env)
+	a.add_child(dot)
+	pet.add_child(a)
+	return a
 
 
 # The room she can land in: the floor, the screen's edges, the glass and the
@@ -279,6 +286,23 @@ func start(bone: String, at: Vector3) -> void:
 			if gap < (row[names[i]][2] + row[names[j]][2]) * 0.9:
 				a.add_collision_exception_with(c)
 				exceptions.append([a, c])
+	_hold(b, at)
+
+
+# Caught by another point while she hangs from pins: the pins stay, and this
+# one follows his pointer.
+func grab_more(bone: String, at: Vector3) -> void:
+	var b := _part_for(bone)
+	held = true
+	t = 0.0
+	flail = 1.0
+	limp = _limb(b)
+	for p in pins:
+		limp.append_array(p[2])
+	_hold(b, at)
+
+
+func _hold(b: String, at: Vector3) -> void:
 	anchor.global_position = at
 	anchor_v = Vector3.ZERO
 	target = at
@@ -287,6 +311,28 @@ func start(bone: String, at: Vector3) -> void:
 	pin.global_position = at
 	pin.node_a = pin.get_path_to(anchor)
 	pin.node_b = pin.get_path_to(parts[b])
+	pin.set_meta("limb", _limb(b))
+
+
+# Let go in pin mode: the point he held stays where it is, and she hangs from it.
+func pin_here() -> void:
+	if pin == null:
+		return
+	pins.append([anchor, pin, pin.get_meta("limb")])
+	pin = null
+	anchor = _new_anchor()
+	anchor_v = Vector3.ZERO
+	while pins.size() > MAX_PINS:            # the oldest lets go
+		var old: Array = pins.pop_front()
+		(old[1] as Node).queue_free()
+		(old[0] as Node).queue_free()
+
+
+func _unpin_all() -> void:
+	for p in pins:
+		(p[1] as Node).queue_free()
+		(p[0] as Node).queue_free()
+	pins.clear()
 
 
 func let_go() -> void:
@@ -304,6 +350,14 @@ func let_go() -> void:
 	if pin:
 		pin.queue_free()
 		pin = null
+	_unpin_all()
+
+
+# Poked while she lies in a heap: that part is shoved (an impulse at the point, world).
+func shove(bone: String, at: Vector3, impulse: Vector3) -> void:
+	var pb: PhysicalBone3D = parts[_part_for(bone)]
+	PhysicsServer3D.body_apply_impulse(pb.get_rid(), impulse * float(row[_part_for(bone)][3]) * 0.4, at - pb.global_position)
+	still_for = 0.0
 
 
 # Up she gets: the ragdoll's pose fades into the get-up clip's over `secs`, then stops.
@@ -336,6 +390,7 @@ func stop() -> void:
 	if pin:
 		pin.queue_free()
 		pin = null
+	_unpin_all()
 	for e in exceptions:
 		if is_instance_valid(e[0]) and is_instance_valid(e[1]):
 			(e[0] as PhysicalBone3D).remove_collision_exception_with(e[1])
@@ -420,7 +475,8 @@ func _physics_process(delta: float) -> void:
 		anchor.global_position += step
 		anchor_v = anchor_v.lerp(step / delta, clampf(delta * 20.0, 0.0, 1.0))
 		# Flailing hard when first grabbed, tiring to a wriggle after a few seconds.
-		flail = lerpf(flail, 0.6 if t > 2.5 else 1.0, clampf(delta * 1.5, 0.0, 1.0))
+		var tired := 0.6 if pin != null else (0.25 if t > 6.0 else 0.6)    # left hanging: wriggles, then mostly hangs
+		flail = lerpf(flail, tired if t > 2.5 else 1.0, clampf(delta * 1.5, 0.0, 1.0))
 	else:
 		since_drop += delta
 		# A last flail through the air, limp by the time she's down.

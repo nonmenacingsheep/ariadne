@@ -223,12 +223,26 @@ var grab_at := Vector2.ZERO                # the pointer, while he holds her
 var grab_prev := Vector2.ZERO
 var grab_z := 0.0                          # depth of the point he holds, drawn to the glass
 var ragdoll                                # ragdoll.gd: her physical bones while held and tumbling
+var poke                                   # poke.gd: his pointer pressing on her (poke mode)
+var poking := false
+var poke_z := 0.0                          # depth of the point he's pressing
+# What a left click on her does, picked from her right-click menu: "play" (tap,
+# hug, pick up and throw), "poke" (press on her) or "pin" (pick up, let go,
+# she stays hanging there).
+var mode := "play"
+var menu: PopupMenu
+const MODES := ["play", "poke", "pin"]
+const MODE_FILE := "user://click_mode"
 const RAGDOLL := ["held", "tumble"]
 var last_rect := Rect2()
 var snapshot_path := OS.get_environment("PET_SNAPSHOT")
 
 
 func _ready() -> void:
+	if FileAccess.file_exists(MODE_FILE):
+		var m := FileAccess.get_file_as_string(MODE_FILE).strip_edges()
+		if m in MODES:
+			mode = m
 	get_viewport().transparent_bg = true
 	get_window().title = "ariadne2-pet"      # KWin finds her by this (desk/kwin_layer.js)
 	_cover_ultrawide()
@@ -475,6 +489,10 @@ func _add_jiggle() -> void:
 	jiggle = null
 	tail_bones.clear()
 	tail_rest.clear()
+	# Poking goes after her clips and before the springs, so hair and chest follow it.
+	poke = load("res://poke.gd").new()
+	poke.name = "Poke"
+	skel.add_child(poke)
 	if chains.is_empty():
 		return
 	var sim := SpringBoneSimulator3D.new()
@@ -501,10 +519,12 @@ func _add_jiggle() -> void:
 			sim.set_stiffness_damping_curve(i, _ramp(1.0, 0.3))
 			sim.set_gravity_damping_curve(i, _ramp(0.15, 1.0))
 			sim.set_drag_damping_curve(i, _ramp(1.0, 0.55))
+	var arms: Array[Node] = []                 # what her breasts are pushed by: her arms and hands
 	for c in JIGGLE_COLLIDE:
 		if not have.call(c[0]):
 			continue
 		var b := skel.find_bone(c[0])
+		var arm := String(c[0]).contains("Arm") or String(c[0]).ends_with("Hand")
 		var kids := skel.get_bone_children(b)
 		if c[2] and not kids.is_empty():
 			# A capsule from this joint to the next, however the bone points.
@@ -516,11 +536,15 @@ func _add_jiggle() -> void:
 			cap.position_offset = along / 2.0
 			cap.rotation_offset = Quaternion(Vector3.UP, along.normalized())
 			sim.add_child(cap)
+			if arm:
+				arms.append(cap)
 		else:
 			var col := SpringBoneCollisionSphere3D.new()
 			col.bone_name = c[0]
 			col.radius = c[1]
 			sim.add_child(col)
+			if arm:
+				arms.append(col)
 	floor_plane = SpringBoneCollisionPlane3D.new()
 	sim.add_child(floor_plane)
 	# Only hair and tail bump into her; a chain that sits on the body (chest,
@@ -528,6 +552,12 @@ func _add_jiggle() -> void:
 	for i in chains.size():
 		var root: String = chains[i][0]
 		sim.set_enable_all_child_collisions(i, root.begins_with("Hair") or root.begins_with("Tail"))
+	# Her breasts rest on her chest (its ball would shove them out), but an arm
+	# across them or squeezed against them pushes them aside.
+	for i in breast_chains:
+		sim.set_collision_count(i, arms.size())
+		for k in arms.size():
+			sim.set_collision_path(i, k, sim.get_path_to(arms[k]))
 	tail_chain = -1
 	for i in chains.size():
 		if chains[i][0] == "Tail_0":
@@ -2511,6 +2541,8 @@ func _set_click_rect(r: Rect2) -> void:
 	var lo := (r.position / CLICK_GRID).floor() * CLICK_GRID
 	var hi := (r.end / CLICK_GRID).ceil() * CLICK_GRID
 	r = Rect2(lo, hi - lo)
+	if menu and menu.visible:                  # her menu is open: it takes clicks too
+		r = r.merge(Rect2(Vector2(menu.position), Vector2(menu.size)))
 	if r == last_rect:
 		return
 	last_rect = r
@@ -2521,6 +2553,12 @@ func _set_click_rect(r: Rect2) -> void:
 func _input(event: InputEvent) -> void:
 	# Lying in a heap or getting up: clicks and scrolls leave her be (only a drag picks her up again).
 	var heap := state in ["tumble", "getup"]
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		_menu_at(event.position)
+		return
+	if mode == "poke" and (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT or poking):
+		_poke_input(event)
+		return
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] \
 			and event.pressed and not heap:
 		_stir()
@@ -2546,6 +2584,12 @@ func _input(event: InputEvent) -> void:
 			pressing = false
 			if play.holding_still:
 				play.let_go()
+			elif mode == "pin" and state == "held" and ragdoll.on:
+				ragdoll.pin_here()                  # she stays hanging where he left her
+			elif mode == "pin" and not drag_moved and state not in RAGDOLL and not heap:
+				_grab_start()                       # a click: pinned right where she stands
+				if state == "held":
+					ragdoll.pin_here()
 			elif drag_moved and state == "held":
 				if shakes >= 6:
 					play.after_landing = "shaken"
@@ -2559,28 +2603,120 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and pressing:
 		if event.position.distance_to(drag_from) > 4 and not drag_moved and not play.holding_still:
 			drag_moved = true
-			brain.drop()
-			_unperch_now()
-			if state in RAGDOLL and ragdoll.on:
-				ragdoll.stop()                 # caught again mid-tumble: picked up afresh
-			if grab_bone < 0:
-				return
-			var at: Vector3 = skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local
-			_set_state("held", 1e9)
-			_feel("surprised", 0.4, 1.0)
-			_play("Held", 0.15)
-			roll = 0.0
-			grab_prev = drag_from
+			_grab_start()
 			grab_at = event.position
-			grab_z = at.z
-			held_vel = Vector2.ZERO
-			ragdoll.start(skel.get_bone_name(grab_bone), at)
 		if state != "held":
 			return
 		var v: Vector2 = event.velocity / PPM
 		if absf(v.x) > 2.0 and signf(v.x) != signf(held_vel.x) and held_vel.x != 0.0:
 			shakes += 1                        # shaken side to side
 		grab_at = event.position
+
+
+# Picked up by the point under drag_from (see _pick_grab). Hanging from pins
+# (pin mode), she's caught by another point and the pins stay.
+func _grab_start() -> void:
+	brain.drop()
+	_unperch_now()
+	var more: bool = mode == "pin" and state == "held" and ragdoll.on and not ragdoll.pins.is_empty()
+	if state in RAGDOLL and ragdoll.on and not more:
+		ragdoll.stop()                     # caught again mid-tumble: picked up afresh
+	if grab_bone < 0:
+		return
+	var at: Vector3 = skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local
+	_set_state("held", 1e9)
+	_feel("surprised", 0.4, 1.0)
+	_play("Held", 0.15)
+	roll = 0.0
+	grab_prev = drag_from
+	grab_at = drag_from
+	grab_z = at.z
+	held_vel = Vector2.ZERO
+	if more:
+		ragdoll.grab_more(skel.get_bone_name(grab_bone), at)
+	else:
+		ragdoll.start(skel.get_bone_name(grab_bone), at)
+
+
+# Poke mode: pressed, the point under his pointer is pushed in (poke.gd), and
+# dragging pushes it along; on the floor in a heap, a poke shoves that part.
+func _poke_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if not event.pressed:
+			poking = false
+			if poke:
+				poke.stop()
+			return
+		_stir()
+		_pick_grab(event.position)
+		if grab_bone < 0 or poke == null:
+			return
+		var at: Vector3 = skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local
+		if state in RAGDOLL and ragdoll.on:
+			ragdoll.shove(skel.get_bone_name(grab_bone), at, Vector3.FORWARD * 2.5)
+			return
+		poking = true
+		poke_z = at.z
+		poke.start(grab_bone, at)
+		_feel("surprised", 0.3, 0.7)
+	elif event is InputEventMouseMotion and poking and poke:
+		var hit = Plane(Vector3.BACK, poke_z).intersects_ray(cam.project_ray_origin(event.position), cam.project_ray_normal(event.position))
+		if hit != null:
+			poke.target = hit
+
+
+# Her right-click menu: what a left click on her does.
+func _menu_at(p: Vector2) -> void:
+	if menu == null:
+		menu = PopupMenu.new()
+		var th := Theme.new()
+		var panel := StyleBoxFlat.new()
+		panel.bg_color = Color(0.07, 0.05, 0.09, 0.94)
+		panel.set_corner_radius_all(10)
+		panel.set_border_width_all(1)
+		panel.border_color = Color(1.0, 0.25, 0.32, 0.55)
+		panel.set_content_margin_all(6)
+		var hover := StyleBoxFlat.new()
+		hover.bg_color = Color(1.0, 0.18, 0.26, 0.28)
+		hover.set_corner_radius_all(6)
+		th.set_stylebox("panel", "PopupMenu", panel)
+		th.set_stylebox("hover", "PopupMenu", hover)
+		th.set_color("font_color", "PopupMenu", Color(0.93, 0.9, 0.92))
+		th.set_color("font_hover_color", "PopupMenu", Color.WHITE)
+		th.set_color("font_disabled_color", "PopupMenu", Color(0.6, 0.55, 0.6, 0.6))
+		th.set_font_size("font_size", "PopupMenu", 15)
+		th.set_constant("v_separation", "PopupMenu", 10)
+		th.set_constant("h_separation", "PopupMenu", 10)
+		menu.theme = th
+		menu.add_radio_check_item("Play: tap, hug, pick her up", 0)
+		menu.add_radio_check_item("Poke: press on her", 1)
+		menu.add_radio_check_item("Pin: let go and she stays", 2)
+		menu.add_separator()
+		menu.add_item("Let her down", 3)
+		menu.id_pressed.connect(_menu_pick)
+		menu.popup_hide.connect(func(): last_rect = Rect2(); _update_click_area())
+		add_child(menu)
+	for i in MODES.size():
+		menu.set_item_checked(menu.get_item_index(i), MODES[i] == mode)
+	menu.set_item_disabled(menu.get_item_index(3), not (state == "held" and ragdoll and ragdoll.on and not ragdoll.pins.is_empty()))
+	menu.reset_size()
+	var at := p.clamp(Vector2.ZERO, Vector2(get_window().size) - Vector2(menu.size))
+	menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
+	last_rect = Rect2()
+	_update_click_area()
+
+
+func _menu_pick(id: int) -> void:
+	var pinned: bool = state == "held" and ragdoll and ragdoll.on and not pressing
+	if id == 3 or (id < 3 and MODES[id] != "pin" and pinned):
+		if pinned:
+			ragdoll.let_go()                   # down she comes
+			_set_state("tumble", 99.0)
+	if id < 3:
+		mode = MODES[id]
+		var f := FileAccess.open(MODE_FILE, FileAccess.WRITE)
+		if f:
+			f.store_string(mode)
 
 
 # Which bit of her is under the pointer: the nearest bone on screen, and the
@@ -2970,6 +3106,9 @@ func _snapshot_seq(what: String) -> void:
 		depth = -0.3
 		_set_state("idle", 99.0)
 		_grab_test(what.substr(5))
+	if what.begins_with("poke:") or what.begins_with("pin:"):   # a mode's click on a bone (_mode_test)
+		_set_state("idle", 99.0)
+		_mode_test(what.get_slice(":", 0), what.get_slice(":", 1))
 	if what.begins_with("do:"):                  # one activity of hers, from the middle of the room
 		depth = -0.4
 		var act := what.substr(3)
@@ -3164,6 +3303,57 @@ func _grab_test(bone: String) -> void:
 		if state not in RAGDOLL and state != "getup":
 			print("UP after %d frames: %s" % [i, state])
 			break
+
+
+# A test run of a click mode on one bone. poke: pressed 0.6 s, dragged right
+# a little, let go. pin: lifted up and right, let go (she stays), then a second
+# point caught and pinned left of the first. Logs the pressed bone's travel.
+func _mode_test(m: String, bone: String) -> void:
+	mode = m
+	await get_tree().create_timer(0.6).timeout
+	var b := skel.find_bone(bone)
+	var p := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(b).origin)
+	var start := skel.global_transform * skel.get_bone_global_pose(b).origin
+	var press := func(at: Vector2, down: bool) -> void:
+		var e := InputEventMouseButton.new()
+		e.button_index = MOUSE_BUTTON_LEFT
+		e.pressed = down
+		e.position = at
+		_input(e)
+	var move := func(at: Vector2) -> void:
+		var e := InputEventMouseMotion.new()
+		e.position = at
+		e.velocity = Vector2.ZERO
+		_input(e)
+	press.call(p, true)
+	var at := p
+	for i in 60:
+		if m == "poke" and i > 20:
+			at = p + Vector2((i - 20) * 1.5, 0.0)
+		elif m == "pin":
+			at = p + Vector2(minf(i, 40) * 4.0, -minf(i, 40) * 6.0)
+		move.call(at)
+		await get_tree().process_frame
+		if i % 10 == 0:
+			var now := skel.global_transform * skel.get_bone_global_pose(b).origin
+			print("MODE %s %d %s moved %.3f m state %s" % [m, i, bone, now.distance_to(start), state])
+	press.call(at, false)
+	if m == "pin":
+		for i in 90:
+			await get_tree().process_frame
+		var h := skel.find_bone("LeftHand" if bone != "LeftHand" else "RightHand")
+		var q := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(h).origin)
+		press.call(q, true)
+		for i in 40:
+			move.call(q + Vector2(-minf(i, 30) * 6.0, -minf(i, 30) * 3.0))
+			await get_tree().process_frame
+		press.call(q + Vector2(-180, -90), false)
+		print("PINS %d state %s" % [ragdoll.pins.size(), state])
+	for i in 120:
+		await get_tree().process_frame
+		if i % 20 == 0:
+			var now := skel.global_transform * skel.get_bone_global_pose(b).origin
+			print("AFTER %d %s moved %.3f m state %s" % [i, bone, now.distance_to(start), state])
 
 
 # A test run's pointer: stroking her head, tickling her, circling her, held still, clicks on her parts.

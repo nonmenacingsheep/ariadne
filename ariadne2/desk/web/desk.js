@@ -245,6 +245,7 @@ document.addEventListener("pointerdown", e => {
 // while it moves and stops when it has settled (or faded).
 const LENSED = BOBS + ", .sp-tab, .fm-item, .fe-item, .cc-pk-row, .fe-search, .fm-input, .fe-name";
 const BEAD = { k: 210, c: 21, pull: .62, snap: .3, base: 44 };    // spring (per s^2, per s), pull toward the middle, snap zone, CSS size
+const LONG = 3.2;                     // this many times longer than it's thick: a bar, centred across only
 let lens = null, lensXY = null;
 const bead = { x: 0, y: 0, vx: 0, vy: 0, s: .3, vs: 0, run: false, last: 0, off: 0 };
 function lensTo(el) {
@@ -264,6 +265,11 @@ function lensTo(el) {
 function beadTarget() {
   if (!lens || !lensXY) return [bead.x, bead.y];
   const [cx, cy, w, h] = bead.c, dx = lensXY[0] - cx, dy = lensXY[1] - cy;
+  // A long one (the chat bar, a tab, a file row): pulled to its middle it would
+  // sit far from the pointer, so it only centres across it and follows along it.
+  const room = bead.size / 2;
+  if (w > LONG * h) return [cx + Math.max(-1, Math.min(1, dx / Math.max(w / 2 - room, 1))) * Math.max(w / 2 - room, 0), cy];
+  if (h > LONG * w) return [cx, cy + Math.max(-1, Math.min(1, dy / Math.max(h / 2 - room, 1))) * Math.max(h / 2 - room, 0)];
   // near the middle it snaps there; farther out it leans in by `pull`
   const nx = dx / (w / 2 || 1), ny = dy / (h / 2 || 1);
   if (Math.hypot(nx, ny) < BEAD.snap) return [cx, cy];

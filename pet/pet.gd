@@ -225,6 +225,7 @@ var grab_z := 0.0                          # depth of the point he holds, drawn 
 var ragdoll                                # ragdoll.gd: her physical bones while held and tumbling
 var poke                                   # poke.gd: his pointer pressing on her (poke mode)
 var poking := false
+var squish                                 # squish.gd: her arms pressing her breasts aside
 var poke_z := 0.0                          # depth of the point he's pressing
 # What a left click on her does, picked from her right-click menu: "play" (tap,
 # hug, pick up and throw), "poke" (press on her) or "pin" (pick up, let go,
@@ -234,6 +235,7 @@ var menu: PopupMenu
 const MODES := ["play", "poke", "pin"]
 const MODE_FILE := "user://click_mode"
 const RAGDOLL := ["held", "tumble"]
+const DEPTH_STEP := 0.25                   # metres a wheel notch carries her, held
 var last_rect := Rect2()
 var snapshot_path := OS.get_environment("PET_SNAPSHOT")
 
@@ -469,6 +471,8 @@ func _breast_feel() -> void:
 	if jiggle == null:
 		return
 	var on: bool = outfit["jacket"]
+	if squish:
+		squish.firm = on
 	for i in breast_chains:
 		jiggle.set_stiffness(i, 4.5 if on else 2.6)
 		jiggle.set_drag(i, 0.55 if on else 0.32)
@@ -487,6 +491,7 @@ func _add_jiggle() -> void:
 	var have := func(b: String) -> bool: return skel.find_bone(b) >= 0
 	var chains := JIGGLE.filter(func(c): return have.call(c[0]) and have.call(c[1]))
 	jiggle = null
+	squish = null
 	tail_bones.clear()
 	tail_rest.clear()
 	# Poking goes after her clips and before the springs, so hair and chest follow it.
@@ -519,12 +524,10 @@ func _add_jiggle() -> void:
 			sim.set_stiffness_damping_curve(i, _ramp(1.0, 0.3))
 			sim.set_gravity_damping_curve(i, _ramp(0.15, 1.0))
 			sim.set_drag_damping_curve(i, _ramp(1.0, 0.55))
-	var arms: Array[Node] = []                 # what her breasts are pushed by: her arms and hands
 	for c in JIGGLE_COLLIDE:
 		if not have.call(c[0]):
 			continue
 		var b := skel.find_bone(c[0])
-		var arm := String(c[0]).contains("Arm") or String(c[0]).ends_with("Hand")
 		var kids := skel.get_bone_children(b)
 		if c[2] and not kids.is_empty():
 			# A capsule from this joint to the next, however the bone points.
@@ -536,15 +539,11 @@ func _add_jiggle() -> void:
 			cap.position_offset = along / 2.0
 			cap.rotation_offset = Quaternion(Vector3.UP, along.normalized())
 			sim.add_child(cap)
-			if arm:
-				arms.append(cap)
 		else:
 			var col := SpringBoneCollisionSphere3D.new()
 			col.bone_name = c[0]
 			col.radius = c[1]
 			sim.add_child(col)
-			if arm:
-				arms.append(col)
 	floor_plane = SpringBoneCollisionPlane3D.new()
 	sim.add_child(floor_plane)
 	# Only hair and tail bump into her; a chain that sits on the body (chest,
@@ -552,12 +551,14 @@ func _add_jiggle() -> void:
 	for i in chains.size():
 		var root: String = chains[i][0]
 		sim.set_enable_all_child_collisions(i, root.begins_with("Hair") or root.begins_with("Tail"))
-	# Her breasts rest on her chest (its ball would shove them out), but an arm
-	# across them or squeezed against them pushes them aside.
-	for i in breast_chains:
-		sim.set_collision_count(i, arms.size())
-		for k in arms.size():
-			sim.set_collision_path(i, k, sim.get_path_to(arms[k]))
+	# Her breasts rest on her chest (its ball would shove them out); an arm
+	# against them presses them aside softly (squish.gd), after the springs.
+	if not breast_chains.is_empty():
+		squish = load("res://squish.gd").new()
+		squish.name = "Squish"
+		skel.add_child(squish)
+		squish.setup(skel)
+		squish.firm = outfit["jacket"]
 	tail_chain = -1
 	for i in chains.size():
 		if chains[i][0] == "Tail_0":
@@ -2560,6 +2561,11 @@ func _input(event: InputEvent) -> void:
 		_poke_input(event)
 		return
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] \
+			and event.pressed and state == "held" and pressing:
+		# Held: the wheel carries her toward the glass (up) or back into her room (down).
+		grab_z = clampf(grab_z + (DEPTH_STEP if event.button_index == MOUSE_BUTTON_WHEEL_UP else -DEPTH_STEP), -room_depth + 0.15, -0.05)
+		return
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] \
 			and event.pressed and not heap:
 		_stir()
 		play.run("twirl")                     # scrolled over her: round she goes
@@ -2618,12 +2624,14 @@ func _input(event: InputEvent) -> void:
 func _grab_start() -> void:
 	brain.drop()
 	_unperch_now()
-	var more: bool = mode == "pin" and state == "held" and ragdoll.on and not ragdoll.pins.is_empty()
-	if state in RAGDOLL and ragdoll.on and not more:
-		ragdoll.stop()                     # caught again mid-tumble: picked up afresh
+	# Caught again mid-tumble or while she hangs: from the pose she's in. In pin
+	# mode the pins stay; otherwise this picks her off them.
+	var more: bool = state in RAGDOLL and ragdoll.on
+	if more and mode != "pin":
+		ragdoll.unpin_all()
 	if grab_bone < 0:
 		return
-	var at: Vector3 = skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local
+	var at: Vector3 = _bone_xf(grab_bone) * grab_local
 	_set_state("held", 1e9)
 	_feel("surprised", 0.4, 1.0)
 	_play("Held", 0.15)
@@ -2651,7 +2659,7 @@ func _poke_input(event: InputEvent) -> void:
 		_pick_grab(event.position)
 		if grab_bone < 0 or poke == null:
 			return
-		var at: Vector3 = skel.global_transform * skel.get_bone_global_pose(grab_bone) * grab_local
+		var at: Vector3 = _bone_xf(grab_bone) * grab_local
 		if state in RAGDOLL and ragdoll.on:
 			ragdoll.shove(skel.get_bone_name(grab_bone), at, Vector3.FORWARD * 2.5)
 			return
@@ -2708,15 +2716,31 @@ func _menu_at(p: Vector2) -> void:
 
 func _menu_pick(id: int) -> void:
 	var pinned: bool = state == "held" and ragdoll and ragdoll.on and not pressing
-	if id == 3 or (id < 3 and MODES[id] != "pin" and pinned):
-		if pinned:
-			ragdoll.let_go()                   # down she comes
-			_set_state("tumble", 99.0)
+	if id == 3 and pinned:                     # (another mode leaves her hanging till this)
+		ragdoll.let_go()                       # down she comes
+		_set_state("tumble", 99.0)
 	if id < 3:
 		mode = MODES[id]
 		var f := FileAccess.open(MODE_FILE, FileAccess.WRITE)
 		if f:
 			f.store_string(mode)
+
+
+# Where a bone is drawn, in the world. While she's a ragdoll her physical parts
+# place her: the skeleton's own pose, read outside its modifiers, is still the
+# clip's ("Held"), up to a metre from what's on screen.
+func _bone_xf(i: int) -> Transform3D:
+	if state in RAGDOLL and ragdoll and ragdoll.on:
+		var chain := Transform3D()
+		var j := i
+		while j >= 0 and not ragdoll.parts.has(skel.get_bone_name(j)):
+			chain = skel.get_bone_pose(j) * chain
+			j = skel.get_bone_parent(j)
+		if j >= 0:
+			var pb: PhysicalBone3D = ragdoll.parts[skel.get_bone_name(j)]
+			var ph := pb.global_transform * pb.body_offset.affine_inverse()
+			return Transform3D(ph.basis.orthonormalized() * Basis.from_scale(skel.global_basis.get_scale()), ph.origin) * chain
+	return skel.global_transform * skel.get_bone_global_pose(i)
 
 
 # Which bit of her is under the pointer: the nearest bone on screen, and the
@@ -2739,12 +2763,12 @@ func _pick_grab(p: Vector2) -> void:
 		var ia := skel.find_bone(s[0])
 		if ia < 0:
 			continue
-		var a := skel.global_transform * skel.get_bone_global_pose(ia).origin
+		var a := _bone_xf(ia).origin
 		var b: Vector3
 		if s[1] != "" and skel.find_bone(s[1]) >= 0:
-			b = skel.global_transform * skel.get_bone_global_pose(skel.find_bone(s[1])).origin
+			b = _bone_xf(skel.find_bone(s[1])).origin
 		else:                                  # the top of her head, her fingers: past the joint
-			var pa := skel.global_transform * skel.get_bone_global_pose(skel.get_bone_parent(ia)).origin
+			var pa := _bone_xf(skel.get_bone_parent(ia)).origin
 			b = a + (a - pa) * (1.4 if s[0] == "Head" else 0.6)
 		var sa := cam.unproject_position(a)
 		var sb := cam.unproject_position(b)
@@ -2762,7 +2786,7 @@ func _pick_grab(p: Vector2) -> void:
 	var hit = Plane(Vector3.BACK, at.z).intersects_ray(cam.project_ray_origin(p), cam.project_ray_normal(p))
 	if hit != null:
 		at = hit
-	grab_local = (skel.global_transform * skel.get_bone_global_pose(grab_bone)).affine_inverse() * at
+	grab_local = _bone_xf(grab_bone).affine_inverse() * at
 
 
 # Held: the point he grabbed follows his pointer (drawn to the glass); let go,
@@ -2774,7 +2798,6 @@ func _held_frame(delta: float) -> void:
 		ragdoll.stop()                         # something else took her over (a verb from Aries): back to her clips
 		return
 	if state == "held":
-		grab_z = lerpf(grab_z, 0.0, clampf(delta * 3.0, 0.0, 1.0))
 		var hit = Plane(Vector3.BACK, grab_z).intersects_ray(cam.project_ray_origin(grab_at), cam.project_ray_normal(grab_at))
 		if hit != null:
 			ragdoll.target = hit
@@ -3222,6 +3245,8 @@ func _chest_test(pick: String) -> void:
 		await get_tree().create_timer(0.1).timeout
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_chest_%02d.png" % i))
+		if squish:
+			print("SQUISH %d arm in %.3f m" % [i, squish.most_in])
 	get_tree().quit()
 
 
@@ -3312,8 +3337,8 @@ func _mode_test(m: String, bone: String) -> void:
 	mode = m
 	await get_tree().create_timer(0.6).timeout
 	var b := skel.find_bone(bone)
-	var p := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(b).origin)
-	var start := skel.global_transform * skel.get_bone_global_pose(b).origin
+	var p := cam.unproject_position(_bone_xf(b).origin)
+	var start := _bone_xf(b).origin
 	var press := func(at: Vector2, down: bool) -> void:
 		var e := InputEventMouseButton.new()
 		e.button_index = MOUSE_BUTTON_LEFT
@@ -3335,14 +3360,14 @@ func _mode_test(m: String, bone: String) -> void:
 		move.call(at)
 		await get_tree().process_frame
 		if i % 10 == 0:
-			var now := skel.global_transform * skel.get_bone_global_pose(b).origin
+			var now := _bone_xf(b).origin
 			print("MODE %s %d %s moved %.3f m state %s" % [m, i, bone, now.distance_to(start), state])
 	press.call(at, false)
 	if m == "pin":
 		for i in 90:
 			await get_tree().process_frame
 		var h := skel.find_bone("LeftHand" if bone != "LeftHand" else "RightHand")
-		var q := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(h).origin)
+		var q := cam.unproject_position(_bone_xf(h).origin)
 		press.call(q, true)
 		for i in 40:
 			move.call(q + Vector2(-minf(i, 30) * 6.0, -minf(i, 30) * 3.0))
@@ -3352,7 +3377,7 @@ func _mode_test(m: String, bone: String) -> void:
 	for i in 120:
 		await get_tree().process_frame
 		if i % 20 == 0:
-			var now := skel.global_transform * skel.get_bone_global_pose(b).origin
+			var now := _bone_xf(b).origin
 			print("AFTER %d %s moved %.3f m state %s" % [i, bone, now.distance_to(start), state])
 
 

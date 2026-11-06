@@ -49,7 +49,9 @@ UNSURE_BELOW = -0.85
 # comes back in 0.7-1.1 s that way, against 2.1-3.5 s to load it afresh, and
 # the card keeps only the CUDA context (~170 MB) instead of 2.3 GB. The price is
 # ~1.6 GB of RAM. CPU models are simply dropped; tiny.en reloads in a moment.
-IDLE_UNLOAD_S = 300.0
+# Back that fast (and what he says meanwhile held, listener.py), it can go 20 s
+# after she last spoke: the card is free nearly all the time.
+IDLE_UNLOAD_S = 20.0
 # Whisper is markedly better on well-levelled audio (about nine points on quiet
 # input). Capped so near-silence is not amplified into hiss it hallucinates from.
 TARGET_PEAK = 0.7
@@ -127,8 +129,10 @@ class Transcriber:
             self._used[name] = self.clock()
             if name in self._models:
                 if name in self._parked:
+                    began = time.monotonic()
                     self._models[name].model.load_model()       # RAM back to the card
                     self._parked.discard(name)
+                    log.info("ears: %s back on the card in %.2f s", name, time.monotonic() - began)
                     self._used[name] = self.clock()
                 return self._models[name]
             factory = self._factory
@@ -221,7 +225,7 @@ class Transcriber:
         if idle:
             import gc
             gc.collect()
-            log.info("ears: let go of %s after %d idle minutes", ", ".join(idle), idle_s // 60)
+            log.info("ears: let go of %s after %d idle seconds", ", ".join(idle), idle_s)
         return idle
 
     def unload(self) -> int:

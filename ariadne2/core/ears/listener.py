@@ -39,7 +39,7 @@ MAX_BACKOFF_S = 60.0
 # After the wake phrase, this much more speech in the same breath is a command
 # said with it ("wake Aries, play something"); less is a breath or the phrase's tail.
 WOKE_WORDS_MS = 250
-UNLOAD_CHECK_S = 10.0            # how often idle Whisper models are looked at
+UNLOAD_CHECK_S = 2.0             # how often idle Whisper models are looked at
 
 
 class Listener:
@@ -67,6 +67,7 @@ class Listener:
         self._spot_stale = True                 # it missed audio: reset before trusting it again
         self._her_voice = False
         self._unload_at = 0.0
+        self._her_quiet_at = 0.0         # when she last stopped talking (clock)
         self.restarts = 0
         self.heard = 0
         self.dropped = 0
@@ -237,6 +238,8 @@ class Listener:
             if spotter is not None and her_voice and not self._her_voice:
                 # Over her voice only Whisper hears "skip"; tiny.en is loaded while she talks.
                 self.transcriber.prefetch(transcribe.WAKE_MODEL)
+            if self._her_voice and not her_voice:
+                self._her_quiet_at = self.clock()
             self._her_voice = her_voice
             if her_voice and not self.barge_in:
                 seg.reset()
@@ -318,7 +321,8 @@ class Listener:
             return
         self._unload_at = now + UNLOAD_CHECK_S
         if self.spotting() is None or self.dialogue.awake or self.dialogue.ptt \
-                or self.is_speaking() or not self._pending.empty():
+                or self.is_speaking() or not self._pending.empty() \
+                or now - self._her_quiet_at < transcribe.IDLE_UNLOAD_S:
             return
         self.transcriber.unload_idle()
 

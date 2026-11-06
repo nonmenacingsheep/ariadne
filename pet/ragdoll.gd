@@ -294,11 +294,22 @@ func start(bone: String, at: Vector3) -> void:
 func grab_more(bone: String, at: Vector3) -> void:
 	var b := _part_for(bone)
 	held = true
-	t = 0.0
-	flail = 1.0
+	landed = false
+	impact = 0.0
+	since_drop = 0.0
+	still_for = 0.0
+	if pin:                                # (a hold still on: caught twice in one press)
+		pin.queue_free()
+		pin = null
+	flail = maxf(flail, 0.7)
 	limp = _limb(b)
 	for p in pins:
 		limp.append_array(p[2])
+	# (`at` is on her physical part: pet.gd's _bone_xf. Read from her skeleton it
+	# was the "Held" clip's pose, up to a metre off, and the pin yanked her over.)
+	if OS.get_environment("PET_SNAPSHOT_SEQ").begins_with("pin:"):
+		var pb: PhysicalBone3D = parts[b]
+		print("GRIP %s %.3f m from the part" % [b, at.distance_to(pb.global_position)])
 	_hold(b, at)
 
 
@@ -328,7 +339,7 @@ func pin_here() -> void:
 		(old[0] as Node).queue_free()
 
 
-func _unpin_all() -> void:
+func unpin_all() -> void:
 	for p in pins:
 		(p[1] as Node).queue_free()
 		(p[0] as Node).queue_free()
@@ -350,7 +361,7 @@ func let_go() -> void:
 	if pin:
 		pin.queue_free()
 		pin = null
-	_unpin_all()
+	unpin_all()
 
 
 # Poked while she lies in a heap: that part is shoved (an impulse at the point, world).
@@ -390,7 +401,7 @@ func stop() -> void:
 	if pin:
 		pin.queue_free()
 		pin = null
-	_unpin_all()
+	unpin_all()
 	for e in exceptions:
 		if is_instance_valid(e[0]) and is_instance_valid(e[1]):
 			(e[0] as PhysicalBone3D).remove_collision_exception_with(e[1])

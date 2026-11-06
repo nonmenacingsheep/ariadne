@@ -186,8 +186,11 @@ func next() -> void:
 		pet.call(step["call"])
 	elif step.has("thing"):
 		# Something appears on the floor a little in front of her (and to one side).
-		var at: Vector3 = pet.ground_ahead(float(step.get("at", 0.45)))
-		at += Vector3(cos(pet.yaw), 0, -sin(pet.yaw)) * randf_range(-0.12, 0.12)
+		var side := Vector3(cos(pet.yaw), 0, -sin(pet.yaw))
+		var at: Vector3 = pet.ground_ahead(float(step.get("at", 0.45))) + side * randf_range(-0.12, 0.12)
+		match step.get("where", "floor"):
+			"above": at = pet.face_point(0.16) + Vector3(0, 1.1, 0)                 # a spider's thread, a leaf
+			"air": at = pet.face_point(0.5) + side * (0.9 if randf() < 0.5 else -0.9)    # a butterfly coming by
 		pet.things.spawn(step["thing"], at)
 		next()
 	elif step.has("thing_do"):

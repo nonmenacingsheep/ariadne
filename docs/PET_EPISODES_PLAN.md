@@ -82,9 +82,9 @@ again for a long while; plenty of plain walking and idling between.
 
 ## STATUS
 
-- [ ] 1. Walk styles: clips, loops, mood-picked per trip; more walking
+- [x] 1. Walk styles: clips, loops, mood-picked per trip; more walking (15 loops; one tiptoe take, its second had no steady stride)
 - [x] 2. Episode engine (`episodes.json`, beats, branches, brain scoring)
-- [ ] 3. Things (`things.gd`): ladybug/beetle first, then the rest
-- [ ] 4. Beat clips for the first episodes
-- [ ] 5. The first ten episodes, filmed and checked
+- [x] 3. Things (`things.gd`): ladybug, butterfly, spider on a thread, leaf (beetle, moth, dust bunny, coin to come)
+- [x] 4. Beat clips for the first episodes (26, all passed their pinned-pose checks first try)
+- [ ] 5. The first ten episodes, filmed and checked (six done: bug, butterfly, spider, leaf, tripping, sneeze)
 - [ ] 6. The catalogue to dozens

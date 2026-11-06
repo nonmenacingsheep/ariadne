@@ -7,7 +7,10 @@ extends Node3D
 #
 # One at a time. pet.gd and brain.gd drive it with do(): "crawl" (to a point),
 # "wander", "flee" (away from her), "fly_off", "hand" (onto her hand, riding
-# it), "hop_at" (a hop at her face, then down and away).
+# it), "hop_at" (a hop at her face, then down and away); a butterfly
+# "flutter"s about near her and can land on her "nose"; a spider "drop"s on its
+# thread to her face and "zip"s back up; a leaf "drift"s down to the floor,
+# her "head" or her "hand".
 
 var pet
 var thing: Node3D                          # what's out now, or null
@@ -21,6 +24,8 @@ var legs: Array = []                       # leg pivots, for the scuttle
 var wings: Array = []                      # wing cases and wings, for flying
 var size := 1.0                            # its scale, eased in on appearing and out on going
 var going := false
+var thread: MeshInstance3D                 # a spider's line up to where it hangs from
+var top := Vector3.ZERO                    # where that is
 
 const SCALE := 1.0
 const CRAWL := 0.18                        # m/s on the floor (cartoon-fast)
@@ -44,12 +49,32 @@ func spawn(k: String, at: Vector3) -> void:
 	clear()
 	kind = k
 	match k:
+		"butterfly":
+			thing = _butterfly()
+		"spider":
+			thing = _spider()
+		"leaf":
+			thing = _leaf()
 		_:
 			thing = _ladybug()
 	add_child(thing)
 	pet._toonify(thing)
 	thing.global_position = at
 	thing.rotation.y = randf() * TAU
+	if k == "spider":
+		top = at
+		thread = MeshInstance3D.new()
+		var c := CylinderMesh.new()
+		c.top_radius = 0.0012
+		c.bottom_radius = 0.0012
+		c.height = 1.0
+		thread.mesh = c
+		var tm := StandardMaterial3D.new()
+		tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		tm.albedo_color = Color(0.9, 0.9, 0.95, 0.7)
+		tm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		thread.material_override = tm
+		add_child(thread)
 	born = t
 	size = 0.01
 	going = false
@@ -60,7 +85,10 @@ func spawn(k: String, at: Vector3) -> void:
 func clear() -> void:
 	if thing:
 		thing.queue_free()
+	if thread:
+		thread.queue_free()
 	thing = null
+	thread = null
 	legs.clear()
 	wings.clear()
 
@@ -68,6 +96,12 @@ func clear() -> void:
 func do(action: String, at := Vector3.ZERO) -> void:
 	if thing == null:
 		return
+	if action == "flee" and kind != "ladybug":
+		# Away, its own way: a butterfly flies, a spider climbs its thread, a leaf just goes.
+		action = {"butterfly": "fly_off", "spider": "zip"}.get(kind, "")
+		if action == "":
+			going = true
+			return
 	act = action
 	match action:
 		"crawl":
@@ -85,6 +119,12 @@ func do(action: String, at := Vector3.ZERO) -> void:
 			var face := _her() + Vector3(0, 0.55, 0)
 			var d := face - thing.global_position
 			vel = Vector3(d.x, 0.0, d.z) * 1.6 + Vector3(0, 2.6, 0)
+		"drop":
+			goal = pet.face_point(0.16)        # on its thread, just in front of her face
+		"zip":
+			goal = top
+		"drift":
+			goal = at if at != Vector3.ZERO else Vector3(thing.global_position.x, 0.0, thing.global_position.z)
 
 
 func _process(delta: float) -> void:
@@ -126,11 +166,41 @@ func _process(delta: float) -> void:
 				p.y = 0.0
 				do("flee")
 		"hand":
-			var h: Vector3 = pet.hand_point("Right")
-			p = p.lerp(h, clampf(delta * 10.0, 0.0, 1.0))
-	if not act in ["fly_off", "hop_at", "hand"]:
+			var h: Vector3 = pet.hand_point("Right") + Vector3(0, 0.02, 0)
+			p = p.lerp(h, clampf(delta * (10.0 if kind != "butterfly" else 2.5), 0.0, 1.0))
+			flying = kind == "butterfly" and p.distance_to(h) > 0.03
+		"nose":
+			var n: Vector3 = pet.face_point(0.07)
+			p = p.lerp(n, clampf(delta * 2.5, 0.0, 1.0))
+			flying = p.distance_to(n) > 0.03
+		"head":
+			var hd: Vector3 = pet.face_point(-0.02) + Vector3(0, 0.14, 0)
+			p = p.lerp(hd, clampf(delta * (1.5 if kind == "leaf" else 4.0), 0.0, 1.0))
+		"flutter":
+			# Round and about near her face, bobbing.
+			var c: Vector3 = pet.face_point(0.45) + Vector3(sin(t * 0.7) * 0.35, sin(t * 1.3) * 0.15 + 0.1, cos(t * 0.5) * 0.15)
+			p = p.lerp(c, clampf(delta * 1.5, 0.0, 1.0))
+			flying = true
+		"drop", "zip":
+			p = p.lerp(goal, clampf(delta * (2.0 if act == "drop" else 5.0), 0.0, 1.0))
+			if act == "zip" and p.distance_to(goal) < 0.05:
+				going = true
+		"drift":
+			# Down in a swaying zigzag, turning over as it goes.
+			p.y = maxf(goal.y, p.y - 0.28 * delta)
+			p.x += sin(t * 2.2) * 0.25 * delta
+			p.x = lerpf(p.x, goal.x, clampf(delta * 0.6, 0.0, 1.0))
+			p.z = lerpf(p.z, goal.z, clampf(delta * 0.6, 0.0, 1.0))
+			thing.rotation.z = sin(t * 2.2) * 0.7
+	if not act in ["fly_off", "hop_at", "hand", "nose", "head", "flutter", "drop", "zip", "drift"] and kind in ["ladybug"]:
 		p.y = 0.0
 	thing.global_position = p
+	if thread:
+		thread.global_position = (top + p) * 0.5
+		thread.scale = Vector3(1, maxf(0.01, top.distance_to(p)), 1)
+	if kind == "butterfly" and (flying or act == "fly_off"):
+		for w in wings:
+			(w as Node3D).rotation.z = (w as Node3D).get_meta("side") * (0.2 + absf(sin(t * 14.0)) * 1.1)
 	# Legs scuttle when it walks; wings open when it flies.
 	for i in legs.size():
 		(legs[i] as Node3D).rotation.x = (sin(t * 28.0 + i * 2.1) * 0.5) if moving else 0.0
@@ -171,6 +241,74 @@ func _ball(r: float, c: Color, at: Vector3, half := false) -> MeshInstance3D:
 	mi.material_override = _mat(c)
 	mi.position = at
 	return mi
+
+
+# A butterfly about 9 cm across: two pairs of soft orange wings with dark tips
+# and pale spots, a slim dark body; the wings beat while it flies.
+func _butterfly() -> Node3D:
+	var root := Node3D.new()
+	legs.clear()
+	wings.clear()
+	var body := _ball(0.006, Color(0.12, 0.09, 0.08), Vector3.ZERO)
+	body.scale = Vector3(1, 1, 4.5)
+	root.add_child(body)
+	for side in [-1.0, 1.0]:
+		var hinge := Node3D.new()
+		hinge.set_meta("side", side)
+		for w in [[Vector3(side * 0.024, 0, 0.012), Vector2(0.045, 0.038), Color(0.98, 0.55, 0.15)],
+				[Vector3(side * 0.018, 0, -0.016), Vector2(0.032, 0.03), Color(0.95, 0.45, 0.12)]]:
+			var wing := _ball(0.5, w[2], w[0])
+			wing.scale = Vector3((w[1] as Vector2).x, 0.004, (w[1] as Vector2).y)
+			hinge.add_child(wing)
+			var tip := _ball(0.5, Color(0.15, 0.1, 0.1), (w[0] as Vector3) + Vector3(side * 0.012, 0.001, 0.006))
+			tip.scale = Vector3((w[1] as Vector2).x * 0.45, 0.005, (w[1] as Vector2).y * 0.45)
+			hinge.add_child(tip)
+		root.add_child(hinge)
+		wings.append(hinge)
+	return root
+
+
+# A small round spider, dark, with eight bent legs, on a silk thread.
+func _spider() -> Node3D:
+	var root := Node3D.new()
+	legs.clear()
+	wings.clear()
+	var dark := Color(0.12, 0.1, 0.11)
+	var belly := _ball(0.018, dark, Vector3(0, 0, -0.012))
+	root.add_child(belly)
+	root.add_child(_ball(0.011, dark, Vector3(0, 0, 0.012)))
+	for sx in [-1.0, 1.0]:
+		root.add_child(_ball(0.003, Color(0.95, 0.95, 0.95), Vector3(sx * 0.004, 0.006, 0.021)))
+		for k in 4:
+			var leg := Node3D.new()
+			leg.position = Vector3(sx * 0.008, 0, 0.012 - k * 0.007)
+			var c := CylinderMesh.new()
+			c.top_radius = 0.0015
+			c.bottom_radius = 0.0015
+			c.height = 0.03
+			var stick := MeshInstance3D.new()
+			stick.mesh = c
+			stick.material_override = _mat(dark)
+			stick.position = Vector3(sx * 0.012, 0.004, 0)
+			stick.rotation = Vector3(0, sx * (k - 1.5) * 0.35, sx * 1.2)
+			leg.add_child(stick)
+			root.add_child(leg)
+			legs.append(leg)
+	return root
+
+
+# An autumn leaf about 8 cm long, flat with a stem.
+func _leaf() -> Node3D:
+	var root := Node3D.new()
+	legs.clear()
+	wings.clear()
+	var blade := _ball(0.5, Color(0.9, 0.48, 0.12), Vector3.ZERO)
+	blade.scale = Vector3(0.05, 0.004, 0.08)
+	root.add_child(blade)
+	var stem := _ball(0.5, Color(0.45, 0.28, 0.1), Vector3(0, 0, -0.045))
+	stem.scale = Vector3(0.004, 0.004, 0.025)
+	root.add_child(stem)
+	return root
 
 
 # A ladybug about 7 cm long: red shell in two wing cases with black spots, a

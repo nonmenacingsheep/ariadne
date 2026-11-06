@@ -9,33 +9,624 @@
 		"branch: [[weight, [beats...]], ...]: one ending, picked when the episode starts."
 	],
 	"bug_in_the_corner": {
-		"weight": 1.0, "cool": 600, "needs": ["crouch_idle_"], "mood": {"bored": 0.5, "joy": 0.2},
+		"weight": 1.0,
+		"cool": 600,
+		"needs": [
+			"crouch_idle_"
+		],
+		"mood": {
+			"bored": 0.5,
+			"joy": 0.2
+		},
 		"beats": [
-			{"go": "corner", "walk": "walk_hands_"},
-			{"play": "Idle", "for": 1.2, "look": "ground"},
-			{"thing": "ladybug", "at": 0.45},
-			{"play": ["crouch_peer_", "crouch_idle_"], "for": 3.5, "look": "thing", "mood": "fun", "emote": "question"},
-			{"play": ["crouch_reach_", "crouch_idle_"], "for": 2.5, "look": "thing"},
-			{"branch": [
-				[0.45, [
-					{"thing_do": "hop_at"},
-					{"play": ["fall_sit_", "play_feet_"], "end": true, "quick": true, "mood": "surprised", "mood_w": 1.0, "emote": "exclaim", "look": "thing"},
-					{"play": ["sitfloor_rub_", "floor_sit_"], "for": 3.0, "mood": "sorrow", "mood_w": 0.4},
-					{"play": ["sitfloor_laugh_", "floor_sit_"], "for": 3.0, "mood": "joy", "emote": "note"}
-				]],
-				[0.35, [
-					{"thing_do": "hand"},
-					{"play": ["rise_hand_", "Idle"], "end": true, "look": "thing", "mood": "joy"},
-					{"play": ["stand_hand_look_", "Idle"], "for": 3.5, "look": "thing", "mood": "joy", "emote": "heart"},
-					{"thing_do": "fly_off"},
-					{"play": ["wave_up_", "play_wave_back_"], "end": true, "look": "thing"}
-				]],
-				[0.2, [
-					{"thing_do": "fly_off"},
-					{"play": ["crouch_lookup_", "crouch_idle_"], "for": 2.0, "look": "thing", "mood": "surprised", "emote": "exclaim"},
-					{"play": "Idle", "for": 2.5, "look": "thing", "emote": "question"}
-				]]
-			]}
+			{
+				"go": "corner",
+				"walk": "walk_hands_"
+			},
+			{
+				"play": "Idle",
+				"for": 1.2,
+				"look": "ground"
+			},
+			{
+				"thing": "ladybug",
+				"at": 0.45
+			},
+			{
+				"play": [
+					"crouch_peer_",
+					"crouch_idle_"
+				],
+				"for": 3.5,
+				"look": "thing",
+				"mood": "fun",
+				"emote": "question"
+			},
+			{
+				"play": [
+					"crouch_reach_",
+					"crouch_idle_"
+				],
+				"for": 2.5,
+				"look": "thing"
+			},
+			{
+				"branch": [
+					[
+						0.45,
+						[
+							{
+								"thing_do": "hop_at"
+							},
+							{
+								"play": [
+									"fall_sit_",
+									"play_feet_"
+								],
+								"end": true,
+								"quick": true,
+								"mood": "surprised",
+								"mood_w": 1.0,
+								"emote": "exclaim",
+								"look": "thing"
+							},
+							{
+								"play": [
+									"sitfloor_rub_",
+									"floor_sit_"
+								],
+								"for": 3.0,
+								"mood": "sorrow",
+								"mood_w": 0.4
+							},
+							{
+								"play": [
+									"sitfloor_laugh_",
+									"floor_sit_"
+								],
+								"for": 3.0,
+								"mood": "joy",
+								"emote": "note"
+							}
+						]
+					],
+					[
+						0.35,
+						[
+							{
+								"thing_do": "hand"
+							},
+							{
+								"play": [
+									"rise_hand_",
+									"Idle"
+								],
+								"end": true,
+								"look": "thing",
+								"mood": "joy"
+							},
+							{
+								"play": [
+									"stand_hand_look_",
+									"Idle"
+								],
+								"for": 3.5,
+								"look": "thing",
+								"mood": "joy",
+								"emote": "heart"
+							},
+							{
+								"thing_do": "fly_off"
+							},
+							{
+								"play": [
+									"wave_up_",
+									"play_wave_back_"
+								],
+								"end": true,
+								"look": "thing"
+							}
+						]
+					],
+					[
+						0.2,
+						[
+							{
+								"thing_do": "fly_off"
+							},
+							{
+								"play": [
+									"crouch_lookup_",
+									"crouch_idle_"
+								],
+								"for": 2.0,
+								"look": "thing",
+								"mood": "surprised",
+								"emote": "exclaim"
+							},
+							{
+								"play": "Idle",
+								"for": 2.5,
+								"look": "thing",
+								"emote": "question"
+							}
+						]
+					]
+				]
+			}
+		]
+	},
+	"butterfly": {
+		"weight": 0.9,
+		"cool": 900,
+		"day": true,
+		"mood": {
+			"joy": 0.4
+		},
+		"beats": [
+			{
+				"thing": "butterfly",
+				"where": "air"
+			},
+			{
+				"thing_do": "flutter"
+			},
+			{
+				"play": [
+					"watch_up_",
+					"LookAround"
+				],
+				"for": 3.5,
+				"look": "thing",
+				"emote": "sparkle",
+				"mood": "joy"
+			},
+			{
+				"go": "near",
+				"walk": "walk_skip_"
+			},
+			{
+				"branch": [
+					[
+						0.4,
+						[
+							{
+								"thing_do": "nose"
+							},
+							{
+								"play": [
+									"nose_sneeze_",
+									"Idle"
+								],
+								"end": true,
+								"look": "thing",
+								"mood": "surprised"
+							},
+							{
+								"thing_do": "fly_off"
+							},
+							{
+								"play": [
+									"wave_up_",
+									"play_wave_back_"
+								],
+								"end": true,
+								"look": "thing",
+								"mood": "joy"
+							}
+						]
+					],
+					[
+						0.35,
+						[
+							{
+								"play": [
+									"cup_catch_",
+									"play_chase_"
+								],
+								"end": true,
+								"look": "thing"
+							},
+							{
+								"thing_do": "fly_off"
+							},
+							{
+								"play": "Idle",
+								"for": 2.5,
+								"look": "thing",
+								"emote": "drop",
+								"mood": "sorrow",
+								"mood_w": 0.3
+							}
+						]
+					],
+					[
+						0.25,
+						[
+							{
+								"thing_do": "hand"
+							},
+							{
+								"play": [
+									"hand_look_",
+									"stand_hand_look_",
+									"Idle"
+								],
+								"for": 4.0,
+								"look": "thing",
+								"emote": "heart",
+								"mood": "joy"
+							},
+							{
+								"thing_do": "fly_off"
+							},
+							{
+								"play": [
+									"wave_up_",
+									"play_wave_back_"
+								],
+								"end": true,
+								"look": "thing"
+							}
+						]
+					]
+				]
+			}
+		]
+	},
+	"spider_on_a_thread": {
+		"weight": 0.7,
+		"cool": 1200,
+		"beats": [
+			{
+				"go": "near"
+			},
+			{
+				"play": "Idle",
+				"for": 1.0
+			},
+			{
+				"thing": "spider",
+				"where": "above"
+			},
+			{
+				"thing_do": "drop"
+			},
+			{
+				"play": "Idle",
+				"for": 1.6,
+				"look": "thing"
+			},
+			{
+				"branch": [
+					[
+						0.45,
+						[
+							{
+								"play": [
+									"jump_back_",
+									"play_feet_"
+								],
+								"end": true,
+								"quick": true,
+								"mood": "surprised",
+								"mood_w": 1.0,
+								"emote": "exclaim",
+								"look": "thing"
+							},
+							{
+								"thing_do": "zip"
+							},
+							{
+								"play": "Idle",
+								"for": 2.5,
+								"mood": "angry",
+								"mood_w": 0.4,
+								"emote": "anger"
+							}
+						]
+					],
+					[
+						0.35,
+						[
+							{
+								"play": [
+									"freeze_poke_",
+									"interact_"
+								],
+								"end": true,
+								"look": "thing"
+							},
+							{
+								"thing_do": "zip"
+							},
+							{
+								"play": "Idle",
+								"for": 2.5,
+								"look": "thing",
+								"mood": "joy",
+								"emote": "note"
+							}
+						]
+					],
+					[
+						0.2,
+						[
+							{
+								"play": [
+									"wave_small_",
+									"play_wave_back_"
+								],
+								"end": true,
+								"look": "thing",
+								"mood": "joy"
+							},
+							{
+								"thing_do": "zip"
+							},
+							{
+								"play": "Idle",
+								"for": 2.0,
+								"look": "thing"
+							}
+						]
+					]
+				]
+			}
+		]
+	},
+	"falling_leaf": {
+		"weight": 0.8,
+		"cool": 900,
+		"beats": [
+			{
+				"go": "near",
+				"walk": "walk_hands_"
+			},
+			{
+				"thing": "leaf",
+				"where": "above"
+			},
+			{
+				"thing_do": "drift"
+			},
+			{
+				"play": "Idle",
+				"for": 2.5,
+				"look": "thing",
+				"emote": "question"
+			},
+			{
+				"branch": [
+					[
+						0.4,
+						[
+							{
+								"play": [
+									"catch_leaf_",
+									"interact_"
+								],
+								"end": true,
+								"look": "thing"
+							},
+							{
+								"thing_do": "hand"
+							},
+							{
+								"play": [
+									"hand_look_",
+									"stand_hand_look_",
+									"Idle"
+								],
+								"for": 3.5,
+								"look": "thing",
+								"mood": "joy",
+								"emote": "sparkle"
+							},
+							{
+								"thing_do": "flee"
+							}
+						]
+					],
+					[
+						0.35,
+						[
+							{
+								"thing_do": "head"
+							},
+							{
+								"play": "Idle",
+								"for": 2.0,
+								"emote": "question",
+								"mood": "surprised",
+								"mood_w": 0.5
+							},
+							{
+								"play": [
+									"head_pick_",
+									"Idle"
+								],
+								"end": true
+							},
+							{
+								"thing_do": "hand"
+							},
+							{
+								"play": [
+									"hand_look_",
+									"stand_hand_look_",
+									"Idle"
+								],
+								"for": 2.5,
+								"look": "thing",
+								"mood": "joy"
+							},
+							{
+								"thing_do": "flee"
+							}
+						]
+					],
+					[
+						0.25,
+						[
+							{
+								"play": [
+									"blow_away_",
+									"Idle"
+								],
+								"end": true,
+								"look": "thing"
+							},
+							{
+								"thing_do": "fly_off"
+							},
+							{
+								"play": "Idle",
+								"for": 2.0,
+								"look": "thing",
+								"mood": "joy",
+								"emote": "note"
+							}
+						]
+					]
+				]
+			}
+		]
+	},
+	"tripping": {
+		"weight": 0.5,
+		"cool": 1500,
+		"needs": [
+			"stumble_"
+		],
+		"beats": [
+			{
+				"go": "near",
+				"walk": ""
+			},
+			{
+				"branch": [
+					[
+						0.6,
+						[
+							{
+								"play": "stumble_",
+								"end": true,
+								"quick": true,
+								"mood": "surprised",
+								"emote": "exclaim"
+							},
+							{
+								"play": [
+									"look_embarrassed_",
+									"LookAround"
+								],
+								"end": true,
+								"mood": "joy",
+								"mood_w": 0.4,
+								"emote": "drop"
+							}
+						]
+					],
+					[
+						0.4,
+						[
+							{
+								"play": [
+									"trip_fall_",
+									"stumble_"
+								],
+								"end": true,
+								"quick": true,
+								"mood": "surprised",
+								"emote": "exclaim"
+							},
+							{
+								"play": [
+									"sitfloor_laugh_",
+									"floor_sit_"
+								],
+								"for": 3.0,
+								"mood": "joy",
+								"emote": "note"
+							}
+						]
+					]
+				]
+			}
+		]
+	},
+	"sneeze": {
+		"weight": 0.6,
+		"cool": 1200,
+		"needs": [
+			"sneeze_big_"
+		],
+		"beats": [
+			{
+				"play": "Idle",
+				"for": 0.8,
+				"mood": "surprised",
+				"mood_w": 0.4
+			},
+			{
+				"branch": [
+					[
+						0.45,
+						[
+							{
+								"play": "sneeze_big_",
+								"end": true,
+								"emote": "drop"
+							},
+							{
+								"play": "Idle",
+								"for": 2.0,
+								"mood": "joy",
+								"mood_w": 0.4
+							}
+						]
+					],
+					[
+						0.35,
+						[
+							{
+								"play": [
+									"sneeze_small_",
+									"sneeze_big_"
+								],
+								"end": true,
+								"emote": "sparkle",
+								"mood": "joy"
+							}
+						]
+					],
+					[
+						0.2,
+						[
+							{
+								"play": [
+									"sneeze_hold_",
+									"sneeze_big_"
+								],
+								"end": true,
+								"mood": "joy",
+								"mood_w": 0.5
+							},
+							{
+								"play": "Idle",
+								"for": 3.0
+							},
+							{
+								"play": "sneeze_big_",
+								"end": true,
+								"emote": "exclaim",
+								"mood": "surprised"
+							}
+						]
+					]
+				]
+			}
 		]
 	}
 }

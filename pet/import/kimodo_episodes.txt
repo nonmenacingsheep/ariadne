@@ -13,3 +13,25 @@ rise_hand_1|4|A crouching woman lets a little bug climb onto her finger, then sl
 stand_hand_look_1|5|A woman stands holding her right hand up in front of her face, smiling at a little bug sitting on her finger.|rise_hand_1:-1|-
 wave_up_1|3|A woman watches something fly up and away above her and waves goodbye to it.|stand_hand_look_1:-1|idle_calm_1:0
 crouch_lookup_1|3|A crouching woman looks up in surprise, following something flying up into the air.|crouch_idle_1:0|crouch_idle_1:0
+#
+# A butterfly.
+watch_up_1|5|A woman watches a butterfly flutter around her head, turning to follow it with her eyes, smiling.|idle_calm_1:0|idle_calm_1:0
+nose_sneeze_1|4|A woman stands very still looking cross-eyed at something on the tip of her nose, then sneezes.|idle_calm_1:0|idle_calm_1:0
+cup_catch_1|3|A woman tries to catch something flying in front of her with both cupped hands, misses, and opens her hands to look.|idle_calm_1:0|idle_calm_1:0
+hand_look_1|5|A woman holds her right hand up in front of her face and smiles at something small resting on it.|idle_calm_1:0|idle_calm_1:0
+# A spider on a thread.
+jump_back_1|3|A woman is startled by something right in front of her face, shrieks and jumps backwards with her hands up.|idle_calm_1:0|idle_calm_1:0
+freeze_poke_1|4|A woman freezes, staring at something dangling in front of her face, then pokes it carefully with one finger.|idle_calm_1:0|idle_calm_1:0
+wave_small_1|3|A woman gives a small shy wave at something right in front of her face.|idle_calm_1:0|idle_calm_1:0
+# A falling leaf.
+catch_leaf_1|3|A woman reaches out and catches something floating down in front of her in her right hand.|idle_calm_1:0|idle_calm_1:0
+head_pick_1|3|A woman reaches up and picks something off the top of her head, then looks at it in her hand.|idle_calm_1:0|idle_calm_1:0
+blow_away_1|3|A woman leans forward and blows at something floating in front of her.|idle_calm_1:0|idle_calm_1:0
+# Tripping.
+stumble_1|3|A walking woman catches her foot, stumbles forward with her arms flailing, and catches her balance.|idle_calm_1:0|idle_calm_1:0
+look_embarrassed_1|3|A woman looks around quickly to see if anyone saw, and scratches the back of her head, embarrassed.|idle_calm_1:0|idle_calm_1:0
+trip_fall_1|4|A walking woman trips and falls forward onto her hands and knees, then sits back on the floor.|idle_calm_1:0|floor_sit_1:0
+# Sneezing.
+sneeze_big_1|4|A woman's nose tickles, she breathes in two or three times and lets out a big sneeze that rocks her backwards.|idle_calm_1:0|idle_calm_1:0
+sneeze_small_1|3|A woman does a tiny cute sneeze into her hands.|idle_calm_1:0|idle_calm_1:0
+sneeze_hold_1|4|A woman is about to sneeze, pinches her nose and holds it in, then relaxes, relieved.|idle_calm_1:0|idle_calm_1:0

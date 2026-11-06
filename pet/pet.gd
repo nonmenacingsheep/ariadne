@@ -1379,7 +1379,8 @@ const STANCE_PREFIXES := [["sit_idle_", "ledge"], ["Sitting_", "ledge"], ["nap_"
 		["work_", "ledge"], ["game_", "ledge"], ["eat_", "floor"], ["read_", "floor"], ["phone_", "floor"],
 		["meditate_", "floor"], ["sleep_bed_", "lie"],
 		# An episode's beats (docs/PET_EPISODES_PLAN.md): crouched, sitting on the floor.
-		["crouch_", "crouch"], ["sitfloor_", "floor"], ["fall_sit_", "floor"], ["rise_", "stand"]]
+		["crouch_", "crouch"], ["sitfloor_", "floor"], ["fall_sit_", "floor"], ["rise_", "stand"],
+		["trip_fall_", "floor"]]
 const TRANSITION_EXTRA := {"stand>ledge": "sit_down_", "ledge>stand": "sit_up_"}
 var pending := ""                          # the clip waiting for a transition to finish
 
@@ -1403,7 +1404,7 @@ func _is_move(name: String) -> bool:
 		return true
 	return name.begins_with("tr_") or name.begins_with("sit_down_") or name.begins_with("sit_up_") \
 			or name.begins_with("get_up_") or name == "Sitting_Exit" or name == "LayToIdle" \
-			or name.begins_with("fall_sit_") or name.begins_with("rise_")    # an episode's own moves (startled down, up with a bug on her hand)
+			or name.begins_with("fall_sit_") or name.begins_with("rise_") or name.begins_with("trip_fall_")    # an episode's own moves (startled down, up with a bug on her hand)
 
 
 func _transition(from: String, to: String) -> String:
@@ -1782,12 +1783,20 @@ func _walk_style() -> String:
 
 # The tip of her hand (where a bug would sit on her finger), in the world.
 func hand_point(side: String) -> Vector3:
-	var h: int = bones.get(side + "Hand", -1)
+	var h: int = skel.find_bone(side + "Hand") if skel else -1
 	if h < 0:
 		return Vector3(pos.x, 1.0, depth)
 	var xf := _bone_xf(h)
 	var up := _bone_xf(skel.get_bone_parent(h)).origin
 	return xf.origin + (xf.origin - up).normalized() * 0.08
+
+
+# In front of her face, `ahead` metres out along the way she faces (her nose
+# at about 0.07): where a butterfly lands, a spider hangs.
+func face_point(ahead: float) -> Vector3:
+	var h: int = bones.get("Head", -1)
+	var base := _bone_xf(h).origin + Vector3(0, 0.07, 0) if h >= 0 else Vector3(pos.x, 1.5, depth)
+	return base + Vector3(sin(yaw), 0.0, cos(yaw)) * ahead
 
 
 # Looking at something in the world for a while: a point, or a thing that moves.
@@ -3234,6 +3243,13 @@ func _snapshot_seq(what: String) -> void:
 	if what.begins_with("poke:") or what.begins_with("pin:"):   # a mode's click on a bone (_mode_test)
 		_set_state("idle", 99.0)
 		_mode_test(what.get_slice(":", 0), what.get_slice(":", 1))
+	if what.begins_with("walk:"):                # a walk style (walk_hands_ ...), across the room and back
+		depth = -0.8
+		_set_state("idle", 0.5)
+		var st := what.substr(5)
+		brain.doing = "test"
+		brain.plan = [{"go": Vector2(pos.x + 2.5, -1.2), "walk": st}, {"go": Vector2(pos.x - 1.5, -0.6), "walk": st},
+				{"play": "Idle", "for": 30.0}]
 	if what.begins_with("episode:"):             # an episode (episodes.json), with ending N if given
 		depth = -0.7
 		_set_state("idle", 0.5)

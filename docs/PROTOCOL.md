@@ -16,7 +16,8 @@ in `ariadne2/protocol.py`; `decode` rejects anything that doesn't match.
 | `line` | `text`, `speaking` | her current action in one line, shown in the core widget |
 | `chat` | `id`, `role` (`aries`/`you`), `delta`, `done` | streamed chat text; deltas with the same `id` append |
 | `flow` | `flow`, `run`, `phase` (`fired`/`node`/`done`/`failed`), `node`, `widget`, `note` | a flow run moving; `node` and `widget` may be null. `fired` carries the widget where the trigger happened (null for time starts); `node` is each node entered (`widget` = its adapter, if any); `failed` carries the reason in `note`. Drives the wire animation and the editor's live view |
-| `ask` | `id`, `question`, `options` | an Ask Ronald question for the chat, one button per option (re-sent when a desk connects while it is still open) |
+| `ask` | `id`, `question`, `options` | a question for the chat, one button per option: a flow's Ask Ronald, or her `ask` tool (whose `options` may be empty: he types or says the answer). Re-sent when a desk connects while it is still open |
+| `ask_done` | `id`, `how` (`button`/`typed`/`spoken`/`timeout`/`closed`), optional `choice` | her `ask` is over, however it ended: the desk disables the question's buttons and marks `choice`, the one clicked. A typed or spoken answer comes in as the usual `text` message / heard speech, which her `ask` takes instead of a new turn |
 | `catalog` | `nodes` | every node type the editor can offer (answer to `flow_catalog`) |
 | `flow_graph` | `id`, `graph`, `summary`, `errors`, optional `by` | a whole flow file for the editor: the answer to `flow_open`, or, with `by="aries"` (or `"ronald"` for a widget toggle or Approve), a broadcast that the flow was just saved or changed |
 | `flow_saved` | `id`, `ok`, `summary` or `errors`, optional `warnings` | the answer to `flow_save` |

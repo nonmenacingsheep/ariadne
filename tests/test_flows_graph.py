@@ -364,10 +364,12 @@ class ProtocolAdditionTests(unittest.TestCase):
         m = self.rt(protocol.ask("a1", "Close it?", ["yes", "no"]))
         self.assertEqual((m["question"], m["options"]), ("Close it?", ["yes", "no"]))
         self.assertEqual(self.rt(protocol.answer("a1", "yes"))["choice"], "yes")
+        self.assertEqual(self.rt(protocol.ask("a", "q", []))["options"], [])      # her `ask` tool may have no buttons
         with self.assertRaises(protocol.ProtocolError):
-            protocol.ask("a", "q", [])
+            protocol.decode('{"t":"ask","id":"a","question":"q","options":"yes"}')
+        self.assertEqual(self.rt(protocol.ask_done("a1", "button", "yes"))["choice"], "yes")
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode('{"t":"ask","id":"a","question":"q","options":[]}')
+            protocol.ask_done("a1", "bored")
         with self.assertRaises(protocol.ProtocolError):
             protocol.decode('{"t":"answer","id":"a"}')
 

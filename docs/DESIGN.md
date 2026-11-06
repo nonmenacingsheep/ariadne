@@ -322,7 +322,10 @@ Adding an app means adding an adapter and a widget, and nothing else.
   and edit files, find/search files, web search (with the Claude fallback),
   read a page, screenshot/look at the screen, place a window, the fallback
   window control for apps with no other way in, open project, todo, hand off
-  to a second hand.
+  to a second hand, and `ask` (a question for him mid-task: it shows in the
+  chat with a button per option, she says it aloud and his mic opens; the first
+  clicked, typed or spoken answer comes back as the result, or "he didn't
+  answer" after two minutes; core/ask.py).
 - Three **flow** tools: `flow.nodes(query)`, `flow.save(graph)`,
   `flow.manage(id, op)` (§10).
 - Target: **about 30 tools in total**, all offered every turn: small enough

@@ -14,6 +14,7 @@ WIDGETS = ("chat", "core", "spotify", "steam", "browser",
 PHASES = ("started", "progress", "done", "failed")
 ROLES = ("aries", "you")
 FLOW_PHASES = ("fired", "node", "done", "failed")
+ASK_HOW = ("button", "typed", "spoken", "timeout", "closed")    # how an `ask` ended
 FLOW_CONTROLS = ("toggle", "run", "approve", "delete")      # presses on the flows widget; value = flow id
 SETTING_TYPES = ("bool", "choice", "number", "text", "key", "secret")
 SETTING_ENTRY = ("section", "key", "label", "type", "default", "help")     # every schema entry has these
@@ -42,6 +43,7 @@ _REQUIRED = {
     "flow_test": (),
     "flow_tested": ("id", "ok", "note"),
     "ask": ("id", "question", "options"),
+    "ask_done": ("id", "how"),
     "answer": ("id", "choice"),
     "menu": ("widget", "path"),
     "attach": ("path",),
@@ -107,9 +109,10 @@ def decode(line: bytes | str) -> dict:
             raise ProtocolError(f"flow: bad phase {msg['phase']!r}")
         if not isinstance(msg["flow"], str) or not isinstance(msg["run"], str):
             raise ProtocolError("flow: flow and run must be strings")
-    if t == "ask" and not (isinstance(msg["options"], list) and msg["options"]
-                           and all(isinstance(o, str) for o in msg["options"])):
-        raise ProtocolError("ask: options must be a non-empty list of strings")
+    if t == "ask" and not (isinstance(msg["options"], list) and all(isinstance(o, str) for o in msg["options"])):
+        raise ProtocolError("ask: options must be a list of strings")
+    if t == "ask_done" and msg["how"] not in ASK_HOW:
+        raise ProtocolError(f"ask_done: bad how {msg['how']!r}")
     if t == "answer" and not isinstance(msg["choice"], str):
         raise ProtocolError("answer: choice must be a string")
     if t == "settings":
@@ -362,10 +365,22 @@ def attached(path: str, name: str, kind: str, error: str | None = None) -> dict:
 
 
 def ask(id: str, question: str, options: list[str]) -> dict:
-    """An Ask Ronald question for the chat, one button per option."""
-    if not options or not all(isinstance(o, str) for o in options):
+    """A question for him in the chat, one button per option (none: he types or says it). Flows' Ask Ronald
+    always has options; her `ask` tool (core/ask.py) may not."""
+    if not all(isinstance(o, str) for o in options):
         raise ProtocolError("ask needs a list of option strings")
     return {"t": "ask", "id": id, "question": question, "options": list(options)}
+
+
+def ask_done(id: str, how: str, choice: str | None = None) -> dict:
+    """An `ask` is over, so the desk closes its buttons: `how` it ended (a clicked button, a typed or spoken
+    reply, a timeout, or `closed` when it was dropped) and `choice`, the button that was clicked, if any."""
+    if how not in ASK_HOW:
+        raise ProtocolError(f"ask_done: bad how {how!r}")
+    msg = {"t": "ask_done", "id": id, "how": how}
+    if choice is not None:
+        msg["choice"] = choice
+    return msg
 
 
 def settings(schema: list[dict], values: dict) -> dict:

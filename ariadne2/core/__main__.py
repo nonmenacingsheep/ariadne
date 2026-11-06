@@ -41,18 +41,24 @@ def _make_voice(server):
 
 def _make_ears(server, voice, conversation):
     from .ears import Ears
+    asker = conversation.asker
 
     def heard(text: str) -> None:
         voice.cancel()          # you talking over her stops her
+        if asker.offer_spoken(text, ears.sure):
+            return              # the answer to her question: the turn that asked carries on, and still speaks
         conversation.hush()     # including the rest of a reply that's still streaming
         conversation.submit(text)
 
     def interrupt() -> None:
         voice.cancel()          # what's playing and queued stops now
-        conversation.hush()     # and the rest of the reply still streaming isn't spoken
+        if not asker.pending:
+            conversation.hush()     # and the rest of the reply still streaming isn't spoken
 
-    return Ears(voice=voice, on_heard=heard, on_interrupt=interrupt,
+    ears = Ears(voice=voice, on_heard=heard, on_interrupt=interrupt,
                 on_listening=lambda up: asyncio.ensure_future(server.publish(protocol.ears(up))))
+    asker.open_mic = ears.wake_now      # her `ask`: the mic opens for the answer once she has said the question
+    return ears
 
 
 log = logging.getLogger("ariadne2.core")
@@ -129,16 +135,25 @@ async def run(args: argparse.Namespace) -> None:
     from .later import Later
     from .clipboard import ClipboardTools
     later = Later(lambda text, consent: conversation.wake(text, consent))
+    from .ask import Asker
+
+    def say_question(text: str) -> bool:
+        if not (voice and voice.available):         # (it starts after this, so ask at the time)
+            return False
+        voice.say(text)
+        return True
+    asker = Asker(server.publish, say=say_question, speaking=(lambda: voice.speaking) if voice else None)
     conversation = Conversation(server.publish, lambda: server.snapshots,
                                 model_name=args.model or settings.get("models", "conversation_model"),
                                 personality=args.personality or settings.get("general", "personality"),
                                 on_sentence=voice.say if voice else None,
                                 adapters=adapters, toolsets=[GeneralTools(), memory, ExtensionTools(extensions),
-                                          SettingsTools(settings, server.publish), later, ClipboardTools()],
+                                          SettingsTools(settings, server.publish), later, ClipboardTools(), asker],
                                 on_turn=memory.on_turn)
     engine = Engine(server.publish, adapters, conversation=conversation,
                     say=voice.say if voice else None)
     conversation.flows = engine
+    conversation.asker = asker
     memory.resumed(conversation.resume(memory.talk.rows()))     # a restart picks up where the talk was
     settings.hooks[("general", "flows_on_her_own")] = lambda v: setattr(engine, "her_runs", bool(v))
     conversation.on_text = engine.hear

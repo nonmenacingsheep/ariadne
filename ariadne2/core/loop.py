@@ -180,6 +180,7 @@ class Conversation:
         self.on_text = on_text            # called with each text he submits (You say starts)
         self.on_turn = on_turn            # on_turn(his_text, her_reply, when): after each turn of his words
         self.on_tool = None               # on_tool(name, args): after each tool she runs (core/downloads.py)
+        self.asker = None                 # core/ask.py: while her `ask` waits, his reply goes there, not into a new turn
         self.attach_guard = attach_guard or df.Guard()   # which files he may attach: the files widget's rules
         self.history: list[dict] = []
         # Boot stamp in ids: a restarted core must not reuse ids a desk still holds.
@@ -193,6 +194,8 @@ class Conversation:
     # ---- input ----
 
     async def on_desk_message(self, msg: dict) -> None:
+        if self.asker is not None and self.asker.on_desk(msg):
+            return
         if msg.get("t") == "text" and msg.get("widget") == "chat":
             self.submit(msg["text"], attachments=msg.get("attachments"))
         elif msg.get("t") == "attach":

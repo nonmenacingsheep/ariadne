@@ -917,7 +917,8 @@ function flowEvent(msg) {
 // A flow asking him something: the question in the chat, with a button per answer.
 function askInChat(msg) {
   const c = W.chat, box = document.createElement("div");
-  box.className = "msg ask"; box.textContent = msg.question;
+  if ([...c.msgs.querySelectorAll(".msg.ask")].some(x => x.dataset.ask === msg.id)) return;     // re-sent on a reconnect
+  box.className = "msg ask"; box.dataset.ask = msg.id; box.textContent = msg.question;
   const opts = document.createElement("div"); opts.className = "ask-opts";
   for (const choice of msg.options || []) {
     const b = document.createElement("button"); b.textContent = choice;
@@ -929,6 +930,12 @@ function askInChat(msg) {
   }
   box.appendChild(opts); c.msgs.appendChild(box); c.msgs.scrollTop = c.msgs.scrollHeight;
   Sounds.play("mic");
+}
+
+// Her question is over (answered by button, typing or voice, or timed out): close its buttons.
+function askDone(msg) {
+  const box = [...(W.chat?.msgs.querySelectorAll(".msg.ask") || [])].find(x => x.dataset.ask === msg.id);
+  box?.querySelectorAll(".ask-opts button").forEach(x => { x.disabled = true; x.classList.toggle("chosen", x.textContent === msg.choice); });
 }
 
 /* ---------------- what layer.py calls ---------------- */
@@ -984,6 +991,7 @@ window.desk = {
       case "shown": if (W.chat) showPicture(msg); break;
       case "attached": if (W.chat) addChip(msg); break;
       case "ask": if (W.chat) askInChat(msg); break;
+      case "ask_done": askDone(msg); break;
       case "ears":
         if (msg.listening) Sounds.play("mic");
         W.core?.root.classList.toggle("listening", msg.listening); break;

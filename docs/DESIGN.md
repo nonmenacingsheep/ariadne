@@ -261,6 +261,13 @@ the core for any future app that sends messages.
 The same gate exists for spending his Claude usage (`consent="spend"`, used by `claude.start`):
 his own words this turn must ask for Claude or a hand to do it, and in flows only an Ask Ronald
 yes to a literal question that asks for it counts.
+Her `ask` tool follows the same rule in conversation: a plain yes to her question (a clicked option,
+or a typed or spoken answer of at most four words that starts with a yes-word and doesn't hedge, redirect
+or take it back) is kept as "<his answer>, <her question>" and offered once as his words to the unchanged
+check, so the question itself must ask for the message or the run and name the recipient (a vague "ok to
+proceed?" unlocks nothing, nor does a yes to a question about someone else). It is used up by one
+action and dropped when the turn ends. Only message and spend verbs take it; verbs that need only
+"him" (settings, clipboard) still want his own words (core/ask.py `consent_words`).
 
 ## 4. Architecture
 

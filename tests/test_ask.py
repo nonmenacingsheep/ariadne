@@ -3,6 +3,7 @@ import unittest
 
 from ariadne2 import protocol
 from ariadne2.adapters import AdapterError
+from ariadne2.adapters.base import Adapter, Verb
 from ariadne2.core import models
 from ariadne2.core.ask import Asker
 from ariadne2.core.loop import Conversation
@@ -258,6 +259,167 @@ class InTheLoop(unittest.IsolatedAsyncioTestCase):
         await self.conv.on_desk_message(protocol.text("chat", "thanks"))
         await self.conv.idle()
         self.assertEqual(len(self.model.calls), 3)
+
+
+class ConsentTests(unittest.IsolatedAsyncioTestCase):
+    """A yes to her question stands in for his words, once, for what the question named."""
+
+    TURN = "get the score ready"                # his own words ask for nothing to be sent
+
+    async def run_turn(self, question, answer, sends, how="button", options=("yes", "no")):
+        """She asks; he answers; she then tries each of `sends` (a person) in turn. Returns what each did."""
+        f = Fakes()
+        self.sent_to = []
+
+        async def send(person, text):
+            self.sent_to.append(person)
+            return "sent"
+
+        class Chat(Adapter):
+            name = "chat"
+
+            def __init__(self):
+                super().__init__(publish=f.publish)
+                self.verbs = [Verb("send", "send a DM", {"properties": {"person": {}, "text": {}}}, send,
+                                   consent="message")]
+
+        asker = Asker(f.publish, timeout=5.0)
+        replies = [[use("ask", question=question, options=list(options))]]
+        for i, person in enumerate(sends):
+            replies.append([use("chat", id=f"s{i}", action="send", person=person, text="hi")])
+        replies.append(["done"])
+        model = ScriptedModel(replies)
+        conv = Conversation(f.publish, lambda: {}, model=model, adapters={"chat": Chat()}, toolsets=[asker])
+        conv.asker = asker
+        conv.submit(self.TURN)
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if asker.pending:
+                break
+        qid = f.kinds("ask")[0]["id"]
+        if how == "button":
+            await conv.on_desk_message(protocol.answer(qid, answer))
+        elif how == "typed":
+            await conv.on_desk_message(protocol.text("chat", answer))
+        else:
+            asker.offer_spoken(answer)
+        await conv.idle()
+        self.conv, self.asker, self.model = conv, asker, model
+        return self.send_results()
+
+    def send_results(self):
+        """What each send attempt returned to her, from the last model call's messages."""
+        return [r["content"] for msg in self.model.calls[-1]["messages"]
+                if msg["role"] == "user" and isinstance(msg["content"], list)
+                for r in msg["content"] if str(r.get("tool_use_id", "")).startswith("s")]
+
+    async def test_a_yes_unlocks_the_send_the_question_named(self):
+        out = await self.run_turn("Send Kai the score?", "yes", ["Kai"])
+        self.assertEqual(out, ["sent"])
+        self.assertEqual(self.sent_to, ["Kai"])
+
+    async def test_a_typed_or_spoken_bare_yes_counts_too(self):
+        self.assertEqual(await self.run_turn("Send Kai the score?", "sure, do it", ["Kai"], how="typed"), ["sent"])
+        self.assertEqual(await self.run_turn("Send Kai the score?", "yeah go ahead", ["Kai"], how="spoken"), ["sent"])
+
+    async def test_a_no_unlocks_nothing(self):
+        out = await self.run_turn("Send Kai the score?", "no", ["Kai"])
+        self.assertEqual(self.sent_to, [])
+        self.assertIn("Not sent", out[0])
+        await self.run_turn("Send Kai the score?", "not now", ["Kai"], how="typed")
+        self.assertEqual(self.sent_to, [])
+
+    async def test_a_yes_that_redirects_or_hedges_unlocks_nothing(self):
+        for words in ("yes but send it to Mira instead", "ok only if you add the clip first please"):
+            await self.run_turn("Send Kai the score?", words, ["Kai"], how="typed")
+        await self.run_turn("Send Kai the score?", "yes send it to Mira instead", ["Mira"], how="spoken")
+        self.assertEqual(self.sent_to, [])
+
+    async def test_a_yes_does_not_unlock_a_different_recipient(self):
+        out = await self.run_turn("Send Kai the score?", "yes", ["Mira"])
+        self.assertEqual(self.sent_to, [])
+        self.assertIn("Not sent", out[0])
+
+    async def test_a_vague_question_unlocks_nothing(self):
+        out = await self.run_turn("OK to proceed?", "yes", ["Kai"])
+        self.assertEqual(self.sent_to, [])
+        self.assertIn("Not sent", out[0])
+        await self.run_turn("Is that ok with Kai?", "yes", ["Kai"])     # names him but asks for no message
+        self.assertEqual(self.sent_to, [])
+
+    async def test_a_yes_does_not_unlock_a_different_verb(self):
+        # a spend verb ("claude start") needs a question about Claude; this one is about a message
+        f = Fakes()
+        ran = []
+
+        async def start(task):
+            ran.append(task)
+            return "started"
+
+        class Hands(Adapter):
+            name = "claude"
+
+            def __init__(self):
+                super().__init__(publish=f.publish)
+                self.verbs = [Verb("start", "start a run", {"properties": {"task": {}}}, start, consent="spend")]
+
+        asker = Asker(f.publish, timeout=5.0)
+        model = ScriptedModel([[use("ask", question="Send Kai the score?", options=["yes"])],
+                               [use("claude", action="start", task="x")], ["done"]])
+        conv = Conversation(f.publish, lambda: {}, model=model, adapters={"claude": Hands()}, toolsets=[asker])
+        conv.asker = asker
+        conv.submit(self.TURN)
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if asker.pending:
+                break
+        await conv.on_desk_message(protocol.answer(f.kinds("ask")[0]["id"], "yes"))
+        await conv.idle()
+        self.assertEqual(ran, [])
+
+    async def test_a_spend_question_unlocks_a_spend_verb(self):
+        f = Fakes()
+        ran = []
+
+        async def start(task):
+            ran.append(task)
+            return "started"
+
+        class Hands(Adapter):
+            name = "claude"
+
+            def __init__(self):
+                super().__init__(publish=f.publish)
+                self.verbs = [Verb("start", "start a run", {"properties": {"task": {}}}, start, consent="spend")]
+
+        asker = Asker(f.publish, timeout=5.0)
+        model = ScriptedModel([[use("ask", question="Shall I have Claude fix the build?", options=["yes"])],
+                               [use("claude", action="start", task="fix")], ["done"]])
+        conv = Conversation(f.publish, lambda: {}, model=model, adapters={"claude": Hands()}, toolsets=[asker])
+        conv.asker = asker
+        conv.submit(self.TURN)
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if asker.pending:
+                break
+        await conv.on_desk_message(protocol.answer(f.kinds("ask")[0]["id"], "yes"))
+        await conv.idle()
+        self.assertEqual(ran, ["fix"])
+
+    async def test_the_grant_is_used_up_after_one_action(self):
+        out = await self.run_turn("Send Kai the score?", "yes", ["Kai", "Kai"])
+        self.assertEqual(self.sent_to, ["Kai"])
+        self.assertEqual(out[0], "sent")
+        self.assertIn("Not sent", out[1])
+
+    async def test_the_grant_is_gone_next_turn(self):
+        await self.run_turn("Send Kai the score?", "yes", [])          # said yes, then sent nothing
+        self.assertEqual(self.asker.grants, [])
+        self.model.replies += [[use("chat", id="s9", action="send", person="Kai", text="hi")], ["done"]]
+        self.conv.submit("anything else?")                              # the next turn
+        await self.conv.idle()
+        self.assertEqual(self.sent_to, [])
+        self.assertIn("Not sent", self.send_results()[0])
 
 
 if __name__ == "__main__":

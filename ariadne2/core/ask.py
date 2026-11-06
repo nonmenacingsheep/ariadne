@@ -12,21 +12,35 @@ turn of its own: Conversation hands every desk message to `on_desk`, and
 core/__main__.py hands every heard utterance to `offer_spoken`, before either
 is queued. Both take a message only while a question is open. When it ends
 (any way) the desk is told with `ask_done` and greys the buttons.
+
+CONSENT: a plain "yes" to her question stands in for his words, the way an
+Ask Ronald yes does in a flow (flows/runner.py _call_verb). An affirmative
+answer is kept as a grant, "<his answer>, <the question>", and offered once as
+his_words to the unchanged consent check of a message or spend verb
+(`consent_words`, called from Conversation._tool). So the question itself must
+ask for the action and name the recipient, or the verb still refuses: "ok to
+proceed?" unlocks nothing. Unlike a flow's fixed buttons, typed and spoken
+answers are free text, so only a short bare yes counts ("yes", "sure, do it");
+"yes but send it to Bob" does not. Grants end with the turn (`end_turn`).
 """
 from __future__ import annotations
 
 import asyncio
 import itertools
 import logging
+import re
 import time
 
+from .. import adapters as adapters_mod
 from .. import protocol
-from ..adapters import AdapterError
+from ..adapters import AdapterError, consent
+from .flows import graph as flow_graph
 
 log = logging.getLogger("ariadne2.ask")
 
 TIMEOUT = 120.0
 MAX_OPTIONS = 6
+YES_WORDS = 4           # a typed or spoken yes longer than this isn't a bare yes
 POLL = 0.2              # how often to see whether she has stopped speaking, to open the mic
 
 TOOL = {
@@ -44,6 +58,10 @@ TOOL = {
 }
 
 
+# A yes that takes it back or redirects it is not a bare yes.
+_HEDGE = re.compile(r"\b(but|except|instead|rather|only|not|n't|no|don'?t|wait|actually)\b", re.I)
+
+
 class Asker:
     """The toolset. `say(text) -> bool` speaks (False when her voice is off), `speaking() -> bool`,
     `open_mic() -> bool` opens his mic as if he'd said her name; all optional."""
@@ -57,6 +75,7 @@ class Asker:
         self._boot = format(int(time.time()), "x")
         self._n = itertools.count(1)
         self._open: dict | None = None      # {"id", "question", "options", "done": Future of (how, text, sure)}
+        self.grants: list[str] = []         # his yeses, "<answer>, <question>", for this turn only
 
     def tools(self) -> list[dict]:
         return [TOOL]
@@ -120,10 +139,48 @@ class Asker:
             how, text, sure = await self._wait(spoke)
             if how in ("typed", "spoken"):          # his bubble in the chat, as a turn of his would have
                 await self.publish(protocol.chat(f"{qid}-you", "you", text, done=True))
+            if self._is_yes(how, text):
+                self.grants.append(f"{text}, {question}")
         finally:
             self._open = None
             await self.publish(protocol.ask_done(qid, how, text if how == "button" else None))
         return self._result(how, text, sure)
+
+    @staticmethod
+    def _is_yes(how: str, text: str) -> bool:
+        if not flow_graph.is_affirmative(text):
+            return False
+        if how == "button":
+            return True
+        return len(text.split()) <= YES_WORDS and not _HEDGE.search(text)
+
+    # ---- consent ----
+
+    def end_turn(self) -> None:
+        self.grants.clear()
+
+    def consent_words(self, adapters: dict, name: str, args: dict, his_words: str | None) -> str | None:
+        """What to offer a tool call as his words: the turn's own, or (once) a yes of his that covers it."""
+        if not self.grants:
+            return his_words
+        try:
+            found = adapters_mod._find(adapters, name, dict(args or {}))
+        except AdapterError:
+            return his_words
+        if found is None or found[1].consent not in ("message", "spend"):
+            return his_words
+        verb, a = found[1], found[2]
+        person = a.get("person") or a.get("to") or a.get("recipient")
+
+        def ok(words):
+            return consent.allows_spend(words) if verb.consent == "spend" else consent.allows_message(words, person)
+        if ok(his_words):
+            return his_words
+        for g in self.grants:
+            if ok(g):
+                self.grants.remove(g)           # one yes covers one action
+                return g
+        return his_words
 
     def _speak(self, text: str) -> bool:
         if self.say is None:

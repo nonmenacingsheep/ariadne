@@ -350,6 +350,8 @@ class Conversation:
             await self._failed(e, reply, her_id, n)
             return
         finally:
+            if self.asker is not None:
+                self.asker.end_turn()           # his yeses to her questions don't outlive the turn
             await self.publish(protocol.core_line(""))
         if not reply and used:
             # Acted without a word: no bubble, but history must still alternate.
@@ -468,6 +470,8 @@ class Conversation:
             elif toolset is not None:
                 result["content"] = await toolset.call(call.name, call.input, his_words)
             else:
+                if self.asker is not None:      # a yes to her `ask` may stand in for his words, once
+                    his_words = self.asker.consent_words(self.adapters, call.name, call.input, his_words)
                 result["content"] = await adapters_mod.call_tool(self.adapters, call.name, call.input,
                                                                  his_words=his_words)
         except asyncio.CancelledError:
@@ -522,6 +526,8 @@ class Conversation:
             messages.append({"role": "assistant", "content": content or self._blocks(text, calls)})
             messages.append({"role": "user", "content": [await self._tool(c, his_words=None) for c in calls]})
         reply = reply.strip()
+        if self.asker is not None:
+            self.asker.end_turn()
         if post and reply:
             await self.publish(protocol.chat(f"{self._boot}-{next(self._n)}-flow", "aries",
                                              f"{flow_name}: {reply}", done=True))

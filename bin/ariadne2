@@ -21,6 +21,18 @@ if pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "ariadne2.core" >
   stop_running
 fi
 
+# KDE's System Monitor (and her Tasks) know an app by its systemd scope,
+# app-<desktop id>-*.scope. Started through distrobox she runs in the
+# container's scope and was listed nowhere, so this launcher moves itself into
+# one of her own on the host; everything it starts goes there with it.
+if [ -z "$ARIADNE2_NO_SCOPE" ] && ! grep -q "/app-ariadne2-" /proc/$$/cgroup 2>/dev/null; then
+  HOST=; command -v host-spawn >/dev/null && HOST=host-spawn
+  [ -z "$HOST" ] && [ -e /run/.containerenv ] && command -v distrobox-host-exec >/dev/null && HOST=distrobox-host-exec
+  $HOST busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager \
+    StartTransientUnit 'ssa(sv)a(sa(sv))' "app-ariadne2-$$.scope" fail 2 PIDs au 1 $$ Description s "Ariadne 2" 0 \
+    >/dev/null 2>&1 || true
+fi
+
 # The container has no GPU driver of its own, so GTK would draw the desk with
 # llvmpipe (OpenGL on the CPU). Borrow the host's NVIDIA EGL driver instead,
 # the same way ~/.local/bin/godot-gate.sh does for Vulkan: link its versioned

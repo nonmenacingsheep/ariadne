@@ -97,6 +97,20 @@ for m in {s.material for o in keep for s in o.material_slots if s.material}:
         m.blend_method = "CLIP"
     nt.links.new(bsdf.outputs["BSDF"], out_n.inputs["Surface"])
 
+# Hidden pieces (her underwear set, an outfit in pet/models/jane.json) go in
+# too: the exporter leaves out what can't be selected, and hidden can't be.
+for coll in bpy.data.collections:
+    coll.hide_viewport = False
+def show(lc):
+    lc.exclude = False
+    lc.hide_viewport = False
+    for ch in lc.children:
+        show(ch)
+show(bpy.context.view_layer.layer_collection)
+for o in keep + [rig]:
+    o.hide_viewport = False
+    o.hide_render = False
+    o.hide_set(False)
 for o in bpy.data.objects:
     o.select_set(o == rig or o in keep)
 

@@ -1,22 +1,59 @@
 {
-	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing).",
+	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit. shapes: blend shapes set for every outfit, then an outfit's own on top; \"Mesh/Shape\" for one mesh, \"Shape\" for any that has it. firm: clothes that hold her chest in. Her body tucks in under each piece (Shrink_for...): off where that piece is off.",
 	"default": "Jacket",
 	"outfits": {
 		"Jacket": {
 			"show": [
-				"Jacket"
+				"Jacket",
+				"Top",
+				"InnerTop",
+				"Pants",
+				"Tights",
+				"Gloves",
+				"Shoes"
 			],
 			"shapes": {
-				"Shrink_forJacket": 1.0
+				"Top/Shrink_forJacket": 1.0
 			},
 			"firm": true
 		},
 		"No jacket": {
-			"show": [],
+			"show": [
+				"Top",
+				"InnerTop",
+				"Pants",
+				"Tights",
+				"Gloves",
+				"Shoes"
+			],
 			"shapes": {
-				"Shrink_forJacket": 0.0
+				"Top/Shrink_forJacket": 0.0
 			},
 			"firm": false
+		},
+		"Underwear": {
+			"show": [
+				"Underwear_Top",
+				"Underwear_Bottom"
+			],
+			"shapes": {
+				"Body/Shrink_forInnerTop": 0.0,
+				"Body/Shrink_forPants": 0.0,
+				"Body/Shrink_forTights": 0.0,
+				"Body/Shrink_forShoes": 0.0,
+				"Body/Shrink_forGloves": 0.0
+			},
+			"firm": true
 		}
+	},
+	"shapes": {
+		"Body/Shrink_forInnerTop": 1.0,
+		"Body/Shrink_forPants": 1.0,
+		"Body/Shrink_forTights": 1.0,
+		"Body/Shrink_forShoes": 1.0,
+		"Body/Shrink_forGloves": 1.0,
+		"Body/Shrink_forUnderwear_Top": 1.0,
+		"Body/Shrink_forUnderwear_Bottom": 1.0,
+		"Tights/Shirink_forPants": 1.0
 	}
 }

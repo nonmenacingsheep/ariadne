@@ -78,7 +78,7 @@ func run(name: String, from_brain := false) -> bool:
 	var e := entry(name)
 	if e.is_empty() or pet.t < float(cool_until.get(name, 0.0)) or not _has_clips(name):
 		return false
-	if pet.state in ["held", "fall", "knocked"] or pet.perched != "":
+	if pet.state in ["held", "tumble", "getup", "fall", "knocked"] or pet.perched != "":
 		return false
 	if pet.state == "react" and current == name and pet.t < pet.state_until:
 		return false                           # still at it (patting goes on while he strokes)

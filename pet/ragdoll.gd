@@ -19,6 +19,7 @@ var env: Node3D            # floor, walls, glass, widget ledges
 var anchor: StaticBody3D
 var pin: PinJoint3D
 var target := Vector3.ZERO # where the anchor goes: the point under his pointer
+var anchor_v := Vector3.ZERO  # how fast his hand is moving her, m/s
 var on := false
 var held := false
 var limp: Array = []       # the limb he holds: no flail
@@ -119,6 +120,9 @@ func build(p, sk: Skeleton3D) -> void:
 		cap.height = maxf(len + r[2] * 0.6, r[2] * 2.0 + 0.01)
 		cs.shape = cap
 		pb.add_child(cs)
+		# Its own place in the world: when pet.gd moves her frame under where she
+		# lies (getting up), the ragdoll mustn't be carried round with it.
+		pb.top_level = true
 		sim.add_child(pb)
 		pb.global_transform = skel.global_transform * g * pb.body_offset
 		parts[r[0]] = pb
@@ -270,6 +274,7 @@ func start(bone: String, at: Vector3) -> void:
 				a.add_collision_exception_with(c)
 				exceptions.append([a, c])
 	anchor.global_position = at
+	anchor_v = Vector3.ZERO
 	target = at
 	pin = PinJoint3D.new()
 	pet.add_child(pin)
@@ -281,6 +286,15 @@ func start(bone: String, at: Vector3) -> void:
 func let_go() -> void:
 	held = false
 	since_drop = 0.0
+	# The anchor is moved by hand, not by the physics, so her parts only follow
+	# it and carry little speed of their own: give them his hand's, so a flick
+	# throws her (each part keeps a little of its own swing).
+	for b in parts:
+		var rid: RID = (parts[b] as PhysicalBone3D).get_rid()
+		var v := PhysicsServer3D.body_get_state(rid, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY) as Vector3
+		PhysicsServer3D.body_set_state(rid, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, v.lerp(anchor_v, 0.85))
+	if OS.get_environment("PET_SNAPSHOT_SEQ").begins_with("grab:"):
+		print("THROW anchor_v %s" % anchor_v)
 	if pin:
 		pin.queue_free()
 		pin = null
@@ -390,8 +404,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if held:
 		# Toward his pointer, no faster than a hand can yank her (a flick won't tear her apart).
-		var step := (target - anchor.global_position) * clampf(delta * 30.0, 0.0, 1.0)
-		anchor.global_position += step.limit_length(30.0 * delta)
+		var step := ((target - anchor.global_position) * clampf(delta * 30.0, 0.0, 1.0)).limit_length(30.0 * delta)
+		anchor.global_position += step
+		anchor_v = anchor_v.lerp(step / delta, clampf(delta * 20.0, 0.0, 1.0))
 		# Flailing hard when first grabbed, tiring to a wriggle after a few seconds.
 		flail = lerpf(flail, 0.6 if t > 2.5 else 1.0, clampf(delta * 1.5, 0.0, 1.0))
 	else:

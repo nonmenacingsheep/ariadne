@@ -235,30 +235,68 @@ document.addEventListener("pointerdown", e => {
   const w = e.target.closest?.(".w"); if (w) ripple(w, e.clientX, e.clientY, e.target);
 }, true);
 
-// The pointer, over anything clickable, is a small clear droplet riding on
-// it: a meniscus ring with a faint colour fringe, and a backdrop-filter that
-// brightens and saturates what's under it (the control: it's in the page, so
-// unlike the wallpaper it can be filtered). Sized to the control. Over bare
-// glass there is no droplet. Only `translate` moves, once a frame at most.
+// The pointer, over anything clickable, is a small clear droplet: a meniscus
+// ring with a faint colour fringe and a backdrop-filter that brightens and
+// saturates the control under it. It's a bead on a spring: it follows the
+// pointer but is pulled toward the middle of the control it's over, settling
+// there when the pointer is near the middle; crossing to the next control it
+// flows over, stretched along the way it moves, and settles; off clickables
+// it shrinks away. One element, `transform` only, a small loop that runs
+// while it moves and stops when it has settled (or faded).
 const LENSED = BOBS + ", .sp-tab, .fm-item, .fe-item, .cc-pk-row, .fe-search, .fm-input, .fe-name";
-let lens = null, lensXY = null, lensQueued = false;
+const BEAD = { k: 210, c: 21, pull: .62, snap: .3, base: 44 };    // spring (per s^2, per s), pull toward the middle, snap zone, CSS size
+let lens = null, lensXY = null;
+const bead = { x: 0, y: 0, vx: 0, vy: 0, s: .3, vs: 0, run: false, last: 0, off: 0 };
 function lensTo(el) {
   if (el === lens) return;
+  const from = lens;
   lens = el || null;
-  const drop = lgDrop();
-  drop.classList.toggle("on", !!lens);
-  if (lens) drop.style.setProperty("--d", 2 * Math.max(13, Math.min(22, lens.getBoundingClientRect().height * .72)) + "px");
+  lgDrop().classList.toggle("on", !!lens);
+  if (lens) {
+    const b = lens.getBoundingClientRect();
+    bead.c = [b.left + b.width / 2, b.top + b.height / 2, b.width, b.height];
+    bead.size = 2 * Math.max(13, Math.min(22, b.height * .72));
+    if (!from && lensXY) { bead.x = lensXY[0]; bead.y = lensXY[1]; bead.vx = bead.vy = 0; }   // appears where the pointer is
+    bead.off = 0;
+  } else bead.off = lgNow();
+  beadGo();
 }
-function moveLens() {
-  lensQueued = false;
-  if (lensXY) lgDrop().style.translate = `${lensXY[0]}px ${lensXY[1]}px`;
+function beadTarget() {
+  if (!lens || !lensXY) return [bead.x, bead.y];
+  const [cx, cy, w, h] = bead.c, dx = lensXY[0] - cx, dy = lensXY[1] - cy;
+  // near the middle it snaps there; farther out it leans in by `pull`
+  const nx = dx / (w / 2 || 1), ny = dy / (h / 2 || 1);
+  if (Math.hypot(nx, ny) < BEAD.snap) return [cx, cy];
+  return [cx + dx * (1 - BEAD.pull), cy + dy * (1 - BEAD.pull)];
+}
+function beadTick(dt) {               // dt in ms; returns true while it still moves
+  const t = Math.min(dt, 32) / 1000;
+  const [tx, ty] = beadTarget(), ts = lens ? bead.size / BEAD.base : .3;
+  bead.vx += (BEAD.k * (tx - bead.x) - BEAD.c * bead.vx) * t; bead.x += bead.vx * t;
+  bead.vy += (BEAD.k * (ty - bead.y) - BEAD.c * bead.vy) * t; bead.y += bead.vy * t;
+  bead.vs += (300 * (ts - bead.s) - 26 * bead.vs) * t; bead.s += bead.vs * t;
+  const v = Math.hypot(bead.vx, bead.vy), st = Math.min(.45, v / 2600);     // a bead in flight stretches along its path
+  const ang = Math.atan2(bead.vy, bead.vx) * 180 / Math.PI;
+  lgDrop().style.transform = `translate(${bead.x.toFixed(1)}px, ${bead.y.toFixed(1)}px) rotate(${ang.toFixed(1)}deg) ` +
+    `scale(${(bead.s * (1 + st)).toFixed(3)}, ${(bead.s / (1 + st * .7)).toFixed(3)}) rotate(${(-ang).toFixed(1)}deg)`;
+  const still = v < 4 && Math.abs(tx - bead.x) < .3 && Math.abs(ty - bead.y) < .3 && Math.abs(ts - bead.s) < .004;
+  return !(still || (!lens && lgNow() - bead.off > 450));
+}
+function beadGo() {
+  if (bead.run) return;
+  bead.run = true; bead.last = performance.now();
+  const step = now => {
+    const more = beadTick(now - bead.last); bead.last = now;
+    if (more) requestAnimationFrame(step); else bead.run = false;
+  };
+  requestAnimationFrame(step);
 }
 addEventListener("pointermove", e => {
   if (theme !== "liquid_glass") { if (lens) lensTo(null); return; }
   lensXY = [e.clientX, e.clientY];
   if (grab) slideMove(e);
   else lensTo(e.target.closest?.(LENSED) || null);
-  if (!lensQueued) { lensQueued = true; requestAnimationFrame(moveLens); }
+  if (lens) beadGo();
 }, { passive: true });
 document.documentElement.addEventListener("pointerleave", () => lensTo(null));
 

@@ -18,11 +18,11 @@ import cairo
 import gi
 
 gi.require_version("WebKit", "6.0")
-from gi.repository import Gdk, Gio, Gtk, WebKit  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk, WebKit  # noqa: E402
 
 from .. import protocol  # noqa: E402
 from ..core import settings as core_settings  # noqa: E402
-from . import kwin, layout, theme  # noqa: E402
+from . import game, kwin, layout, theme  # noqa: E402
 from .link import CoreLink  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -55,6 +55,19 @@ class Layer(Gtk.Window):
         pics = pictures()
         pics.mkdir(parents=True, exist_ok=True)
         ctx.add_path_to_sandbox(str(pics), True)
+        self.view: WebKit.WebView | None = None
+        self._make_view()
+
+        self.gaming = False             # a game in front: the page is closed (game.py)
+        self._front_want = False
+        self._front_id = 0
+        self._linked = False
+        game.flag_path().unlink(missing_ok=True)       # a crash mid-game mustn't keep her body away
+        self.link = CoreLink(self._on_message, self._on_status)
+        self.connect("realize", lambda *_: self._update_input())
+        self.connect("map", lambda *_: kwin.load_layer_script())
+
+    def _make_view(self) -> None:
         ucm = WebKit.UserContentManager()
         ucm.register_script_message_handler("desk", None)
         ucm.connect("script-message-received::desk", self._from_page)
@@ -69,9 +82,45 @@ class Layer(Gtk.Window):
         self.view.load_uri(PAGE.as_uri())
         self.set_child(self.view)
 
-        self.link = CoreLink(self._on_message, self._on_status)
-        self.connect("realize", lambda *_: self._update_input())
-        self.connect("map", lambda *_: kwin.load_layer_script())
+    # -- a game in front -----------------------------------------------------
+    # KWin reports the active window (kwin_layer.js). A game that stays in front
+    # 2 s puts her to sleep: the page and its WebKit renderer close (~440 MB of
+    # the card, ~0.5 GB of RAM), the window goes, and the core is told so her
+    # body closes too. 3 s without one brings it all back, so an alt-tab and
+    # straight back doesn't rebuild everything. The core keeps listening.
+    def front(self, full: bool, pid: int) -> None:
+        want = bool(full and pid and game.is_game(pid))
+        if want == self._front_want:
+            return
+        self._front_want = want
+        if self._front_id:
+            GLib.source_remove(self._front_id)
+        self._front_id = GLib.timeout_add(2000 if want else 3000, self._front_settled)
+
+    def _front_settled(self) -> bool:
+        self._front_id = 0
+        if self._front_want != self.gaming:
+            self._game(self._front_want)
+        return False
+
+    def _game(self, on: bool) -> None:
+        self.gaming = on
+        log.info("a game is in front: sleeping" if on else "the game's gone: waking")
+        flag = game.flag_path()
+        if on:
+            flag.touch()
+        else:
+            flag.unlink(missing_ok=True)
+        self.link.send({"t": "game", "on": on})
+        if on:
+            self.ready = False
+            self.set_child(None)
+            self.view = None                    # its WebKit renderer goes with it
+            self.set_visible(False)
+        else:
+            self._make_view()                   # "ready" then reconnects, and the core replays everything
+            self.set_visible(True)
+            self.present()
 
     # -- page <-> python --------------------------------------------------
     def _js(self, fn: str, *args) -> None:
@@ -93,6 +142,9 @@ class Layer(Gtk.Window):
             self.ready = True
             self._js("init", *self._layout_args(), sorted(self.hidden), dict(SOUND_DEFAULTS))
             self._js("setTheme", _saved_theme())      # the look he chose, before the core says so
+            if self._linked:                    # a fresh page after a game: catch up from the core
+                self.link.stop()
+            self._linked = True
             self.link.start()
         elif t == "send":
             out = msg["msg"]
@@ -146,7 +198,7 @@ class Layer(Gtk.Window):
     def set_raised(self, up: bool) -> None:
         self.raised = up
         self._update_input()
-        if up:
+        if up and self.view:
             self.view.grab_focus()
         self._js("setRaised", up)
 
@@ -216,6 +268,9 @@ class DeskApp(Gtk.Application):
             self.layer.link.send(protocol.press("core", "talk"))
         elif method == "Area" and self.layer:
             self.layer.set_area(tuple(params.unpack()))
+        elif method == "Front" and self.layer:
+            full, pid = params.unpack()
+            self.layer.front(bool(full), int(pid))
         invocation.return_value(None)
 
     def _activate(self, _app) -> None:

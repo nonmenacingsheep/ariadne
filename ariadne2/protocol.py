@@ -57,6 +57,7 @@ _REQUIRED = {
     "update_do": ("op",),
     "shown": ("path",),
     "body": ("cmd",),
+    "game": ("on",),             # a game in front (desk/game.py): her body closes till it's gone
     "desk_do": ("op", "widget"),  # her settings tool hiding / showing a widget (desk.js deskDo)            # her commands to her body (adapters/avatar.py); the bodies only listen          # a picture one of her extensions made, for the chat (core/extensions.py)
 }
 MAX_ATTACHMENTS = 8

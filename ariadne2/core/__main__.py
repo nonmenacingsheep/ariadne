@@ -213,6 +213,11 @@ async def run(args: argparse.Namespace) -> None:
             if path:
                 _spawn_flow(body_models.add(str(path), wear=True))
             return None
+        # A game in front (the desk saw it, desk/game.py): her body hears it and
+        # closes till the game's gone. Her ears stay on.
+        if msg.get("t") == "game":
+            _spawn_flow(server.publish({"t": "game", "on": bool(msg.get("on"))}))
+            return None
         if msg.get("t") == "update_do":
             _spawn_flow(updater.on_desk(msg))
             return None

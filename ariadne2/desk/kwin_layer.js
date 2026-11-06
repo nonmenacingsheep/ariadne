@@ -195,6 +195,31 @@ workspace.windowAdded.connect(function (w) {
     w.captionChanged.connect(function () { if (isPet(w)) { settlePet(w); settleSoon(w); petsAroundDesk(); } });
 });
 
+// What's in front: whether the active window fills its screen (fullscreen, or
+// borderless at the screen's size, as many games run) and whose it is. The desk
+// decides if that's a game (game.py) and drops to her core while it's there.
+// Told only on a change; a slow timer catches a game that resizes itself.
+var front = "";
+function tellFront() {
+    var a = workspace.activeWindow, full = false, pid = 0;
+    if (a && a.caption !== TITLE && !isPet(a)) {
+        var o = a.output, f = a.frameGeometry;
+        var g = o ? o.geometry : null;
+        full = !!a.fullScreen || !!(g && f.x <= g.x && f.y <= g.y &&
+                                     f.x + f.width >= g.x + g.width && f.y + f.height >= g.y + g.height);
+        pid = a.pid || 0;
+    }
+    var now = full + ":" + pid;
+    if (now === front) return;
+    front = now;
+    callDBus(SERVICE, PATH, IFACE, "Front", full, pid);
+}
+workspace.windowActivated.connect(tellFront);
+var frontTimer = new QTimer();
+frontTimer.interval = 2000;
+frontTimer.timeout.connect(tellFront);
+frontTimer.start();
+
 var existing = layer();
 if (existing) { pin(existing); hold(existing); }
 pets().forEach(settlePet);

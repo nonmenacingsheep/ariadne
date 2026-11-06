@@ -234,6 +234,11 @@ var mode := "play"
 var menu: PopupMenu
 const MODES := ["play", "poke", "pin"]
 const MODE_FILE := "user://click_mode"
+# While a game is in front she closes (exit GAME_EXIT, which bin/ariadne2 waits
+# out), keeping where she was in PLACE_FILE for when she comes back.
+var GAME_FLAG := OS.get_environment("XDG_RUNTIME_DIR").path_join("ariadne2-game") if OS.get_environment("XDG_RUNTIME_DIR") != "" else "/tmp/ariadne2-game"
+const GAME_EXIT := 42
+const PLACE_FILE := "user://place.json"
 const RAGDOLL := ["held", "tumble"]
 const DEPTH_STEP := 0.25                   # metres a wheel notch carries her, held
 var last_rect := Rect2()
@@ -241,6 +246,14 @@ var snapshot_path := OS.get_environment("PET_SNAPSHOT")
 
 
 func _ready() -> void:
+	# A game in front (ariadne2/desk/game.py): stay closed; bin/ariadne2 starts
+	# her again when it's gone.
+	if snapshot_path == "" and FileAccess.file_exists(GAME_FLAG):
+		set_process(false)
+		set_physics_process(false)
+		set_process_input(false)
+		get_tree().quit(GAME_EXIT)
+		return
 	if FileAccess.file_exists(MODE_FILE):
 		var m := FileAccess.get_file_as_string(MODE_FILE).strip_edges()
 		if m in MODES:
@@ -273,6 +286,14 @@ func _ready() -> void:
 	play.setup(self)
 	_read_layout()
 	pos = Vector2(screen.x / PPM * 0.3, 0.0)
+	if FileAccess.file_exists(PLACE_FILE):            # back after a game: where she was
+		var was = JSON.parse_string(FileAccess.get_file_as_string(PLACE_FILE))
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(PLACE_FILE))
+		if was is Dictionary and Time.get_unix_time_from_system() - float(was.get("at", 0)) < 86400.0:
+			pos.x = clampf(float(was.get("x", pos.x)), 0.2, screen.x / PPM - 0.2)
+			depth = clampf(float(was.get("depth", 0.0)), -room_depth, 0.0)
+			yaw = float(was.get("yaw", 0.0))
+			yaw_target = yaw
 	_land()
 	_play("Idle")
 	if snapshot_path != "":
@@ -280,6 +301,15 @@ func _ready() -> void:
 	else:
 		gaze_in.bind(GAZE_UDP, "127.0.0.1")
 		_connect()
+
+
+# A game came to the front: note where she is, and close.
+func _game_sleep() -> void:
+	var f := FileAccess.open(PLACE_FILE, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"x": pos.x, "depth": depth, "yaw": yaw, "at": Time.get_unix_time_from_system()}))
+		f.close()
+	get_tree().quit(GAME_EXIT)
 
 
 # --- which body ---------------------------------------------------------------
@@ -917,6 +947,9 @@ func _on_message(msg: Dictionary) -> void:
 				_watch(str(msg.get("widget", "")), 2.0)
 		"body":
 			_command(msg)
+		"game":
+			if msg.get("on", false):
+				_game_sleep()
 		"chat":
 			_stir()
 			if msg.get("role", "") == "you":
@@ -3148,6 +3181,19 @@ func _snapshot_seq(what: String) -> void:
 			await get_tree().create_timer(0.5).timeout
 			_wake()
 		"brain":                                   # her own choices, sped up (PET_TIME_SCALE)
+			get_tree().create_timer(8.0).timeout.connect(func():
+				var P := Performance
+				print("MEM static %d MB, msg buf %d, objects %d, resources %d, nodes %d" % [P.get_monitor(P.MEMORY_STATIC) / 1048576, P.get_monitor(P.MEMORY_MESSAGE_BUFFER_MAX), P.get_monitor(P.OBJECT_COUNT), P.get_monitor(P.OBJECT_RESOURCE_COUNT), P.get_monitor(P.OBJECT_NODE_COUNT)])
+				print("VRAM total %d MB, textures %d MB, buffers %d MB" % [P.get_monitor(P.RENDER_VIDEO_MEM_USED) / 1048576, P.get_monitor(P.RENDER_TEXTURE_MEM_USED) / 1048576, P.get_monitor(P.RENDER_BUFFER_MEM_USED) / 1048576])
+				print("window %s, viewport %s, msaa %d, scale %.2f" % [get_window().size, get_viewport().size, get_viewport().msaa_3d, get_viewport().scaling_3d_scale])
+				var anims := 0
+				var keys := 0
+				for a in ap.get_animation_list():
+					anims += 1
+					var an := ap.get_animation(a)
+					for tr in an.get_track_count():
+						keys += an.track_get_key_count(tr)
+				print("ANIMS %d clips, %d keys" % [anims, keys]))
 			Engine.time_scale = float(OS.get_environment("PET_TIME_SCALE")) if OS.get_environment("PET_TIME_SCALE") != "" else 1.0
 			_set_state("idle", 0.5)
 		"liedown":                                 # lies down on the floor, then gets up again (side on)

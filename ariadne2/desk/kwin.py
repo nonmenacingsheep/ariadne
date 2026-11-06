@@ -26,6 +26,9 @@ IFACE_XML = """
 <node><interface name='io.ariadne2.Layer'>
   <method name='Raised'><arg type='b' name='up' direction='in'/></method>
   <method name='Talk'/>
+  <method name='Front'>
+    <arg type='b' name='full' direction='in'/><arg type='i' name='pid' direction='in'/>
+  </method>
   <method name='Area'>
     <arg type='i' name='x' direction='in'/><arg type='i' name='y' direction='in'/>
     <arg type='i' name='w' direction='in'/><arg type='i' name='h' direction='in'/>

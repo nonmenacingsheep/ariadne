@@ -80,7 +80,16 @@ if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -n "$GODOT" ] &
     echo "preparing her 3D body (first run, a few seconds)"
     timeout 300 "$GODOT" --headless --path pet --import >/dev/null 2>&1
   fi
-  ( sleep 2; exec $GATE "$GODOT" --path pet --display-driver x11 ) >/dev/null 2>&1 &
+  # Her body closes itself while a game is in front (exit 42, ariadne2/desk/game.py);
+  # it comes back once the desk takes the flag down.
+  GAME_FLAG=${XDG_RUNTIME_DIR:-/tmp}/ariadne2-game
+  rm -f "$GAME_FLAG"
+  ( sleep 2
+    while :; do
+      $GATE "$GODOT" --path pet --display-driver x11
+      [ $? -eq 42 ] || break
+      while [ -e "$GAME_FLAG" ]; do sleep 1; done
+    done ) >/dev/null 2>&1 &
   pet=$!
   trap 'kill $core $pet 2>/dev/null; pkill -f "[Gg]odot.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 fi

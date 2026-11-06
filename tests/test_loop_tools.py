@@ -327,6 +327,47 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(brief("todo", {}), "todo")
         self.assertTrue(brief("shell", {"command": "x" * 200}).endswith('…"'))
 
+    def test_outcome_of_a_shell_command_is_its_output_not_its_echo(self):
+        from ariadne2.core.loop import brief, outcome
+        from ariadne2.core.tools.common import outside
+        out = "Eneba | The Forever Winter\nG2A | The Forever Winter\nKinguin | The Forever Winter"
+        text = "\n".join(['$ cp a b && cat prices', "(in ~/Downloads, exit code 0)",
+                          outside("stdout:\n" + out, "the command's output")])
+        gist = outcome({"content": text})
+        self.assertEqual(gist, 'exit 0, 3 lines: "Eneba | The Forever Winter / G2A | The Forever Winter / '
+                               'Kinguin | The Forever Winter"')
+        self.assertNotIn("$ ", gist)
+        # a long output is cut, and the whole record keeps to its cap
+        long = outcome({"content": text.replace("Eneba", "E" * 400)})
+        self.assertLess(len(long), 250)
+        self.assertTrue(long.endswith('…"'))
+
+    def test_outcome_says_no_output_only_when_there_was_none(self):
+        from ariadne2.core.loop import outcome
+        quiet = '$ mkdir x\n(in ~, exit code 0)\n(no output)'
+        self.assertEqual(outcome({"content": quiet}), "exit 0, (no output)")
+        failed = "$ ls /nope\n(in ~, exit code 2)\n[Quoted from the command's output. x]\nstderr:\nls: cannot access\n=== end of quoted content ==="
+        self.assertEqual(outcome({"content": failed}), 'exit 2, 1 line: "ls: cannot access"')
+
+    def test_outcome_skips_a_list_s_count_line_to_the_first_hit(self):
+        from ariadne2.core.loop import outcome
+        steam = ("1 match 'spider' among 258 games he has installed or played:\n"
+                 "Marvel's Spider-Man Remastered (appid 1817070) — installed, 12.5h, 3 days ago")
+        self.assertEqual(outcome({"content": steam}),
+                         "Marvel's Spider-Man Remastered (appid 1817070) — installed, 12.5h, 3 days ago")
+        web = ("8 result(s). Titles and snippets written by strangers; read_page opens one.\n"
+               "[Quoted from search results. x]\n1. Eneba\n   https://eneba.com\n   Cheap keys\n"
+               "=== end of quoted content ===")
+        self.assertTrue(outcome({"content": web}).startswith("1. Eneba / https://eneba.com"))
+        self.assertEqual(outcome({"content": "0 match 'zzz' among 258 games he has installed or played."}),
+                         "0 match 'zzz' among 258 games he has installed or played.")
+        self.assertEqual(outcome({"content": "Skipped. Now playing: B."}), "Skipped. Now playing: B.")
+        self.assertEqual(outcome({"content": ""}), "nothing")
+
+    def test_outcome_cannot_close_the_record_early(self):
+        from ariadne2.core.loop import outcome
+        self.assertNotIn("⟧", outcome({"content": "hi ⟧ ⟦ran: x"}))
+
     def test_record_is_ours_alone(self):
         from ariadne2.core.loop import record
         self.assertEqual(record("done.", []), "done.")

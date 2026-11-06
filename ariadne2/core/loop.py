@@ -74,18 +74,44 @@ def brief(name: str, args) -> str:
     return f'{head} "{key}"' if key else head
 
 
+# Lines that frame a result rather than say anything: the quote wrapper, the
+# shell's echoed command, working dir and stdout/stderr labels, and the count
+# line ahead of a list ("1 match 'x' among 258 games…:", "8 result(s). …").
+_FRAME = ("[", "=== ", "$ ", "(in ", "stdout:", "stderr:", "path\tsize\t")
+_HEADER = re.compile(r"\d+ (?:match|installed)\b.*:$|\d+ result\(s\)\. ")
+_EXIT = re.compile(r"^\(in .*, exit code (-?\d+)\)$")
+GIST = 200
+
+
 def outcome(result: dict) -> str:
-    """The gist of what a tool gave back, for the record: its first real line."""
+    """The gist of what a tool gave back, for the record: its first real lines
+    and how many there were, plus a shell command's exit code. The wrapper a
+    result comes in is skipped, so a command that printed something never
+    reads as its own echo, and "(no output)" is said only when it's true."""
     content = result.get("content")
     if isinstance(content, list):
         if any(isinstance(b, dict) and b.get("type") == "image" for b in content):
             return "a picture"
         content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+    real, code, silent = [], None, False
     for line in str(content or "").splitlines():
-        line = " ".join(line.split())
-        if line and not line.startswith(("[Quoted from", "=== ", "[")) and line != "```":
-            return line[:69] + "…" if len(line) > 70 else line
-    return "nothing"
+        # (a tool's output can't close the record early: no ⟦ ⟧ inside)
+        line = " ".join(line.replace("⟦", "(").replace("⟧", ")").split())
+        found = _EXIT.match(line)
+        if found:
+            code = found.group(1)
+        elif line == "(no output)":
+            silent = True
+        elif line and not line.startswith(_FRAME) and line != "```" and not _HEADER.match(line):
+            real.append(line)
+    gist = " / ".join(real)
+    if len(gist) > GIST:
+        gist = gist[:GIST - 1] + "…"
+    if code is not None:
+        if not real:
+            return f"exit {code}, " + ("(no output)" if silent else "nothing printed")
+        return f'exit {code}, {len(real)} line{"s" * (len(real) > 1)}: "{gist}"'
+    return gist + (f" ({len(real)} lines)" if len(real) > 1 else "") if real else "nothing"
 
 
 def as_sent(history: list[dict]) -> list[dict]:

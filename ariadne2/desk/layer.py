@@ -114,8 +114,9 @@ class Layer(Gtk.Window):
         self.link.send({"t": "game", "on": on})
         if on:
             self.ready = False
+            self.view.terminate_web_process()   # dropping the view alone left its renderer up (330 MB of the card)
             self.set_child(None)
-            self.view = None                    # its WebKit renderer goes with it
+            self.view = None
             self.set_visible(False)
         else:
             self._make_view()                   # "ready" then reconnects, and the core replays everything

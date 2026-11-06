@@ -2273,8 +2273,10 @@ func _set_click_rect(r: Rect2) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# Lying in a heap or getting up: clicks and scrolls leave her be (only a drag picks her up again).
+	var heap := state in ["tumble", "getup"]
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] \
-			and event.pressed:
+			and event.pressed and not heap:
 		_stir()
 		play.run("twirl")                     # scrolled over her: round she goes
 		return
@@ -2285,7 +2287,7 @@ func _input(event: InputEvent) -> void:
 			held_vel = Vector2.ZERO
 			shakes = 0
 			_stir()
-			if event.double_click:
+			if event.double_click and not heap:
 				pressing = false
 				play.run("joy_jump")
 				return
@@ -2306,7 +2308,7 @@ func _input(event: InputEvent) -> void:
 				_set_state("tumble", 99.0)
 				if held_vel.length() > 4.0:
 					_feel("surprised", 0.8, 1.2)
-			elif state != "held":              # a click, not a drag
+			elif state != "held" and not heap:  # a click, not a drag
 				_clicked(play.press_part)
 	elif event is InputEventMouseMotion and pressing:
 		if event.position.distance_to(drag_from) > 4 and not drag_moved and not play.holding_still:
@@ -2404,30 +2406,31 @@ func _held_frame(delta: float) -> void:
 # Up from wherever she ended: the get-up for how she's lying, her frame put
 # under where she lies (and turned the way her head points), the ragdoll
 # easing into the clip's first pose.
-# Each get-up is sorted by how its own first frame lies (back, front, side,
-# sit), measured once, so she never blends from her back into a clip that
-# starts on her front (her torso spinning round). Close ones stand in when
-# none lies quite the same way.
+# Each get-up is matched by how its own first frame lies (measured once), so
+# she never blends from her back into a clip that starts on her front (her
+# torso spinning round): the one tilted most like her wins.
 const GETUPS := ["getup_", "get_up_", "tr_lie_stand_", "tr_floor_stand_", "LayToIdle"]
-const GETUP_NEAR := {"back": ["back", "side"], "front": ["front", "side"], "side": ["side", "front", "back"],
-		"sit": ["sit", "back", "side"]}
-var getup_kind := {}                       # clip -> how its first frame lies
+var getup_kind := {}                       # clip -> up, in its first frame's pelvis
 func _get_up() -> void:
 	var how: String = ragdoll.lie()
+	# Which way is up from her pelvis: the same for any turn about the vertical,
+	# so a clip's first frame and the ragdoll compare straight off.
 	if getup_kind.is_empty():
 		for a in ap.get_animation_list():
 			var n := String(a)
 			if not n.contains("@") and GETUPS.any(func(g): return n.begins_with(g)):
 				ap.play(n, 0.0)
 				ap.seek(0.0, true)
-				getup_kind[n] = ragdoll.lie_of(skel.global_basis * skel.get_bone_global_pose(skel.find_bone("Hips")).basis)
+				getup_kind[n] = (skel.global_basis * skel.get_bone_global_pose(skel.find_bone("Hips")).basis).inverse() * Vector3.UP
+	var up_r: Vector3 = ragdoll.hips_up()
 	var pick := ""
-	for near in GETUP_NEAR[how]:
-		var ok := getup_kind.keys().filter(func(c): return getup_kind[c] == near)
-		var fresh := ok.filter(func(c): return String(c).begins_with("getup_"))
-		if not ok.is_empty():
-			pick = (fresh if not fresh.is_empty() else ok).pick_random()
-			break
+	var best := INF
+	for c in getup_kind:
+		# The nearest tilt wins; the get-ups made for this (getup_) by a little.
+		var off: float = up_r.angle_to(getup_kind[c]) - (0.2 if String(c).begins_with("getup_") else 0.0)
+		if off < best:
+			best = off
+			pick = c
 	if pick == "":
 		pick = _variant_of("get_up_")
 	var hips_w: Vector3 = ragdoll.joint("Hips")
@@ -2462,7 +2465,7 @@ func _get_up() -> void:
 	ragdoll.ease_out(0.7)
 	play.landed(ragdoll.impact > HARD_LANDING, a.length)
 	if OS.get_environment("PET_SNAPSHOT_SEQ").begins_with("grab:"):
-		print("GETUP %s %s impact %.1f yaw %.2f at %s kinds %s" % [how, pick, ragdoll.impact, yaw, at, getup_kind])
+		print("GETUP %s %s off %.0fdeg impact %.1f yaw %.2f at %s" % [how, pick, rad_to_deg(best), ragdoll.impact, yaw, at])
 
 
 # --- the window slab ---------------------------------------------------------

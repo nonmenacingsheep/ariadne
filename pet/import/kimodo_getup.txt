@@ -4,3 +4,4 @@
 getup_front_1|4|A woman lying flat on her stomach on the floor pushes herself up onto her hands and knees and stands up.|lie_idle_1:0|idle_calm_1:0
 getup_back_1|5|A woman lying on her back on the floor rolls over onto her stomach, pushes herself up onto her hands and knees and stands up.|lie_idle_2:0|idle_calm_1:0
 getup_side_1|4|A woman lying curled on her side on the floor props herself up on one arm, gets her feet under her and stands up.|bed_lie_side_1:-1|idle_calm_1:0
+getup_side_2|4|A woman lying on her side on the floor with her head on her arm pushes herself up on one hand, gets her feet under her and stands up.|lie_down_1:-1|idle_calm_1:0

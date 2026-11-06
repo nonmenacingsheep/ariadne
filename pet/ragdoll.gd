@@ -307,6 +307,11 @@ func ease_out(secs: float) -> void:
 	flail = 0.0
 
 
+# Which way is up, in her pelvis's own frame.
+func hips_up() -> Vector3:
+	return _hips_bone().inverse() * Vector3.UP
+
+
 func fwd_now() -> Vector3:
 	return _hips_bone() * fwd_in_hips
 

@@ -28,22 +28,25 @@ html.lg {
   --lg-r-panel: 26px;                           /* menus, panels */
   /* the glass's own tint: denser in the middle where text sits, clearer toward
      the edges, the way a thick lens thins out the view at its rim */
-  --lg-ink: radial-gradient(130% 110% at 50% 42%, rgba(15, 12, 21, .78), rgba(15, 12, 21, .66) 62%, rgba(15, 12, 21, .46));
-  --lg-ink-deep: radial-gradient(130% 110% at 50% 42%, rgba(15, 12, 21, .80), rgba(15, 12, 21, .70) 62%, rgba(15, 12, 21, .58));   /* menus: one step denser */
+  --lg-ink: radial-gradient(130% 110% at 50% 42%, rgba(26, 22, 34, .74), rgba(26, 22, 34, .60) 62%, rgba(26, 22, 34, .40));
+  --lg-ink-deep: radial-gradient(130% 110% at 50% 42%, rgba(26, 22, 34, .80), rgba(26, 22, 34, .70) 62%, rgba(26, 22, 34, .56));   /* menus: one step denser */
   --lg-blur: blur(14px) saturate(175%);
   --lg-line: rgba(255, 255, 255, .10);
   --lg-fill: rgba(255, 255, 255, .10);
   --lg-fill-hi: rgba(255, 255, 255, .18);
   --lg-red: #ff3b4e;
-  --lg-red-glass: linear-gradient(180deg, rgba(255, 92, 108, .78), rgba(226, 28, 52, .72));
-  --lg-shadow: 0 28px 56px -18px rgba(0, 0, 0, .55), 0 10px 22px -8px rgba(0, 0, 0, .32), 0 0 0 .5px rgba(0, 0, 0, .28);
+  --lg-red-glass: radial-gradient(100% 80% at 50% 0%, rgba(255, 255, 255, .28), rgba(255, 255, 255, 0) 60%), linear-gradient(180deg, rgba(255, 82, 100, .66), rgba(220, 24, 48, .58));
+  --lg-shadow: 0 30px 60px -16px rgba(0, 0, 0, .62), 0 10px 24px -8px rgba(0, 0, 0, .36), 0 0 0 .5px rgba(0, 0, 0, .3);
+  --lg-shadow-lift: 0 46px 80px -18px rgba(0, 0, 0, .7), 0 16px 32px -10px rgba(0, 0, 0, .4), 0 0 0 .5px rgba(0, 0, 0, .3);
   /* thickness: light pools inside the top edge, the bottom edge darkens and
      then catches a thin caustic line, and a soft band runs round the rim */
   --lg-rim:
-    inset 0 14px 20px -12px rgba(255, 255, 255, .24),
-    inset 0 -16px 22px -12px rgba(0, 0, 0, .38),
-    inset 0 0 18px rgba(255, 255, 255, .07),
-    inset 0 -2px 3px -1px rgba(255, 255, 255, .16);
+    inset 0 1px 0 rgba(255, 255, 255, .32),
+    inset 0 14px 22px -12px rgba(255, 255, 255, .26),
+    inset 0 -16px 22px -12px rgba(0, 0, 0, .34),
+    inset 0 0 0 1px rgba(255, 255, 255, .05),
+    inset 0 0 26px rgba(255, 255, 255, .10),
+    inset 0 -2px 3px -1px rgba(255, 255, 255, .18);
   --lg-btn:
     inset 0 1px .5px rgba(255, 255, 255, .50),
     inset 0 -1px .5px rgba(255, 255, 255, .10),
@@ -62,15 +65,15 @@ html.lg {
 .lg .face {
   border-radius: var(--lg-r); border: none; isolation: isolate;
   background:
-    radial-gradient(130% 80% at 12% -18%, rgba(255, 255, 255, .17), rgba(255, 255, 255, 0) 52%),
+    radial-gradient(130% 80% at 12% -18%, rgba(255, 255, 255, .2), rgba(255, 255, 255, 0) 52%),
     radial-gradient(90% 70% at 105% 115%, rgba(255, 70, 92, .13), rgba(255, 70, 92, 0) 60%),
-    linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .012) 42%, rgba(0, 0, 0, .06)),
+    linear-gradient(180deg, rgba(255, 255, 255, .10), rgba(255, 255, 255, .02) 42%, rgba(0, 0, 0, .08)),
     var(--lg-ink);
   box-shadow: var(--lg-rim);
   /* No backdrop-filter here: behind a widget there is only the wallpaper (not
      in the page) and the wire canvases, which WebKitGTK's backdrop pass does
      not pick up, so it would cost a blur per repaint for nothing. */
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+  text-shadow: 0 0 1px rgba(0, 0, 0, .5), 0 1px 8px rgba(0, 0, 0, .45);
 }
 /* the specular rim: a 1.25 px ring cut out of a gradient, bright where light
    strikes the top-left and leaves the bottom-right */
@@ -79,9 +82,9 @@ html.lg {
     rgba(255, 255, 255, .02) 66%, rgba(255, 200, 208, .35) 88%, rgba(255, 255, 255, .85));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; }
-.lg .lg-spot { display: block; position: absolute; left: 0; top: 0; width: 460px; height: 460px; margin: -230px 0 0 -230px;
+.lg .lg-spot { display: block; position: absolute; left: 0; top: 0; width: 380px; height: 380px; margin: -190px 0 0 -190px;
   border-radius: 50%; pointer-events: none; z-index: 3; opacity: 0; transition: opacity .45s ease; mix-blend-mode: plus-lighter;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, .20), rgba(255, 255, 255, .07) 45%, rgba(255, 255, 255, 0)); }
+  background: radial-gradient(closest-side, rgba(255, 255, 255, .30), rgba(255, 255, 255, .10) 45%, rgba(255, 255, 255, 0)); }
 .lg .lg-edge { display: block; position: absolute; inset: 0; border-radius: inherit; padding: 2px; pointer-events: none; z-index: 5;
   opacity: 0; transition: opacity .45s ease;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -104,7 +107,7 @@ html.lg {
 .lg .w:hover .grip::after { opacity: 1; }
 
 /* lift while dragged; desk.js adds a stretch along the motion */
-.lg .w.lifted { scale: 1.018; transition: scale .35s var(--lg-spring); }
+.lg .w.lifted { scale: 1.025; transition: scale .35s var(--lg-spring); box-shadow: var(--lg-shadow-lift) !important; }
 .lg .w.lifted .face { box-shadow: var(--lg-rim), inset 0 0 0 1px rgba(255, 255, 255, .14); }
 
 /* ======================= buttons ======================= */
@@ -155,7 +158,7 @@ html.lg {
 
 /* her core's ports: a row of glass capsules */
 .lg .ports { gap: 6px; }
-.lg .port { height: 30px; padding: 0 6px; font-size: 11px; color: rgba(255, 255, 255, .9); }
+.lg .port { height: 30px; padding: 0 3px; font-size: 10.5px; color: rgba(255, 255, 255, .9); }
 .lg .port i { display: none; }
 .lg .port.live { background: var(--lg-red-glass); color: #fff; box-shadow: var(--lg-btn), 0 0 16px -2px rgba(255, 59, 78, .65); }
 .lg .port.off { opacity: .45; }
@@ -256,12 +259,12 @@ html.lg {
 
 /* settings: grows out of the gear, overshoots, settles; its content fades in after the glass */
 .lg .setpanel { max-height: 640px; transform-origin: 100% 0; pointer-events: none; visibility: hidden;
-  opacity: 0; transform: translate(26px, -6px) scale(.42, .18); border-radius: 80px;
+  opacity: 0; transform: translate(30px, -4px) scale(.16, .08); border-radius: 999px;
   transition: transform .3s cubic-bezier(.5, 0, .9, .5), opacity .26s ease-in, border-radius .3s, visibility 0s linear .3s; }
 .lg .setpanel.open { pointer-events: auto; visibility: visible; opacity: 1; transform: none; border-radius: var(--lg-r-panel);
-  transition: transform .7s var(--lg-spring), opacity .16s ease-out, border-radius .55s var(--lg-soft), visibility 0s; }
-.lg .setpanel > * { opacity: 0; transition: opacity .12s; }
-.lg .setpanel.open > * { opacity: 1; transition: opacity .3s .14s; }
+  transition: transform .6s var(--lg-soft), opacity .12s ease-out, border-radius .5s var(--lg-soft), visibility 0s; }
+.lg .setpanel > * { opacity: 0; translate: 0 6px; transition: opacity .1s, translate .1s; }
+.lg .setpanel.open > * { opacity: 1; translate: 0 0; transition: opacity .22s .07s, translate .5s .07s var(--lg-spring); }
 .lg .sp-tabs { position: relative; margin: 14px 14px 10px; padding: 3px; gap: 0; border-radius: 999px;
   background: rgba(0, 0, 0, .28); box-shadow: var(--lg-well); }
 .lg .sp-tabs .sp-tab { position: relative; z-index: 1; height: 30px; background: none; box-shadow: none; color: rgba(255, 255, 255, .72);
@@ -270,18 +273,18 @@ html.lg {
 .lg .sp-tabs .sp-tab.live { color: #fff; background: none; }
 /* the lens under the live tab: slides with a spring and wobbles like a drop */
 .lg .sp-lens { display: block; position: absolute; left: 0; top: 3px; bottom: 3px; z-index: 0; pointer-events: none;
-  transition: translate .75s var(--lg-spring), width .75s var(--lg-spring); }
+  transition: translate .55s var(--lg-spring), width .55s var(--lg-spring); }
 .lg .sp-lens b { position: absolute; inset: 0; border-radius: 999px; background: var(--lg-red-glass);
   box-shadow: inset 0 1px .5px rgba(255, 255, 255, .55), inset 0 -1px .5px rgba(255, 255, 255, .15), 0 4px 14px -3px rgba(255, 59, 78, .65); }
 .lg .sp-lens b::after { content: ""; position: absolute; inset: 0; border-radius: inherit;
-  background: radial-gradient(90% 120% at 50% 0%, rgba(255, 255, 255, .5), rgba(255, 255, 255, .08) 60%), rgba(255, 255, 255, .10);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55), inset 0 -3px 6px rgba(255, 255, 255, .2); opacity: 0; }
+  background: radial-gradient(90% 120% at 50% 0%, rgba(255, 255, 255, .3), rgba(255, 255, 255, .03) 60%), rgba(255, 255, 255, .06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), inset 0 0 0 1px rgba(255, 255, 255, .35), inset 0 -3px 6px rgba(255, 255, 255, .15), 0 4px 12px rgba(0, 0, 0, .3); opacity: 0; }
 /* while it travels it turns into a clear magnifying drop, stretched along the move, and goes red again once it lands */
-.lg .sp-lens.jelly b { animation: lg-jelly .75s var(--lg-soft), lg-unred .75s ease; }
-.lg .sp-lens.jelly b::after { animation: lg-clear .75s ease; }
+.lg .sp-lens.jelly b { animation: lg-jelly .55s var(--lg-soft), lg-unred .55s ease; }
+.lg .sp-lens.jelly b::after { animation: lg-clear .55s ease; }
 @keyframes lg-jelly { 0% { scale: 1 1; } 22% { scale: 1.32 1.18; } 50% { scale: 1.12 1.12; } 75% { scale: .97 1.03; } 100% { scale: 1 1; } }
 @keyframes lg-clear { 0% { opacity: 0; } 15%, 60% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes lg-unred { 15%, 60% { filter: saturate(.2) brightness(1.25); } }
+@keyframes lg-unred { 15%, 60% { opacity: .35; } }
 .sp-lens { display: none; }
 .lg .sp-body { margin: 0 14px 14px; padding: 2px 16px; border-radius: 18px; background: rgba(255, 255, 255, .055);
   box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .08); }
@@ -453,23 +456,23 @@ html.lg {
   background: linear-gradient(115deg, transparent calc(var(--sweep) + 0%), rgba(255, 90, 160, .30) calc(var(--sweep) + 12%),
     rgba(120, 230, 255, .32) calc(var(--sweep) + 22%), rgba(255, 240, 170, .26) calc(var(--sweep) + 30%), transparent calc(var(--sweep) + 44%)); }
 .lg .sheen::after { background: linear-gradient(105deg, transparent calc(var(--sweep) + 6%), rgba(255, 255, 255, .45) calc(var(--sweep) + 15%), transparent calc(var(--sweep) + 24%)); }
-.lg .w.working .sheen { opacity: 1; animation: sweep 1.9s cubic-bezier(.45, 0, .55, 1) infinite; }
+.lg .w.working .sheen { opacity: .45; mix-blend-mode: soft-light; animation: sweep 1.9s cubic-bezier(.45, 0, .55, 1) infinite; }
 .lg .rim { border: none; border-radius: inherit; padding: 2.5px; border-image: none;
   background: conic-gradient(from var(--ang), #ff3b6e, #7fe9ff, #ffe27a, #b28bff, #ff3b6e);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
 .lg .w.working .rim { animation: spin 2.4s linear infinite; }
 .lg .w.failed { animation: lg-shake .5s var(--lg-soft); }
 @keyframes lg-shake { 20% { translate: -7px 0; } 45% { translate: 6px 0; } 70% { translate: -3px 0; } }
-.lg .w.failed { box-shadow: var(--lg-shadow), 0 0 30px -4px rgba(255, 59, 78, .7) !important; }
+.lg .w.failed { box-shadow: var(--lg-shadow), 0 0 0 1.5px rgba(255, 69, 58, .85), 0 0 30px -2px rgba(255, 59, 78, .75) !important; }
 .lg .w.failed .face { box-shadow: var(--lg-rim), inset 0 0 0 2px rgba(255, 59, 78, .9), inset 0 0 60px rgba(255, 59, 78, .38); }
 
 /* ======================= switching looks ======================= */
 /* Each widget melts and re-forms, one after another. */
-.theme-shift .w { animation: lg-morph .75s var(--lg-soft) backwards; }
+.theme-shift .w { animation: lg-morph .7s var(--lg-spring) backwards; }
 .theme-shift .w:nth-child(2) { animation-delay: .04s; } .theme-shift .w:nth-child(3) { animation-delay: .08s; }
 .theme-shift .w:nth-child(4) { animation-delay: .12s; } .theme-shift .w:nth-child(5) { animation-delay: .16s; }
 .theme-shift .w:nth-child(6) { animation-delay: .2s; } .theme-shift .w:nth-child(n+7) { animation-delay: .24s; }
-@keyframes lg-morph { 0% { opacity: .55; scale: .93; } 100% { opacity: 1; scale: 1; } }
+@keyframes lg-morph { 0% { opacity: .8; scale: .95; } 100% { opacity: 1; scale: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   .lg *, .lg *::before, .lg *::after { transition-duration: .001s !important; }
@@ -485,3 +488,4 @@ html.lg {
 .lg .say::placeholder, .lg .cc-in::placeholder { color: rgba(255, 255, 255, .6); }
 .lg .br-tab, .lg .dp-file { border-radius: 10px; }
 .lg .cc-sess:empty { display: none; }
+.lg .sp-list { -webkit-mask-image: linear-gradient(transparent, #000 10px, #000 70%, transparent); mask-image: linear-gradient(transparent, #000 10px, #000 70%, transparent); }

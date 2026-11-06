@@ -159,8 +159,8 @@ document.documentElement.addEventListener("pointerleave", () => { lit?.classList
 // Liquid Glass: a dragged widget lifts, and stretches along the way it moves,
 // then springs back when it stops or is let go.
 function stretch(root, vx, vy) {
-  const k = 0.0009, sx = Math.min(.05, Math.abs(vx) * k), sy = Math.min(.05, Math.abs(vy) * k);
-  root.style.scale = `${(1.018 + sx - sy * .5).toFixed(4)} ${(1.018 + sy - sx * .5).toFixed(4)}`;
+  const k = 0.0006, sx = Math.min(.025, Math.abs(vx) * k), sy = Math.min(.025, Math.abs(vy) * k);
+  root.style.scale = `${(1.025 + sx - sy * .5).toFixed(4)} ${(1.025 + sy - sx * .5).toFixed(4)}`;
   clearTimeout(stretch.rest);
   stretch.rest = setTimeout(() => { root.style.scale = ""; }, 90);
 }

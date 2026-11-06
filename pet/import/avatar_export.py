@@ -10,10 +10,14 @@ work is making the file game-ready, the way jane_export.py does for an MMD rig:
   hidden or not (pet/models/<name>.json says which an outfit shows);
 - rest pose, constraints off; a loose bone root (Kuromoji's Hair_Root rode her
   head by an Armature constraint) goes under the Head (hair, ears) or Hips;
+- an Armature modifier the author left pointing at nothing (Kuromoji's
+  sandals, boots, belts and hats, hooked up as she changes outfit) gets the
+  armature, so the piece moves with her instead of standing where it was made;
 - outline (Solidify) modifiers off (Godot draws outlines), the rest (mirror,
-  bevel, geometry nodes) applied; shape keys kept only on the face meshes, the
-  others baked as they're set (the author's fit for the outfit) so their
-  modifiers can be applied;
+  bevel, geometry nodes) applied; a mesh with modifiers to apply has its shape
+  keys baked as they're set, the rest keep theirs: the face's expressions and
+  each piece's fit keys (the ear band under a cap, the body tucked in for a
+  bikini), which pet/models/<name>.json sets per outfit;
 - each material rebuilt as a plain Principled BSDF on its main texture (their
   own toon node trees don't export), alpha from it where it has any.
 The .blend itself is never saved.
@@ -76,10 +80,14 @@ bpy.ops.object.mode_set(mode="OBJECT")
 for o in keep:
     for m in [m for m in o.modifiers if m.type == "SOLIDIFY"]:
         o.modifiers.remove(m)
+    for m in o.modifiers:
+        if m.type == "ARMATURE" and m.object is None:
+            m.object = arm
+            print("armature", o.name)
     keys = o.data.shape_keys.key_blocks.keys() if o.data.shape_keys else []
     face = any(k in keys for k in FACE_KEYS)
     others = [m for m in o.modifiers if m.type != "ARMATURE"]
-    if keys and not face:
+    if keys and not face and others:
         # Baked as set, then gone: the author's fit, and nothing stopping the modifiers.
         bpy.context.view_layer.objects.active = o
         mix = o.shape_key_add(name="__mix", from_mix=True)

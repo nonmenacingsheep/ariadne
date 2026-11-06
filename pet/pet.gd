@@ -451,13 +451,23 @@ func _dress() -> void:
 		var n := body.find_child(m, true, false)
 		if n is Node3D:
 			(n as Node3D).visible = false
-	var shapes: Dictionary = o.get("shapes", {})
+	# Every outfit's shapes, then this one's: "Mesh/Shape" for one mesh (fit keys
+	# share names like "Key 1" across pieces), "Shape" for any mesh that has it.
+	var shapes: Dictionary = (outfits.get("shapes", {}) as Dictionary).duplicate()
+	shapes.merge(o.get("shapes", {}), true)
 	for m in body.find_children("*", "MeshInstance3D", true, false):
 		for sh in shapes:
-			var idx := (m as MeshInstance3D).find_blend_shape_by_name(sh)
+			var only_on := String(sh).get_slice("/", 0) if String(sh).contains("/") else ""
+			if only_on != "" and only_on != String(m.name):
+				continue
+			var idx := (m as MeshInstance3D).find_blend_shape_by_name(String(sh).get_slice("/", 1) if only_on != "" else sh)
 			if idx >= 0:
 				(m as MeshInstance3D).set_blend_shape_value(idx, float(shapes[sh]))
 	outfit_firm = bool(o.get("firm", false))
+	var only := OS.get_environment("PET_ONLY")              # a test shot of just these meshes: "Visor_Cap,Body"
+	if only != "":
+		for m in body.find_children("*", "MeshInstance3D", true, false):
+			(m as MeshInstance3D).visible = String(m.name) in only.split(",")
 	_breast_feel()
 	var wpath := body_path.replace(".glb", "_weapon.glb")
 	if outfit["weapon"] and weapon == null and body_path.ends_with(".glb") and ResourceLoader.exists(wpath) \

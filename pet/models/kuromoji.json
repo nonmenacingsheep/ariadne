@@ -1,5 +1,5 @@
 {
-	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing). hide: meshes never shown (not skinned: they rode a constraint the export drops).",
+	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit. shapes: blend shapes set for every outfit, then an outfit's own on top; \"Mesh/Shape\" for one mesh, \"Shape\" for any that has it. firm: clothes that hold her chest in. hide: meshes never shown (not skinned: they rode a constraint the export drops).",
 	"default": "Street",
 	"outfits": {
 		"Street": {
@@ -74,7 +74,11 @@
 				"Earrings_Chain",
 				"Earrings_Twig"
 			],
-			"firm": false
+			"firm": false,
+			"shapes": {
+				"Cat_Ears/Casquette_Twintails": 1.0,
+				"Twintails/Casquette": 1.0
+			}
 		},
 		"Swimsuit": {
 			"show": [
@@ -85,11 +89,22 @@
 				"Sandals",
 				"Earrings_Flower"
 			],
-			"firm": false
+			"firm": false,
+			"shapes": {
+				"Body_2/Bikini_1": 1.0
+			}
 		}
 	},
 	"hide": [
 		"Spider",
 		"Badge_Spider"
-	]
+	],
+	"shapes": {
+		"Cat_Ears/Casquette_Twintails": 0.0,
+		"Cat_Ears/Casquette_ShortHair": 0.0,
+		"Twintails/Casquette": 0.0,
+		"Shorthair/Casquette": 0.0,
+		"Shorthair/Casquette_Short2": 0.0,
+		"Body_2/Bikini_1": 0.0
+	}
 }

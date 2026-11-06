@@ -148,7 +148,9 @@ var ap: AnimationPlayer
 var face := {}                            # key -> [[mesh, index, weight], ...]
 var face_slots := {}                      # [mesh, index] -> this frame's summed weight
 var body_path := ""                       # the model she's wearing (res://models/...)
-var outfit := {"jacket": true, "weapon": false}   # Avatar settings: jacket on, weapon in hand
+var outfit := {"name": "", "weapon": false}   # Avatar settings: her outfit ("" its usual), weapon in hand
+var outfits := {}                          # this body's outfits (models/<name>.json)
+var outfit_firm := false                   # clothes that hold her chest in (a jacket, a sweater)
 var weapon: Node3D
 var fill: WorldEnvironment                # ambient light for GLB bodies (_toonify)
 var clip_lib: AnimationLibrary            # the humanoid clips, shared by every body
@@ -301,9 +303,10 @@ func _ready() -> void:
 	# PET_MODEL picks the 3D body for a test run (PET_SNAPSHOT); otherwise
 	# the Avatar "Model" setting does (_read_settings), Aries until it's read.
 	var forced := OS.get_environment("PET_MODEL")
-	var dressed := OS.get_environment("PET_OUTFIT")          # a test shot's outfit: "nojacket,weapon"
+	var dressed := OS.get_environment("PET_OUTFIT")          # a test shot's outfit: "Swimsuit" or "No jacket,weapon"
 	if dressed != "":
-		outfit = {"jacket": not dressed.contains("nojacket"), "weapon": dressed.contains("weapon")}
+		outfit = {"name": dressed.get_slice(",", 0).replace("nojacket", "No jacket").replace("weapon", ""),
+				"weapon": dressed.contains("weapon")}
 	_load_body(forced if forced != "" else MODEL)
 	for k in moods:
 		mood_target[k] = moods[k]
@@ -372,6 +375,9 @@ func _load_body(path: String) -> void:
 	add_child(body)
 	body_path = path
 	skel = _find(body, "Skeleton3D")
+	var cfg := path.get_basename() + ".json"
+	var got = JSON.parse_string(FileAccess.get_file_as_string(cfg)) if FileAccess.file_exists(cfg) else null
+	outfits = got if got is Dictionary else {}
 	# MMD-style bodies tuck the skin in under clothes with "Shrink_for..." shapes.
 	for m in body.find_children("*", "MeshInstance3D", true, false):
 		for i in (m as MeshInstance3D).mesh.get_blend_shape_count() if (m as MeshInstance3D).mesh else 0:
@@ -420,21 +426,38 @@ func _load_body(path: String) -> void:
 	_dress()
 
 
-# Jacket and weapon (Avatar settings), for bodies that have them. Without
-# the jacket, the top it was squeezing ("Shrink_forJacket") fills out again.
-# The weapon is <model>_weapon.glb (pet/import/jane_export.py), gripped in
-# her right hand.
+# Her outfit and weapon (Avatar settings), for bodies that have them. A body's
+# outfits are models/<name>.json: each shows its meshes and hides every other
+# outfit's, and sets blend shapes (Jane without her jacket: the top it was
+# squeezing, "Shrink_forJacket", fills out again). An outfit he hasn't picked
+# for this body (or "") is its default. The weapon is <model>_weapon.glb
+# (pet/import/jane_export.py), gripped in her right hand.
 var WEAPON_GRIP := Transform3D(Basis.from_euler(Vector3(0, 0, -PI / 2)), Vector3(0.0, 0.07, 0.02))
 func _dress() -> void:
 	if not body:
 		return
-	var jacket: Node = body.find_child("Jacket", true, false)
-	if jacket:
-		jacket.visible = outfit["jacket"]
+	var all: Dictionary = outfits.get("outfits", {})
+	var pick: String = outfit["name"] if all.has(outfit["name"]) else str(outfits.get("default", ""))
+	var o: Dictionary = all.get(pick, {})
+	var pieces := {}
+	for k in all:
+		for m in all[k].get("show", []):
+			pieces[m] = true
+	for m in pieces:
+		var n := body.find_child(m, true, false)
+		if n is Node3D:
+			(n as Node3D).visible = m in o.get("show", [])
+	for m in outfits.get("hide", []):
+		var n := body.find_child(m, true, false)
+		if n is Node3D:
+			(n as Node3D).visible = false
+	var shapes: Dictionary = o.get("shapes", {})
 	for m in body.find_children("*", "MeshInstance3D", true, false):
-		var idx := (m as MeshInstance3D).find_blend_shape_by_name("Shrink_forJacket")
-		if idx >= 0:
-			(m as MeshInstance3D).set_blend_shape_value(idx, 1.0 if outfit["jacket"] else 0.0)
+		for sh in shapes:
+			var idx := (m as MeshInstance3D).find_blend_shape_by_name(sh)
+			if idx >= 0:
+				(m as MeshInstance3D).set_blend_shape_value(idx, float(shapes[sh]))
+	outfit_firm = bool(o.get("firm", false))
 	_breast_feel()
 	var wpath := body_path.replace(".glb", "_weapon.glb")
 	if outfit["weapon"] and weapon == null and body_path.ends_with(".glb") and ResourceLoader.exists(wpath) \
@@ -557,7 +580,7 @@ var breast_chains: Array[int] = []
 func _breast_feel() -> void:
 	if jiggle == null:
 		return
-	var on: bool = outfit["jacket"]
+	var on: bool = outfit_firm
 	if squish:
 		squish.firm = on
 	for i in breast_chains:
@@ -653,7 +676,7 @@ func _add_jiggle() -> void:
 		squish.name = "Squish"
 		skel.add_child(squish)
 		squish.setup(skel)
-		squish.firm = outfit["jacket"]
+		squish.firm = outfit_firm
 	tail_chain = -1
 	for i in chains.size():
 		if chains[i][0] == "Tail_0":
@@ -2073,7 +2096,9 @@ func _read_settings() -> void:
 			and ResourceLoader.exists(want_path):
 		_load_body(want_path)
 		_play("Idle")
-	outfit = {"jacket": bool(av.get("jacket", true)), "weapon": bool(av.get("weapon", false))}
+	# (before outfits there was a jacket switch: off is Jane's "No jacket")
+	var wear := str(av.get("outfit", "")) if av.has("outfit") else ("" if av.get("jacket", true) else "No jacket")
+	outfit = {"name": wear, "weapon": bool(av.get("weapon", false))}
 	_dress()
 	var want_shown: bool = bool(desk.get("body", true)) and want_path != ""
 	if want_shown != shown:

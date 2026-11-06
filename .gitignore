@@ -9,6 +9,7 @@ tools/*
 pet/models/jane*
 !pet/models/jane_bonemap.tres
 !pet/models/jane.glb.import
+!pet/models/jane.json
 pet/models/kuromoji*
 !pet/models/kuromoji_bonemap.tres
 !pet/models/kuromoji.glb.import

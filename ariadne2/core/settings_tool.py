@@ -24,7 +24,7 @@ TOOL = {
         "system, flows, tasks, avatar). Common ones, "
         "to set straight away: voice.speed (0.6-1.5), voice.volume (0-100), voice.sounds_master (sound "
         "effects on/off), general.wake_word (listen for your name on/off), general.wake_phrase, "
-        "models.conversation_model (your brain), avatar.model (your body), avatar.size (200-840), "
+        "models.conversation_model (your brain), avatar.model (your body), avatar.outfit (what you wear: one of that body's outfits, \"\" its usual), avatar.size (200-840), "
         "avatar.pinned, avatar.dance_to_music, desktop.body (body shown or not)."),
     "input_schema": {"type": "object", "properties": {
         "action": {"type": "string", "enum": ["list", "get", "set", "hide", "show"]},

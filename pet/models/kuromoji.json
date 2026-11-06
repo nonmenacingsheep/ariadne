@@ -1,0 +1,95 @@
+{
+	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing). hide: meshes never shown (not skinned: they rode a constraint the export drops).",
+	"default": "Street",
+	"outfits": {
+		"Street": {
+			"show": [
+				"Twintails",
+				"Twintails_Bang_Shadow",
+				"Shirt",
+				"Sleeves",
+				"Pants",
+				"Belt",
+				"Leg_Belt",
+				"Shoes",
+				"Visor_Cap",
+				"Hairpin",
+				"Choker",
+				"Necklace_Spider",
+				"Doll_Spider",
+				"Earrings_Kuromoji",
+				"Earrings_Chain",
+				"Earrings_Twig"
+			],
+			"firm": false
+		},
+		"Street with short hair": {
+			"show": [
+				"Shorthair",
+				"ShortHair_Bang_Shadow",
+				"Shirt",
+				"Sleeves",
+				"Pants",
+				"Belt",
+				"Leg_Belt",
+				"Shoes",
+				"Visor_Cap",
+				"Hairpin",
+				"Choker",
+				"Necklace_Spider",
+				"Doll_Spider",
+				"Earrings_Kuromoji",
+				"Earrings_Chain",
+				"Earrings_Twig"
+			],
+			"firm": false
+		},
+		"Off-shoulder and skirt": {
+			"show": [
+				"Twintails",
+				"Twintails_Bang_Shadow",
+				"Off_Shoulder",
+				"Skirt",
+				"Leg_warmer",
+				"Boots",
+				"Beret",
+				"Choker",
+				"Earrings_Flower"
+			],
+			"firm": false
+		},
+		"Shorts": {
+			"show": [
+				"Twintails",
+				"Twintails_Bang_Shadow",
+				"Shirt",
+				"Sleeves",
+				"shorts",
+				"Pants_Belt",
+				"Sandals",
+				"Casquette",
+				"Choker",
+				"Necklace_Spider",
+				"Earrings_Kuromoji",
+				"Earrings_Chain",
+				"Earrings_Twig"
+			],
+			"firm": false
+		},
+		"Swimsuit": {
+			"show": [
+				"Twintails",
+				"Twintails_Bang_Shadow",
+				"Bikini_Top",
+				"Bikini_bottom",
+				"Sandals",
+				"Earrings_Flower"
+			],
+			"firm": false
+		}
+	},
+	"hide": [
+		"Spider",
+		"Badge_Spider"
+	]
+}

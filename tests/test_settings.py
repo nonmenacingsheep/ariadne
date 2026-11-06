@@ -6,6 +6,7 @@ import math
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from ariadne2 import protocol
@@ -592,3 +593,37 @@ class SmallScreenTests(unittest.TestCase):
             ax, ay, aw, ah = area
             for name, (x, y, w, h) in fitted.items():
                 self.assertTrue(ax <= x and ay <= y and x + w <= ax + aw and y + h <= ay + ah, (area, name, (x, y, w, h)))
+
+
+class OutfitTests(Tmp):
+    """Her outfit is one of the chosen body's (pet/models/<name>.json)."""
+
+    def setUp(self):
+        super().setUp()
+        models = self.dir / "models"
+        models.mkdir()
+        for stem, names in (("jane", ["Jacket", "No jacket"]), ("cat", ["Sweater", "Swimsuit"])):
+            (models / f"{stem}.glb").write_bytes(b"")
+            (models / f"{stem}_bonemap.tres").write_text("")
+            (models / f"{stem}.json").write_text(json.dumps({"default": names[0], "outfits": {n: {"show": []} for n in names}}))
+        patch = mock.patch.object(S, "PET_MODELS", models)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_the_options_are_the_chosen_bodys(self):
+        self.assertEqual(S.outfits("3d:cat"), [("", "Usual (Sweater)"), ("Sweater", "Sweater"), ("Swimsuit", "Swimsuit")])
+        self.assertEqual(S.outfits("aries"), [("", "Usual")])
+
+    def test_a_saved_outfit_survives_a_restart_and_another_body_resets_it(self):
+        st = make(self.dir)
+        st.set("avatar", "model", "3d:cat")
+        st.set("avatar", "outfit", "Swimsuit")
+        self.assertEqual(make(self.dir).values["avatar"]["outfit"], "Swimsuit")
+        st.set("avatar", "model", "3d:jane")
+        self.assertEqual(st.values["avatar"]["outfit"], "")
+        with self.assertRaises(S.SettingsError):
+            st.set("avatar", "outfit", "Swimsuit")
+
+    def test_the_old_jacket_switch_becomes_janes_outfit(self):
+        (self.dir / "settings.json").write_text(json.dumps({"avatar": {"model": "3d:jane", "jacket": False}}))
+        self.assertEqual(make(self.dir).values["avatar"]["outfit"], "No jacket")

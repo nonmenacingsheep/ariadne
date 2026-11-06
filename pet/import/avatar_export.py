@@ -1,12 +1,13 @@
 """Export a VRChat-style Booth avatar .blend as a GLB for the 3D body (pet/).
 
-blender -b <avatar>.blend --python pet/import/avatar_export.py -- pet/models/<name>.glb [skip collection ...]
+blender -b <avatar>.blend --python pet/import/avatar_export.py -- pet/models/<name>.glb [--all] [skip collection ...]
 
 These come rigged with the humanoid bone names (Hips, Spine, Chest,
 UpperArm_L...), VRChat mouth shapes and blink, and MMD expressions, so the
 work is making the file game-ready, the way jane_export.py does for an MMD rig:
 - what's shown: the meshes the author has visible and renderable, minus any
-  collection named after the output (an outfit left out: "Swimsuit");
+  collection named after the output; with --all, every outfit's pieces too,
+  hidden or not (pet/models/<name>.json says which an outfit shows);
 - rest pose, constraints off; a loose bone root (Kuromoji's Hair_Root rode her
   head by an Armature constraint) goes under the Head (hair, ears) or Hips;
 - outline (Solidify) modifiers off (Godot draws outlines), the rest (mirror,
@@ -22,7 +23,9 @@ import sys
 import bpy
 
 args = sys.argv[sys.argv.index("--") + 1:]
-out, skip = args[0], set(args[1:])
+out = args[0]
+every = "--all" in args
+skip = {a for a in args[1:] if a != "--all"}
 FACE_KEYS = ("vrc.v_aa", "vrc.Blink", "まばたき")
 HELPERS = ("DataTransfer",)
 
@@ -31,7 +34,7 @@ keep = []
 for o in bpy.data.objects:
     if o.type != "MESH":
         continue
-    if not o.visible_get() or o.hide_render or any(h in o.name for h in HELPERS) \
+    if (not every and (not o.visible_get() or o.hide_render)) or any(h in o.name for h in HELPERS) \
             or any(c.name in skip for c in o.users_collection):
         continue
     keep.append(o)

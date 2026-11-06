@@ -82,6 +82,18 @@ LIVE2D_MODELS = Path(__file__).resolve().parents[1] / "pet2d" / "web" / "models"
 PET_MODELS = Path(__file__).resolve().parents[2] / "pet" / "models"          # 3D bodies (pet/)
 
 
+def outfits(model: str | None) -> list[tuple[str, str]]:
+    """The outfits of the body she wears (pet/models/<name>.json): "" is its usual one."""
+    stem = model[3:] if model and model.startswith("3d:") else ""
+    try:
+        doc = json.loads((PET_MODELS / f"{stem}.json").read_text()) if stem else {}
+    except (OSError, ValueError):
+        doc = {}
+    names = [n for n in doc.get("outfits", {}) if isinstance(n, str)]
+    usual = f"Usual ({doc['default']})" if doc.get("default") else "Usual"
+    return [("", usual)] + [(n, n) for n in names]
+
+
 def bodies() -> list[tuple[str, str]]:
     """The bodies she can wear: the 3D one (pet/) and each Live2D model folder (pet2d/)."""
     models = PET_MODELS
@@ -155,7 +167,7 @@ def save_api_key(key: str, value: str) -> str:
     return key_status(key)
 
 
-def build_schema(personality_names: list[str] | None = None) -> list[dict]:
+def build_schema(personality_names: list[str] | None = None, model: str | None = None) -> list[dict]:
     names = personality_names or [prompt.DEFAULT_PERSONALITY]
     s: list[dict] = []
     # ---- general (including everything that was Ears in 1.x) ----
@@ -232,8 +244,8 @@ def build_schema(personality_names: list[str] | None = None) -> list[dict]:
                     "Her 3D body is drawn over your widgets instead of behind them, so she never hides behind one."))
     s.append(_entry("avatar", "furniture", "Her furniture", "bool", False,
                     "A bed, desk, kitchen and workout mat in her room (3D bodies). Off: an empty room, all play."))
-    s.append(_entry("avatar", "jacket", "Jacket", "bool", True,
-                    "Her jacket on (3D bodies that have one, like Jane)."))
+    s.append(_entry("avatar", "outfit", "Outfit", "choice", "",
+                    "What she wears: the outfits of the body chosen above.", options=_choices(outfits(model))))
     s.append(_entry("avatar", "weapon", "Weapon", "bool", False,
                     "Her weapon in her hand (3D bodies that come with one, like Jane's dagger)."))
     s.append(_entry("avatar", "live2d_core", "Live2D support", "bool", False,
@@ -338,7 +350,8 @@ class Settings:
 
     # ---- schema ----
     def schema(self) -> list[dict]:
-        return build_schema(list(self._personalities()))
+        model = (getattr(self, "values", None) or {}).get("avatar", {}).get("model")
+        return build_schema(list(self._personalities()), model)
 
     def _spec(self, section: str, key: str) -> dict:
         for e in self.schema():
@@ -368,6 +381,13 @@ class Settings:
             return
         if not isinstance(found, dict):
             return
+        av = found.get("avatar") if isinstance(found.get("avatar"), dict) else {}
+        if isinstance(av.get("model"), str):
+            # The body first: its outfits are what the outfit is checked against.
+            self.values["avatar"]["model"] = av["model"]
+        if "jacket" in av and "outfit" not in av:
+            # Before outfits there was a jacket switch: off was Jane without it.
+            av["outfit"] = "No jacket" if av["jacket"] is False and av.get("model") == "3d:jane" else ""
         schema = {(e["section"], e["key"]): e for e in self.schema()}
         for section, items in found.items():
             if not isinstance(items, dict):
@@ -493,6 +513,10 @@ class Settings:
         if changed:
             self._apply(section, key, value)
         self._notify(section, key, value)
+        if changed and (section, key) == ("avatar", "model"):
+            # Another body: an outfit it doesn't have goes back to its usual one.
+            if self.values["avatar"].get("outfit", "") not in [v for v, _ in outfits(value)]:
+                self.set("avatar", "outfit", "")
         return value
 
     def _apply(self, section: str, key: str, value) -> None:

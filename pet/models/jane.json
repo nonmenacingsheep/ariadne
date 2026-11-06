@@ -1,0 +1,22 @@
+{
+	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing).",
+	"default": "Jacket",
+	"outfits": {
+		"Jacket": {
+			"show": [
+				"Jacket"
+			],
+			"shapes": {
+				"Shrink_forJacket": 1.0
+			},
+			"firm": true
+		},
+		"No jacket": {
+			"show": [],
+			"shapes": {
+				"Shrink_forJacket": 0.0
+			},
+			"firm": false
+		}
+	}
+}

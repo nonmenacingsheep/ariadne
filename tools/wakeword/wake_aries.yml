@@ -8,6 +8,8 @@ target_phrase:
 # read by train.py's own generator, which is not used.
 custom_negative_phrases: []
 
+# The recipe that shipped (round 1). Round 2 (README.md) used output_dir run2, steps 100000 and
+# make_clips.py --voices, and did worse on voices it never heard.
 n_samples: 30000          # clips of each kind for training (make_clips.py --n)
 n_samples_val: 3000       # held out for early stopping and the recall figure (make_clips.py --n-val)
 tts_batch_size: 48
@@ -42,5 +44,7 @@ batch_n_per_class:
 model_type: "dnn"
 layer_size: 32
 steps: 50000
+# train.py doubles this twice whatever the target below (best_val_fp is never updated
+# upstream), so the last two passes run at 4x: 6000.
 max_negative_weight: 1500
 target_false_positives_per_hour: 0.2

@@ -44,4 +44,12 @@ for n in 00 07 19; do
     wget -q -c -O data/audioset_raw/$n.parquet $HF/agkphysics/AudioSet/resolve/main/data/bal_train/$n.parquet
 done
 "$WW/venv/bin/python" -I "$HERE/prepare_background.py" data/audioset_raw/*.parquet --out data/audioset_16k
+# Six Piper voices held out for testing, and the clips evaluate.py --unseen and ears_sweep.py use.
+PV=https://huggingface.co/rhasspy/piper-voices/resolve/main/en; mkdir -p data/voices
+for v in en_US/lessac/medium/en_US-lessac-medium en_GB/alan/medium/en_GB-alan-medium \
+         en_US/ryan/high/en_US-ryan-high en_US/amy/medium/en_US-amy-medium \
+         en_US/joe/medium/en_US-joe-medium en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium; do
+    for ext in onnx onnx.json; do wget -q -c -O "data/voices/$(basename $v).$ext" "$PV/$v.$ext"; done
+done
+[ -d data/smoke/pos ] || "$WW/venv/bin/python" -I "$HERE/unseen_clips.py" data/voices data/smoke
 echo "setup done: $(du -sh "$WW" | cut -f1) in $WW"

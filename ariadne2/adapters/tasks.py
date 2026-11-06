@@ -334,13 +334,37 @@ def _daemon(p: Proc) -> bool:
     return any(c.startswith(d) for d in DAEMON_PREFIXES)
 
 
+HER_APP = "app:ariadne2"
+
+
+def her_pids(procs: list[Proc]) -> set:
+    """Ariadne's own processes (bin/ariadne2, python -m ariadne2.*) and all they
+    started (her bodies, WebKit). Restarted from a terminal or another app she
+    lands in its systemd unit, and grouped by unit she showed as nearly nothing."""
+    kids: dict[int, list[int]] = {}
+    for p in procs:
+        kids.setdefault(p.ppid, []).append(p.pid)
+    todo = [p.pid for p in procs
+            if any(a.endswith("bin/ariadne2") or a.startswith("ariadne2.") for a in p.cmd)]
+    out: set = set()
+    while todo:
+        q = todo.pop()
+        if q not in out:
+            out.add(q)
+            todo += kids.get(q, [])
+    return out
+
+
 def group_procs(procs: list[Proc], my_uid: int) -> dict[str, list[Proc]]:
     """key -> its processes. key is SYSTEM, "app:<id>" or "proc:<pid of the tree's top>"."""
     by = {p.pid: p for p in procs}
+    hers = her_pids(procs)
     groups: dict[str, list[Proc]] = {}
     for p in procs:
         key = None
-        if is_system(p, my_uid):
+        if p.pid in hers:
+            key = HER_APP
+        elif is_system(p, my_uid):
             key = SYSTEM
         else:
             aid = app_id(p.unit)

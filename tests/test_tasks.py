@@ -163,6 +163,18 @@ class Parsing(unittest.TestCase):
         self.assertIsNone(tasks.parse_gpu_apps("NVIDIA-SMI has failed because it couldn't communicate"))
         self.assertEqual(tasks.parse_gpu_apps("7, [N/A]\n"), {7: 0.0})
 
+    def test_her_processes_are_hers_whatever_unit_started_her(self):
+        fp = FakeProc()
+        claude = "app-com.anthropic.Claude-420000.scope"
+        fp.add(50, "Claude", unit=claude)
+        fp.add(60, "bash", 50, unit=claude, cmd=["/bin/bash", "/home/r/ariadne2/bin/ariadne2"])
+        fp.add(61, "python", 60, unit=claude, cmd=["python", "-m", "ariadne2.core"])
+        fp.add(62, "Godot", 60, unit=claude, cmd=["godot", "--path", "pet"])
+        fp.add(63, "WebKitWebProces", 61, unit=claude)
+        groups = tasks.group_procs(tasks.read_procs(fp.root), ME)
+        self.assertEqual(sorted(p.pid for p in groups[tasks.HER_APP]), [60, 61, 62, 63])
+        self.assertEqual([p.pid for p in groups["app:com.anthropic.claude"]], [50])
+
     def test_gpu_table(self):
         table = """+-----------------------------------------------------------------------------------------+
 | Processes:                                                                              |

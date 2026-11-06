@@ -2435,10 +2435,10 @@ func _get_up() -> void:
 	# The clip's first frame, in her own frame (yaw 0): where its hips and head are.
 	ap.play(pick, 0.0)
 	ap.seek(0.0, true)
+	# (her skeleton's place in her body frame doesn't turn with her: this is already yaw 0)
 	var to_body := body.global_transform.affine_inverse() * skel.global_transform
-	var unturn := Basis(Vector3.UP, -yaw)
-	var hips_c: Vector3 = unturn * (to_body * skel.get_bone_global_pose(skel.find_bone("Hips")).origin)
-	var head_c: Vector3 = unturn * (to_body * skel.get_bone_global_pose(skel.find_bone("Head")).origin)
+	var hips_c: Vector3 = to_body * skel.get_bone_global_pose(skel.find_bone("Hips")).origin
+	var head_c: Vector3 = to_body * skel.get_bone_global_pose(skel.find_bone("Head")).origin
 	var dc := head_c - hips_c
 	var dr := head_w - hips_w
 	if how == "sit":                           # sitting up: face the way her chest does

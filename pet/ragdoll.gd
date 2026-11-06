@@ -38,27 +38,30 @@ var fade_len := 0.0
 # bone, end ("Bone", "+len" past the joint along the bone, "*legs" between her
 # thighs), radius, mass, joint (none / cone swing,twist / hinge lo,hi degrees), flail amplitude
 const PARTS := [
-	["Hips", "*legs", 0.12, 9.0, "none", 0, 0, 0.0],
-	["Spine", "Chest", 0.1, 6.0, "cone", 20, 15, 0.15],
-	["Chest", "Neck", 0.1, 8.0, "cone", 20, 15, 0.15],
-	["Head", "+0.2", 0.095, 4.0, "cone", 40, 40, 0.35],
-	["LeftUpperArm", "LeftLowerArm", 0.045, 2.0, "cone", 85, 40, 1.0],
-	["LeftLowerArm", "LeftHand", 0.04, 1.5, "elbow", -5, 140, 0.8],
-	["LeftHand", "+0.09", 0.035, 0.9, "cone", 50, 20, 0.5],
-	["RightUpperArm", "RightLowerArm", 0.045, 2.0, "cone", 85, 40, 1.0],
-	["RightLowerArm", "RightHand", 0.04, 1.5, "elbow", -5, 140, 0.8],
-	["RightHand", "+0.09", 0.035, 0.9, "cone", 50, 20, 0.5],
-	["LeftUpperLeg", "LeftLowerLeg", 0.062, 6.0, "cone", 70, 25, 0.7],
-	["LeftLowerLeg", "LeftFoot", 0.05, 3.0, "knee", -5, 140, 0.9],
-	["LeftFoot", "LeftToes", 0.04, 1.0, "cone", 30, 10, 0.3],
-	["RightUpperLeg", "RightLowerLeg", 0.062, 6.0, "cone", 70, 25, 0.7],
-	["RightLowerLeg", "RightFoot", 0.05, 3.0, "knee", -5, 140, 0.9],
-	["RightFoot", "RightToes", 0.04, 1.0, "cone", 30, 10, 0.3]]
+	["Hips", "*legs", 0.12, 6.0, "none", 0, 0, 0.0],
+	["Spine", "Chest", 0.1, 4.0, "cone", 20, 15, 0.15],
+	["Chest", "Neck", 0.1, 6.0, "cone", 20, 15, 0.15],
+	["Head", "+0.2", 0.095, 3.5, "cone", 40, 40, 0.35],
+	["LeftUpperArm", "LeftLowerArm", 0.045, 3.0, "cone", 85, 40, 1.0],
+	["LeftLowerArm", "LeftHand", 0.04, 2.5, "elbow", -5, 140, 0.8],
+	["LeftHand", "+0.09", 0.035, 2.0, "cone", 50, 20, 0.5],
+	["RightUpperArm", "RightLowerArm", 0.045, 3.0, "cone", 85, 40, 1.0],
+	["RightLowerArm", "RightHand", 0.04, 2.5, "elbow", -5, 140, 0.8],
+	["RightHand", "+0.09", 0.035, 2.0, "cone", 50, 20, 0.5],
+	["LeftUpperLeg", "LeftLowerLeg", 0.062, 5.0, "cone", 60, 25, 0.7],
+	["LeftLowerLeg", "LeftFoot", 0.05, 3.5, "knee", -5, 140, 0.9],
+	["LeftFoot", "LeftToes", 0.04, 2.0, "cone", 30, 10, 0.3],
+	["RightUpperLeg", "RightLowerLeg", 0.062, 5.0, "cone", 60, 25, 0.7],
+	["RightLowerLeg", "RightFoot", 0.05, 3.5, "knee", -5, 140, 0.9],
+	["RightFoot", "RightToes", 0.04, 2.0, "cone", 30, 10, 0.3]]
 const ENV_LAYER := 1
 const BODY_LAYER := 4
 # Which way each hinge bends at rest (she faces +Z in a T-pose): knees fold the
-# shin back, elbows fold the forearm forward. HINGE_SIGN flips them if measured wrong.
-const HINGE_SIGN := 1.0
+# shin back, elbows fold the forearm forward. Jolt counts a hinge's angle the
+# other way round from that axis (measured: with +1 her knees bent forward).
+const HINGE_SIGN := -1.0
+# Her hips' cone leans forward: a leg swings far up in front, little behind.
+const HIP_LEAN := 30.0
 
 
 func build(p, sk: Skeleton3D) -> void:
@@ -123,7 +126,17 @@ func build(p, sk: Skeleton3D) -> void:
 		if r[0] != "Hips":
 			rigid.ids.append(skel.find_bone(r[0]))
 		reach[r[0]] = len
-	# Joints, framed in the T-pose so the limits are a body's, not this moment's.
+	# Joints, framed in the T-pose so the limits are a body's, not this moment's;
+	# the legs lifted HIP_LEAN forward first, so that's the middle of their cone.
+	for side in ["Left", "Right"]:
+		if not parts.has(side + "UpperLeg"):
+			continue
+		var hip: Vector3 = joint(side + "UpperLeg")
+		var lean := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-HIP_LEAN)), Vector3.ZERO)
+		var about := Transform3D(Basis(), hip) * lean * Transform3D(Basis(), -hip)
+		for b in [side + "UpperLeg", side + "LowerLeg", side + "Foot"]:
+			if parts.has(b):
+				(parts[b] as Node3D).global_transform = about * (parts[b] as Node3D).global_transform
 	for b in parts:
 		var r: Array = row[b]
 		var pb: PhysicalBone3D = parts[b]
@@ -378,7 +391,7 @@ func _physics_process(delta: float) -> void:
 	if held:
 		# Toward his pointer, no faster than a hand can yank her (a flick won't tear her apart).
 		var step := (target - anchor.global_position) * clampf(delta * 30.0, 0.0, 1.0)
-		anchor.global_position += step.limit_length(9.0 * delta)
+		anchor.global_position += step.limit_length(30.0 * delta)
 		# Flailing hard when first grabbed, tiring to a wriggle after a few seconds.
 		flail = lerpf(flail, 0.6 if t > 2.5 else 1.0, clampf(delta * 1.5, 0.0, 1.0))
 	else:

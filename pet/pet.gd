@@ -523,7 +523,7 @@ const JIGGLE := [
 	["Tail_1", "Tail_4", 0.6, 0.3, 0.35, 0.02], ["Tail_1", "Tail_3", 0.6, 0.3, 0.35, 0.02],
 	["Earrings_1_L", "Earrings_2_L", 1.0, 0.3, 0.5, 0.008], ["Earrings_1_R", "Earrings_2_R", 1.0, 0.3, 0.5, 0.008],
 	["Necklace_1", "Necklace_2", 0.9, 0.4, 0.6, 0.01],
-	["Breast_L", "Breast_L", 2.6, 0.32, 0.35, 0.03], ["Breast_R", "Breast_R", 2.6, 0.32, 0.35, 0.03],
+	["Breast_L", "Breast_L", 3.6, 0.4, 0.15, 0.03], ["Breast_R", "Breast_R", 3.6, 0.4, 0.15, 0.03],
 	["Butt_L", "Butt_L", 4.0, 0.55, 0.0, 0.03], ["Butt_R", "Butt_R", 4.0, 0.55, 0.0, 0.03],
 ]
 # What hair and tail bump against, so they never pass through her: [humanoid
@@ -594,9 +594,11 @@ func _breast_feel() -> void:
 	if squish:
 		squish.firm = on
 	for i in breast_chains:
-		jiggle.set_stiffness(i, 4.5 if on else 2.6)
-		jiggle.set_drag(i, 0.55 if on else 0.32)
-		jiggle.set_gravity(i, 0.0 if on else 0.35)
+		# (stiffer than they were: the swing is a little turn now; squish.gd
+		# moves them as a whole, so they don't stretch)
+		jiggle.set_stiffness(i, 4.5 if on else 3.6)
+		jiggle.set_drag(i, 0.55 if on else 0.4)
+		jiggle.set_gravity(i, 0.0 if on else 0.15)
 
 
 # A straight line along a spring chain, root to tip.
@@ -3474,7 +3476,8 @@ func _chest_test(pick: String) -> void:
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(snapshot_path.replace(".png", "_chest_%02d.png" % i))
 		if squish:
-			print("SQUISH %d arm in %.3f m" % [i, squish.most_in])
+			print("SQUISH %d arm in %.3f m bounce %.3f m" % [i, squish.most_in, squish.most_bounce])
+			squish.most_bounce = 0.0
 	get_tree().quit()
 
 

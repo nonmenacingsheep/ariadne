@@ -446,7 +446,7 @@ The transcript comes over as it is.
 | Part | Why it stays |
 |---|---|
 | Voice (Cartesia streaming, sentence chunking, emotion tags, named streams) | works, tuned |
-| Ears (wake word, push-to-talk, the audio-footprint fixes, Bluetooth guard) | works, tuned |
+| Ears (wake word, push-to-talk, the audio-footprint fixes, Bluetooth guard) | works, tuned; "wake Aries" by its own openWakeWord model on the CPU (2026-11-05), Whisper loaded only after a wake and dropped after five idle minutes |
 | Recall (MiniLM index, measured thresholds) | the fixed version |
 | KWin control (window list, placement, keep-below) | the desk needs it |
 | Project mode, `edit_file`, todo | how she builds things |

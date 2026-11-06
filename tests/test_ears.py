@@ -9,6 +9,10 @@ from unittest import mock
 from ariadne2.core.ears import Ears, mic, transcribe
 from ariadne2.core.ears.mic import FRAME_BYTES
 from ariadne2.core.ears.transcribe import Heard, Transcriber
+from ariadne2.core.ears.wakeword import Spotter
+
+# These run the Whisper wake path (the fallback); test_ears_wakeword.py runs the wake model's.
+NO_SPOTTER = Spotter(model="/nonexistent/wake_aries.onnx")
 
 
 def frame(amp):
@@ -92,7 +96,7 @@ class Base(unittest.IsolatedAsyncioTestCase):
         defaults = dict(on_heard=self.heard.append, on_listening=self.listening.append,
                         on_status=self.status.append, transcriber=self.tr, clock=self.clock,
                         find_recorder=self.mic.find_recorder, popen=self.mic.popen,
-                        bluetooth=lambda: False)
+                        bluetooth=lambda: False, spotter=NO_SPOTTER)
         defaults.update(kw)
         self.ears = Ears(**defaults)
 
@@ -377,8 +381,8 @@ class Transcription(unittest.TestCase):
     def test_a_broken_gpu_falls_back_to_the_cpu(self):
         t, built = self.make(("cuda", "float16"), fail_on_gpu=True)
         with self.assertLogs("ariadne2.ears", "WARNING"):
-            self.assertEqual(t.hear(self.pcm(), "tiny.en", "").text, "hello there")
-        self.assertEqual(built, [("tiny.en", "cpu", "int8")])
+            self.assertEqual(t.hear(self.pcm(), "base.en", "").text, "hello there")
+        self.assertEqual(built, [("base.en", "cpu", "int8")])
         self.assertEqual(t.device(), ("cpu", "int8"))
 
     def test_levelling_brings_quiet_audio_up_but_caps_the_gain(self):

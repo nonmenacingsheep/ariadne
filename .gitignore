@@ -1,7 +1,9 @@
 __pycache__/
 *.pyc
 .venv/
-tools/
+# tools/ holds downloads (Godot) and local helpers; the wake-word training scripts are kept.
+tools/*
+!tools/wakeword/
 
 # Fan models stay on this machine (docs/JANE_3D_PLAN.md)
 pet/models/jane*

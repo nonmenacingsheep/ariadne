@@ -3,8 +3,17 @@
     ears = Ears(voice=voice, on_heard=handle_text, on_listening=on_mic)
     await ears.start()
     ears.push_to_talk(True) ... ears.push_to_talk(False)    # a hotkey drives these
-    ears.set_wake_word(False)                               # stop holding the mic for "hey Aries"
+    ears.set_wake_word(False)                               # stop holding the mic for "wake Aries"
     await ears.stop()
+
+"Wake Aries" is heard by a small model of its own (wakeword.py: openWakeWord,
+on the CPU), so nothing is transcribed and no Whisper model is loaded until
+she has been woken. The wake starts loading the command model while he is
+still talking, and Whisper models nobody has used for IDLE_UNLOAD_S (five
+minutes) are dropped again, so the 2.3 GB it takes on his card is free nearly
+all the time. Without that model -- the package or file missing, or her
+renamed to a name it wasn't trained on -- Whisper's tiny.en listens for
+"hey <name>" as before, and everything stays loaded.
 
 An utterance is whatever you say until you stop for about a second; it is
 handed to `on_heard(text)` as a finished piece of text. `on_listening(True)`
@@ -29,10 +38,12 @@ import time
 
 from ..voice.dispatch import Dispatcher
 from . import mic
+from . import wakeword
 from .listener import Listener
 from .session import FOLLOW_UP_S, Dialogue
 from .transcribe import WAKE_MODEL, Transcriber
 from .wake import Names
+from .wakeword import Spotter
 
 __all__ = ["Ears"]
 
@@ -44,12 +55,15 @@ class Ears:
                  voice=None, is_speaking=None, is_busy=None, media_playing=None,
                  barge_in: bool = True, follow_up_s: float = FOLLOW_UP_S,
                  on_heard=None, on_listening=None, on_interrupt=None, on_status=None,
-                 transcriber: Transcriber | None = None, **listener_kw) -> None:
+                 transcriber: Transcriber | None = None, spotter: Spotter | None = None,
+                 **listener_kw) -> None:
         self.on_heard, self.on_listening = on_heard, on_listening
         self.on_interrupt, self.on_status = on_interrupt, on_status
         self._voice = voice
         self.names = Names(name, aliases)
         self.transcriber = transcriber or Transcriber()
+        self.spotter = spotter if spotter is not None else Spotter()
+        self._spot_ok = False                   # the wake model is there and has not failed
         self._wake_word = bool(wake_word)
         self._dispatch = Dispatcher()
         self.status = "stopped"
@@ -61,13 +75,14 @@ class Ears:
             follow_up_s=follow_up_s, clock=listener_kw.get("clock") or time.monotonic)
         self.listener = Listener(self.dialogue, self.transcriber,
                                  wake_enabled=lambda: self._wake_word, is_speaking=speaking,
-                                 barge_in=barge_in, status=self._note, **listener_kw)
+                                 barge_in=barge_in, status=self._note, spotting=self._spotting,
+                                 spot_failed=self._spot_failed, **listener_kw)
         self.available = False
 
     # ------------------------------------------------------------ properties
     @property
     def wake_phrase(self) -> str:
-        return self.names.phrase
+        return wakeword.PHRASE if self._spotting() is not None else self.names.phrase
 
     @property
     def wake_word(self) -> bool:
@@ -95,11 +110,15 @@ class Ears:
         if problem:
             self._warn_once("start", f"she can't hear: {problem}")
             return
+        spot_problem = self.spotter.available()
+        self._spot_ok = spot_problem is None
+        if spot_problem:
+            self._warn_once("wakeword", f"no wake model ({spot_problem}); Whisper listens for her name")
         self.available = True
         self.listener.start()
         if self._wake_word:
             self._warm()
-        self._note("listening for " + self.names.phrase if self._wake_word
+        self._note("listening for " + self.wake_phrase if self._wake_word
                    else "ready for push-to-talk")
 
     async def stop(self) -> None:
@@ -113,10 +132,32 @@ class Ears:
         await asyncio.to_thread(self.transcriber.unload)
         self.status = "stopped"
 
+    def _spotting(self) -> Spotter | None:
+        """The wake model, when it is what listens for her name."""
+        ok = self._spot_ok and self.names.name.lower() == wakeword.NAME and not self.names.aliases
+        return self.spotter if ok else None
+
+    def _spot_failed(self, exc: Exception) -> None:
+        if not self._spot_ok:
+            return
+        self._spot_ok = False
+        self._warn_once("wakeword", f"the wake model failed ({exc}); Whisper listens for her name")
+        if self.available and self._wake_word:
+            self._warm()
+
     def _warm(self) -> None:
-        """Load and run the models off the critical path, or the first "hey Aries"
-        pays for all of it."""
+        """Load and run the models off the critical path, or the first wake pays for
+        all of it. With the wake model only that (a few hundred KB) is loaded; Whisper
+        waits until she is woken."""
         def go():
+            spotter = self._spotting()
+            try:
+                if spotter is not None:
+                    spotter.load()
+                    return
+            except Exception as exc:
+                self._spot_failed(exc)
+                return                          # which warmed Whisper instead
             try:
                 self.transcriber.warm(WAKE_MODEL)
                 self.transcriber.warm(self.transcriber.command_model())
@@ -144,16 +185,17 @@ class Ears:
         if on and self.available:
             self._warm()
         self.listener.poke()
-        self._note("listening for " + self.names.phrase if on else "wake word off")
+        self._note("listening for " + self.wake_phrase if on else "wake word off")
 
     def set_name(self, name: str) -> None:
-        """Answer to a different name ("hey <name>"). Takes effect for the next thing heard."""
+        """Answer to a different name ("hey <name>"). Takes effect for the next thing heard.
+        The wake model only knows "wake Aries": any other name is listened for by Whisper."""
         self.names = Names(name, self.names.aliases)
         self.dialogue.names = self.names
         if self.available:
             self._warm()
         self.listener.poke()
-        self._note("listening for " + self.names.phrase if self._wake_word else "wake word off")
+        self._note("listening for " + self.wake_phrase if self._wake_word else "wake word off")
 
     def set_mic(self, source: str) -> None:
         """Listen through a different capture device ("" = the system default), reopening now."""

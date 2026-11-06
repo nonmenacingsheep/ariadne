@@ -1,0 +1,46 @@
+## openWakeWord training config for "wake Aries" (read by openwakeword/train.py; see README.md).
+## Paths are where the data lives on Ronald's Storage drive; change WW below if it moves.
+
+model_name: "wake_aries"
+target_phrase:
+  - "wake aries"
+# make_clips.py writes the adversarial clips itself (NEAR_MISSES there); this list is only
+# read by train.py's own generator, which is not used.
+custom_negative_phrases: []
+
+n_samples: 30000          # clips of each kind for training (make_clips.py --n)
+n_samples_val: 3000       # held out for early stopping and the recall figure (make_clips.py --n-val)
+tts_batch_size: 48
+augmentation_batch_size: 16
+
+# train.py imports generate_samples from here; the shim beside this file stands in.
+piper_sample_generator_path: "/home/Nonmenacinghseep/Claude Projects/ariadne2/tools/wakeword"
+output_dir: "/var/mnt/storage/Software/AI/wakeword/run"
+
+rir_paths:
+  - "/var/mnt/storage/Software/AI/wakeword/data/mit_rirs"
+background_paths:
+  - "/var/mnt/storage/Software/AI/wakeword/data/audioset_16k"
+background_paths_duplication_rate:
+  - 1
+
+# ~11.3 hours of speech, music and noise that never says the phrase: the false-accept figure.
+false_positive_validation_data_path: "/var/mnt/storage/Software/AI/wakeword/data/validation_set_features.npy"
+
+augmentation_rounds: 1
+
+# ~2,000 hours of precomputed generic negatives (ACAV100M), memory-mapped.
+feature_data_files:
+  "ACAV100M_sample": "/var/mnt/storage/Software/AI/wakeword/data/openwakeword_features_ACAV100M_2000_hrs_16bit.npy"
+
+# Per batch. The near misses get twice the default share: they are the hard part of this phrase.
+batch_n_per_class:
+  "ACAV100M_sample": 1024
+  "adversarial_negative": 100
+  "positive": 100
+
+model_type: "dnn"
+layer_size: 32
+steps: 50000
+max_negative_weight: 1500
+target_false_positives_per_hour: 0.2

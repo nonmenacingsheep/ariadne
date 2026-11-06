@@ -11,6 +11,7 @@ import importlib.util
 import logging
 import os
 import threading
+import time
 from dataclasses import dataclass
 
 from . import gpu
@@ -24,6 +25,9 @@ RATE = 16000                     # what Whisper wants
 # than base ("hey Ida" came back "hey either" often enough to lose wakes).
 # Once she is open the words matter, so a larger model takes over.
 WAKE_MODEL = "tiny.en"
+# Small enough that waking the card for it isn't worth it: on the CPU it never
+# puts the CUDA context (160 MB) on his GPU, and it is what hears "skip" over her.
+CPU_MODELS = (WAKE_MODEL,)
 COMMAND_MODEL_CPU = "base.en"          # 450ms on a CPU, 35ms on a GPU
 COMMAND_MODEL_GPU = "large-v3-turbo"   # 92.9% vs 89.5%: +3.5 points for 95ms on a card,
                                        # but 6.4s on a CPU, which is why it is GPU-only
@@ -39,6 +43,9 @@ CONTROL_HINT = "Send. Send it. Send that. Nevermind. Go ahead. That's all."
 # Whisper never says "I did not catch that": it returns fluent words whatever it
 # heard. Below this average log probability it was guessing.
 UNSURE_BELOW = -0.85
+# With the wake model listening, Whisper is only needed after a wake: a model
+# untouched this long is dropped, and the card has its memory back.
+IDLE_UNLOAD_S = 300.0
 # Whisper is markedly better on well-levelled audio (about nine points on quiet
 # input). Capped so near-silence is not amplified into hiss it hallucinates from.
 TARGET_PEAK = 0.7
@@ -71,11 +78,13 @@ def levelled(pcm: bytes):
 
 
 class Transcriber:
-    def __init__(self, model_factory=None, device: tuple | None = None) -> None:
+    def __init__(self, model_factory=None, device: tuple | None = None, clock=time.monotonic) -> None:
         self._factory = model_factory           # (name, device, compute_type) -> model
         self._device = device
         self._models: dict = {}
+        self._used: dict = {}                   # name -> when it last loaded or heard something
         self._lock = threading.Lock()
+        self.clock = clock
 
     @staticmethod
     def missing() -> str | None:
@@ -110,12 +119,13 @@ class Transcriber:
 
     def load(self, name: str):
         with self._lock:
+            self._used[name] = self.clock()
             if name in self._models:
                 return self._models[name]
             factory = self._factory
             if factory is None:
                 from faster_whisper import WhisperModel as factory
-            where, precision = self.device()
+            where, precision = ("cpu", "int8") if name in CPU_MODELS else self.device()
             try:
                 model = factory(name, device=where, compute_type=precision)
                 if where != "cpu":
@@ -132,6 +142,7 @@ class Transcriber:
                 self._device = ("cpu", "int8")
                 model = factory(name, device="cpu", compute_type="int8")
             self._models[name] = model
+            self._used[name] = self.clock()     # a load can take seconds; idle counts from its end
             return model
 
     def hear(self, pcm: bytes, model: str, hint: str) -> Heard:
@@ -155,6 +166,30 @@ class Transcriber:
                                             beam_size=1, language="en")[0])
         except Exception:
             pass
+
+    def prefetch(self, name: str) -> None:
+        """Start loading a model now, off this thread, so it is ready by the time it is
+        needed (the wake fires as he finishes the phrase; the words take a moment more)."""
+        if name in self._models:
+            self._used[name] = self.clock()
+            return
+        threading.Thread(target=self.warm, args=(name,), daemon=True, name="ears-load").start()
+
+    def loaded(self) -> tuple[str, ...]:
+        return tuple(self._models)
+
+    def unload_idle(self, idle_s: float = IDLE_UNLOAD_S) -> tuple[str, ...]:
+        """Drop the models nothing has used for `idle_s`. Returns what was dropped."""
+        now = self.clock()
+        with self._lock:
+            idle = tuple(n for n in self._models if now - self._used.get(n, now) >= idle_s)
+            for name in idle:
+                del self._models[name]
+        if idle:
+            import gc
+            gc.collect()
+            log.info("ears: unloaded %s after %d idle minutes", ", ".join(idle), idle_s // 60)
+        return idle
 
     def unload(self) -> int:
         """Drop the models and give the card its memory back (2.3 GB on his)."""

@@ -30,8 +30,10 @@ MAX_OPEN_S = 30.0
 # foot from the microphone, which would otherwise read as an utterance.
 DEAF_S = 0.6
 
-# Utterance modes, decided by what was true when the speech began.
-IDLE, OPEN, OVER, PTT = "idle", "open", "over", "ptt"
+# Utterance modes, decided by what was true when the speech began. WOKE is
+# the words said in the same breath as the wake phrase, after the wake model
+# has already opened her for it.
+IDLE, OPEN, OVER, PTT, WOKE = "idle", "open", "over", "ptt", "woke"
 
 
 class Dialogue:
@@ -121,6 +123,15 @@ class Dialogue:
                 # The key is the address; no name needed.
                 self._send(text)
                 return
+            if mode == WOKE:
+                # Already opened by the wake model; the transcript is only for the
+                # words that came with the phrase. Whisper writing the phrase down too
+                # is the usual case, and what follows it is the command.
+                after = self.names.heard_name(text)
+                text = text if after is None else after
+                if not text or not self.awake:
+                    return
+                mode = OPEN
             interrupted = False
             if mode == OVER:
                 # She is talking. What is worth hearing over her own voice: a skip
@@ -160,6 +171,16 @@ class Dialogue:
                 return
             self.draft.append(command)
             self._drafted_at = self._active_at = self.clock()
+
+    def cut_off(self, reason: str) -> None:
+        """Stop her talking or working now; what he is saying is still to come."""
+        with self._lock:
+            self._interrupt(reason)
+
+    def named(self, mode: str) -> None:
+        """The wake model heard the phrase: exactly what hearing her name alone
+        does (cut her off if she is talking or working, open, chime)."""
+        self.consider(self.names.phrase, mode)
 
     def peek(self, text: str) -> None:
         """Words so far while he talks over her: a skip or her name cuts her

@@ -5,8 +5,10 @@ reason most always-listening assistants are unpleasant:
 
 * Only transcribe speech: a gate on loudness means Whisper runs on utterances,
   not continuously (the difference between a warm CPU and a hot one).
-* Only act on her name: the transcript is dropped unless it opens with the wake
-  word. Nothing else is kept, logged, or sent anywhere.
+* Only act on her name: with the wake model (wakeword.py) nothing is
+  transcribed at all until it hears "wake Aries"; without it, the transcript is
+  dropped unless it opens with the wake word. Nothing else is kept, logged, or
+  sent anywhere.
 * Never listen to herself: while she speaks, only her name or a skip gets through.
 * Hold the mic only while it is wanted, and never let a dying recorder spin.
 """
@@ -18,8 +20,8 @@ import subprocess
 import threading
 import time
 
-from . import mic, transcribe
-from .session import IDLE, OPEN, OVER, PTT
+from . import mic, transcribe, wakeword
+from .session import IDLE, OPEN, OVER, PTT, WOKE
 
 log = logging.getLogger("ariadne2.ears")
 
@@ -34,14 +36,21 @@ PTT_MAX_S = 60.0                 # a stuck key must not record for ever
 SHORT_UTTERANCE_S = 2.0          # at or under this, check for "send"/"nevermind" first
 BLUETOOTH_RECHECK_S = 30.0       # the default source can change; asking costs a process
 MAX_BACKOFF_S = 60.0
+# After the wake phrase, this much more speech in the same breath is a command
+# said with it ("wake Aries, play something"); less is a breath or the phrase's tail.
+WOKE_WORDS_MS = 250
+UNLOAD_CHECK_S = 10.0            # how often idle Whisper models are looked at
 
 
 class Listener:
     def __init__(self, dialogue, transcriber, *, wake_enabled, is_speaking, barge_in=True,
-                 status=None, find_recorder=mic.find_recorder, popen=subprocess.Popen,
-                 bluetooth=mic.bluetooth_mic, clock=time.monotonic) -> None:
+                 status=None, spotting=None, spot_failed=None, find_recorder=mic.find_recorder,
+                 popen=subprocess.Popen, bluetooth=mic.bluetooth_mic, clock=time.monotonic) -> None:
         self.dialogue, self.transcriber = dialogue, transcriber
         self.wake_enabled, self.is_speaking, self.barge_in = wake_enabled, is_speaking, barge_in
+        # The wake model when it is the one listening for her name, else None (Whisper listens).
+        self.spotting = spotting or (lambda: None)
+        self._spot_failed = spot_failed or (lambda exc: None)
         self._status = status or (lambda text: None)
         self._find_recorder, self._popen, self._bluetooth = find_recorder, popen, bluetooth
         self.clock = clock
@@ -54,6 +63,10 @@ class Listener:
         self._peeking = False                   # one peek in flight at a time
         self._ptt_release_at = 0.0
         self._wake_ok: tuple[float, bool] = (-1e9, True)
+        self._woke_at: int | None = None        # frames into the utterance where the wake model fired
+        self._spot_stale = True                 # it missed audio: reset before trusting it again
+        self._her_voice = False
+        self._unload_at = 0.0
         self.restarts = 0
         self.heard = 0
         self.dropped = 0
@@ -182,6 +195,7 @@ class Listener:
         ptt_frames: list[bytes] = []
         ptt_started = 0.0
         d = self.dialogue
+        self._spot_stale = True                 # a fresh recorder: what it heard before is gone
         while not self._stop.is_set():
             if not self.wanted():
                 return                          # put the mic down: it is not needed
@@ -196,6 +210,7 @@ class Listener:
                 if not ptt_frames:
                     ptt_started = now
                     seg.reset()
+                    self._woke_at, self._spot_stale = None, True
                 ptt_frames.append(frame)
                 released = not self._ptt_down and now >= self._ptt_release_at
                 if released or now - ptt_started > PTT_MAX_S:
@@ -208,37 +223,107 @@ class Listener:
             # Fully deaf only through the chime, a loud noise a foot from the mic.
             if now < d.deaf_until:
                 seg.reset()
+                self._woke_at, self._spot_stale = None, True
                 continue
             her_voice = bool(self.is_speaking())
+            spotter = self.spotting()
+            if spotter is not None and her_voice and not self._her_voice:
+                # Over her voice only Whisper hears "skip"; tiny.en is loaded while she talks.
+                self.transcriber.prefetch(transcribe.WAKE_MODEL)
+            self._her_voice = her_voice
             if her_voice and not self.barge_in:
                 seg.reset()
+                self._spot_stale = True
                 continue
+            if spotter is not None and self._woke_at is None and not d.awake:
+                if self._spot(spotter, frame):
+                    self._woken(spotter, seg, her_voice)
+            else:
+                self._spot_stale = True
             utterance = seg.feed(frame, her_voice=her_voice, awake=d.awake)
-            if utterance is not None:
+            if self._woke_at is not None and not seg.speaking:
+                self._after_wake(utterance, seg)
+            elif utterance is not None:
                 # While she works on a reply, the open mic is held to the rules for
                 # over her voice: her name or a skip, nothing else. Otherwise talk in
                 # the room is drafted while she works and sent the moment she's done.
                 busy = d.mode == OPEN and d.is_busy()
-                self._submit(utterance.pcm, OVER if utterance.interrupting or busy else d.mode)
+                mode = OVER if utterance.interrupting or busy else d.mode
+                if mode != IDLE or spotter is None:
+                    self._submit(utterance.pcm, mode)
+                # else: not woken, and the wake model is what listens -- never transcribed
             elif not seg.speaking:
                 peek_at = PEEK_EVERY_MS
                 d.tick()            # nothing is said or about to be: the safe moment to decide a sentence ended
             elif seg.interrupting and her_voice and not self._peeking and seg.speech_ms >= peek_at \
-                    and peek_at <= PEEK_EVERY_MS * PEEKS_MAX:
+                    and peek_at <= PEEK_EVERY_MS * PEEKS_MAX and self._woke_at is None:
                 peek_at += PEEK_EVERY_MS
                 self._peeking = True
                 self._pending.put((b"".join(seg.buffer), "peek"))
             d.expire()
 
+    # ------------------------------------------------------------ the wake model
+    def _spot(self, spotter, frame: bytes) -> bool:
+        try:
+            if self._spot_stale:
+                spotter.reset()
+                self._spot_stale = False
+            return spotter.feed(frame)
+        except Exception as exc:
+            self._spot_failed(exc)          # she goes back to Whisper for her name
+            return False
+
+    def _woken(self, spotter, seg, her_voice: bool) -> None:
+        """The wake model heard the phrase. Load what will hear the words now, so it
+        loads while he says them. Mid-sentence, opening waits for him to finish:
+        the chime and its deafness would cut off "wake Aries, play something"."""
+        log.info("ears: heard the wake phrase (%.2f)", spotter.score)
+        t = self.transcriber
+        for name in dict.fromkeys((t.command_model(), t.control_model())):
+            t.prefetch(name)
+        d = self.dialogue
+        if not seg.speaking:
+            d.named(OVER if her_voice else IDLE)
+            return
+        self._woke_at = len(seg.buffer)
+        if her_voice or d.is_busy():
+            # But she stops now, not when he does.
+            d.cut_off("heard the wake phrase" + (" over her voice" if her_voice else " while she worked"))
+
+    def _after_wake(self, utterance, seg) -> None:
+        """The breath with the wake phrase in it has ended: open, and if he went
+        on talking after the phrase, have those words transcribed as the command."""
+        woke_at, self._woke_at = self._woke_at, None
+        self.dialogue.named(IDLE)           # (anyone talking or working was cut off when it fired)
+        if utterance is None:
+            return
+        frames = [utterance.pcm[i:i + mic.FRAME_BYTES]
+                  for i in range(woke_at * mic.FRAME_BYTES, len(utterance.pcm), mic.FRAME_BYTES)]
+        gate = seg.threshold() * mic.HOLD
+        if sum(mic.FRAME_MS for f in frames if mic.rms(f) >= gate) >= WOKE_WORDS_MS:
+            self._submit(utterance.pcm, WOKE, b"".join(frames))
+
+    def _unload_idle(self) -> None:
+        """With the wake model listening, Whisper is dropped once nobody has needed it
+        for a while; never while she talks or listens, when it is about to be."""
+        now = self.clock()
+        if now < self._unload_at:
+            return
+        self._unload_at = now + UNLOAD_CHECK_S
+        if self.spotting() is None or self.dialogue.awake or self.dialogue.ptt \
+                or self.is_speaking() or not self._pending.empty():
+            return
+        self.transcriber.unload_idle()
+
     # -------------------------------------------------------------- the worker
-    def _submit(self, pcm: bytes, mode: str) -> None:
+    def _submit(self, pcm: bytes, mode: str, rest: bytes = b"") -> None:
         """Hand an utterance off. Dropping beats blocking the microphone (and beats
         answering minutes late); a push-to-talk clip is deliberate and never dropped."""
         if mode != PTT and self._pending.qsize() >= 2:
             self.dropped += 1
             return
         self.dialogue.began()
-        self._pending.put((pcm, mode))
+        self._pending.put((pcm, mode, rest))
 
     def _work(self) -> None:
         """Transcribe and act, well away from the thread holding the mic."""
@@ -246,6 +331,10 @@ class Listener:
             try:
                 item = self._pending.get(timeout=0.5)
             except queue.Empty:
+                try:
+                    self._unload_idle()
+                except Exception as exc:
+                    log.warning("ears: couldn't unload idle models: %s", exc)
                 continue
             if item is None:
                 return
@@ -269,11 +358,18 @@ class Listener:
             finally:
                 self.dialogue.finished()      # or the auto-send waits for ever on a clip that failed
 
-    def _transcribe(self, pcm: bytes, mode: str) -> tuple[str, bool]:
+    def _transcribe(self, pcm: bytes, mode: str, rest: bytes = b"") -> tuple[str, bool]:
         t, names = self.transcriber, self.dialogue.names
         seconds = len(pcm) / 2 / mic.RATE
         if mode == PTT:
             h = t.hear(pcm, t.command_model(), transcribe.COMMAND_HINT)
+        elif mode == WOKE:
+            # The whole breath, so the words keep their first consonant; the phrase
+            # comes back as her name nearly always, and what follows it is the command.
+            h = t.hear(pcm, t.command_model(), f"{wakeword.HINT} {transcribe.COMMAND_HINT}")
+            if names.heard_name(h.text) is None and rest:
+                # It wrote the phrase as something else: keep only what came after it.
+                h = t.hear(rest, t.command_model(), transcribe.COMMAND_HINT)
         elif mode == OVER:
             h = t.hear(pcm, transcribe.WAKE_MODEL, names.interrupt_hint)
         elif mode == IDLE:

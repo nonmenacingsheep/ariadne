@@ -12,8 +12,9 @@ import re
 # The name on its own is a couple of phonemes and collides with ordinary words,
 # so a greeting is required in front of it. That one extra syllable is most of
 # the difference between a wake word you can live with and one that interrupts
-# every conversation held near the machine.
-GREETINGS = ("hey", "hay", "hi", "high", "okay", "ok", "yo", "hey there")
+# every conversation held near the machine. "Wake" is the wake model's phrase
+# ("wake Aries"), here so Whisper reads it as her name when it writes it down.
+GREETINGS = ("hey", "hay", "hi", "high", "okay", "ok", "yo", "hey there", "wake")
 
 # What Whisper turns a name into when it is not expecting it. Hand-made,
 # because guessing at mishearings of an arbitrary name produces the wrong ones,

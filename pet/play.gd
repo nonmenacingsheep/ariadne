@@ -358,7 +358,7 @@ func _away_and_back(t: float) -> void:
 # The button held on her without dragging: a hug through the glass, or holding hands.
 var press_part := ""
 func _held_still(t: float) -> void:
-	if pet.pressing and pet.mode == "play" and not pet.drag_moved and not holding_still and t - pet.press_at > 0.7:
+	if pet.pressing and pet.mode == "play" and pet.state != "held" and not pet.drag_moved and not holding_still and t - pet.press_at > 0.7:
 		holding_still = true
 		run("holdhand" if press_part == "hand" else "hug")
 		pet._set_state("react", 1e9)           # as long as he holds on

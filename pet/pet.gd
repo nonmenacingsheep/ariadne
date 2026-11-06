@@ -2596,6 +2596,8 @@ func _input(event: InputEvent) -> void:
 				_grab_start()                       # a click: pinned right where she stands
 				if state == "held":
 					ragdoll.pin_here()
+			elif drag_moved and state == "held" and not ragdoll.pins.is_empty():
+				ragdoll.drop_hold()                 # pinned: she swings back on her pins
 			elif drag_moved and state == "held":
 				if shakes >= 6:
 					play.after_landing = "shaken"
@@ -2624,11 +2626,9 @@ func _input(event: InputEvent) -> void:
 func _grab_start() -> void:
 	brain.drop()
 	_unperch_now()
-	# Caught again mid-tumble or while she hangs: from the pose she's in. In pin
-	# mode the pins stay; otherwise this picks her off them.
+	# Caught again mid-tumble or while she hangs: from the pose she's in, and
+	# whatever the mode the pins stay (only Let her down takes them out).
 	var more: bool = state in RAGDOLL and ragdoll.on
-	if more and mode != "pin":
-		ragdoll.unpin_all()
 	if grab_bone < 0:
 		return
 	var at: Vector3 = _bone_xf(grab_bone) * grab_local
@@ -3374,6 +3374,18 @@ func _mode_test(m: String, bone: String) -> void:
 			await get_tree().process_frame
 		press.call(q + Vector2(-180, -90), false)
 		print("PINS %d state %s" % [ragdoll.pins.size(), state])
+		# The other modes leave the pins be: a drag in play, a click in poke.
+		for m2 in ["play", "poke"]:
+			mode = m2
+			var hp := cam.unproject_position(_bone_xf(skel.find_bone("Hips")).origin)
+			press.call(hp, true)
+			for i in 20:
+				move.call(hp + Vector2(i * 4.0 if m2 == "play" else 0.0, 0.0))
+				await get_tree().process_frame
+			press.call(hp + Vector2(80, 0), false)
+			for i in 30:
+				await get_tree().process_frame
+			print("PINS after %s: %d state %s" % [m2, ragdoll.pins.size(), state])
 	for i in 120:
 		await get_tree().process_frame
 		if i % 20 == 0:

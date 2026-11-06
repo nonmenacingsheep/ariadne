@@ -325,6 +325,16 @@ func _hold(b: String, at: Vector3) -> void:
 	pin.set_meta("limb", _limb(b))
 
 
+# Let go of (play mode) while she hangs from pins: only his hold goes.
+func drop_hold() -> void:
+	if pin:
+		pin.queue_free()
+		pin = null
+	limp.clear()
+	for p in pins:
+		limp.append_array(p[2])
+
+
 # Let go in pin mode: the point he held stays where it is, and she hangs from it.
 func pin_here() -> void:
 	if pin == null:

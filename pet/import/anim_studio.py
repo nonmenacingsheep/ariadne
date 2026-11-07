@@ -132,7 +132,6 @@ if TEST:
     picks = [int(x) for x in os.environ.get("ANIM_TEST_FRAMES", "").split(",") if x] or [f0, (f0 + f1) // 2, (f0 + 3 * f1) // 4]
     for k, f in enumerate(picks):
         sc.frame_set(f)
-        follow.apply()
         bpy.context.view_layer.update()
         sc.render.filepath = f"{TEST}/{CLIP}_{k}.png"
         bpy.ops.render.render(write_still=True)

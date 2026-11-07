@@ -47,7 +47,7 @@ Then, in any file with one of her bodies in it:
    **Load onto her**. The clip's sticks appear over her and she follows them;
    you're in Pose Mode on the sticks, ready to fix.
 3. **Send to Aries** and **Back to Kimodo's** work as below; **Let her go**
-   removes the sticks and puts her back in her rest pose.
+   removes the sticks and leaves her as she was.
 
 ## Getting around
 

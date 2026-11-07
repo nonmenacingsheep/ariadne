@@ -34,7 +34,7 @@ import re
 import subprocess
 
 import bpy
-from mathutils import Quaternion
+from mathutils import Matrix, Quaternion
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Run from the repo (bin/anim-edit), or installed as an add-on (a copy elsewhere).
@@ -44,6 +44,8 @@ K = os.environ.get("KIMODO_DIR", "/var/mnt/games/AI/Kimodo")
 CLIPS = f"{K}/clips"
 EDITED = f"{CLIPS}/edited"
 STICKS = "Aries Bones"
+HELPERS = "Aries helpers"                  # hidden empties her bones follow (Follow.rig)
+FOLLOW = "Aries follow"                    # the constraints on her bones
 NEED = ["Hips", "Spine", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm",
         "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot"]
 UPRIGHT = {"Hips", "Spine", "Chest", "UpperChest", "Neck", "Head", "LeftFoot", "RightFoot", "LeftToes", "RightToes",
@@ -132,51 +134,58 @@ class Follow:
             i += 1
         self.last = None
 
-    def apply(self) -> None:
-        src, dst = self.src, self.dst
-        sw = src.matrix_world
-        rot = {}                                   # her bones' armature-space rotations as posed
-        for name in self.order:
-            b, pb = dst.data.bones[name], dst.pose.bones[name]
-            par = rot.get(b.parent.name) if b.parent else Quaternion()
-            rest_rel = (b.parent.matrix_local.inverted() @ b.matrix_local).to_quaternion() if b.parent \
-                else b.matrix_local.to_quaternion()
-            s = self.pairs.get(name)
-            if s is None:
-                rot[name] = par @ rest_rel           # not hers to follow (hair, tail...): as it rests
-                pb.rotation_mode = "QUATERNION"
-                pb.rotation_quaternion = Quaternion()
-                continue
-            fixed, src_rest_inv = self.fix[name]
-            world = (sw @ src.pose.bones[s].matrix).to_quaternion() @ src_rest_inv @ fixed
-            want = self.dw_inv @ world
-            pb.rotation_mode = "QUATERNION"
-            pb.rotation_quaternion = (par @ rest_rel).inverted() @ want
-            rot[name] = want
-        # Her hips go where SOMA's go, from their rests, scaled to her.
-        s, t = self.hips
-        sb, tb = src.data.bones[s], dst.data.bones[t]
-        moved = (sw @ src.pose.bones[s].matrix).translation - (sw @ sb.matrix_local).translation
-        here = self.dst.matrix_world.inverted().to_3x3() @ (moved * self.scale)
-        dst.pose.bones[t].location = tb.matrix_local.to_3x3().inverted() @ here
+    def rig(self) -> None:
+        """Her bones constrained to the sticks, so Blender does it all natively
+        (re-posing her bone by bone from Python each frame made playback crawl).
+        Each of her followed bones gets a hidden helper, a Child Of its SOMA bone
+        set at SOMA's rest, holding her (straightened) rest: as the stick turns
+        from rest, the helper turns the same, and her bone copies the helper's
+        rotation in the world; her hips copy its place too."""
+        self.unrig()
+        sw = self.src.matrix_world
+        helpers = bpy.data.collections.new(HELPERS)
+        bpy.context.scene.collection.children.link(helpers)
+        for t, s in self.pairs.items():
+            fixed, _ = self.fix[t]
+            e = bpy.data.objects.new(f"aries_{t}", None)
+            helpers.objects.link(e)
+            e.empty_display_size = 0.01
+            c = e.constraints.new("CHILD_OF")
+            c.target, c.subtarget = self.src, s
+            c.inverse_matrix = (sw @ self.src.data.bones[s].matrix_local).inverted()
+            head = self.dst.matrix_world @ self.dst.data.bones[t].head_local
+            e.matrix_basis = Matrix.LocRotScale(head, fixed, None)
+            pb = self.dst.pose.bones[t]
+            r = pb.constraints.new("COPY_ROTATION")
+            r.name, r.target = FOLLOW, e
+            r.owner_space = r.target_space = "WORLD"
+            if t == self.hips[1]:
+                loc = pb.constraints.new("COPY_LOCATION")
+                loc.name, loc.target = FOLLOW, e
+                loc.owner_space = loc.target_space = "WORLD"
+        helpers.hide_viewport = True               # (still evaluated: the eye, not the screen)
+        for e in helpers.objects:
+            e.hide_set(True)
 
-    def poll(self):
-        """30 times a second: re-pose her if the sticks moved (a frame change, or his edit)."""
-        if state.get("follow") is not self:
-            return None                            # (another clip took over)
+    def unrig(self) -> None:
         try:
-            key = tuple(round(v, 5) for pb in self.src.pose.bones[:40] for v in pb.matrix.to_quaternion())
+            for pb in self.dst.pose.bones:
+                for c in [c for c in pb.constraints if c.name.startswith(FOLLOW)]:
+                    pb.constraints.remove(c)
         except ReferenceError:
-            return None                            # (the sticks were deleted, or the file closed)
-        if key != self.last:
-            self.last = key
-            self.apply()
-        return 1 / 30
+            pass
+        old = bpy.data.collections.get(HELPERS)
+        if old is not None:
+            for e in list(old.objects):
+                bpy.data.objects.remove(e, do_unlink=True)
+            bpy.data.collections.remove(old)
 
 
 def load_onto(dst, clip: str):
     """The clip's sticks over her, her following them, a Fixes layer to key on. Returns the Follow."""
     old = bpy.data.objects.get(STICKS)
+    if state.get("follow") is not None:
+        state["follow"].unrig()
     if old is not None:
         bpy.data.objects.remove(old, do_unlink=True)
     dmap = body_map(dst)
@@ -204,9 +213,8 @@ def load_onto(dst, clip: str):
     base.lock = True
     ad.action = bpy.data.actions.new("Fixes")
     ad.action_blend_type = "COMBINE"
-    follow.apply()
+    follow.rig()
     state.update(clip=clip, follow=follow)
-    bpy.app.timers.register(follow.poll, persistent=True)
     return follow
 
 
@@ -307,7 +315,7 @@ class ARIES_OT_original(bpy.types.Operator):
 class ARIES_OT_unload(bpy.types.Operator):
     bl_idname = "aries.unload"
     bl_label = "Let her go"
-    bl_description = "Remove the clip's sticks; she goes back to her rest pose"
+    bl_description = "Remove the clip's sticks; she goes back to how she was"
 
     @classmethod
     def poll(cls, context):
@@ -318,14 +326,9 @@ class ARIES_OT_unload(bpy.types.Operator):
         state.update(clip="", follow=None)
         if context.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
-        bpy.data.objects.remove(bpy.data.objects[STICKS], do_unlink=True)
         if f is not None:
-            try:
-                for pb in f.dst.pose.bones:
-                    pb.rotation_quaternion = Quaternion()
-                    pb.location = (0, 0, 0)
-            except ReferenceError:
-                pass
+            f.unrig()                              # (her own pose was never touched: she's as she was)
+        bpy.data.objects.remove(bpy.data.objects[STICKS], do_unlink=True)
         return {"FINISHED"}
 
 

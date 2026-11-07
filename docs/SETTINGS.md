@@ -128,7 +128,7 @@ A right-click mute on a widget is `set voice sound_<kind> false`.
 
 | key | type | default | applies to |
 |---|---|---|---|
-| `raise_key` | key, readonly | `Meta+A` | display only |
+| `raise_key` | key, readonly | `Meta+Z` | display only (kwin_layer.js registers it; Meta+A is Plasma's activities switcher) |
 | `reset_layout` | bool, action | | the desk resets the layout when it forwards `set desktop reset_layout true` (layer.py `_reset_layout`); the core acknowledges and re-sends `settings` |
 | `theme` | choice: `classic`, `liquid_glass` | `classic` | **page reads it**: the desk's look. Classic is the red cyberpunk acrylic slabs (desk.css); Liquid Glass adds `html.lg` (glass.css). Live, no restart: desk.js `setTheme` on every `settings` message; layer.py also reads it from the file at start so the page doesn't flash the other look |
 | `body` | bool | true | **pet reads it**: false hides or quits her body |

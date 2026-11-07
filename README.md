@@ -51,7 +51,7 @@ keys can also come from `ANTHROPIC_API_KEY`, `CARTESIA_API_KEY` and `DEEPSEEK_AP
 
 Start **Ariadne** from the app menu, or run `bin/ariadne2` (`bin/ariadne2 --stop` closes it).
 
-- **Meta+A** lifts the desk over your windows; click empty space or press Esc to drop it.
+- **Meta+Z** lifts the desk over your windows; click empty space or press Esc to drop it.
 - **"Hey Aries, …"** talks to her; **Meta+S** is push-to-talk (press, speak, press).
 - The **gear** at the top left of her core opens the settings; the line under
   ARIES opens the widget drawer (the Avatar widget is in there).

@@ -226,7 +226,7 @@ def build_schema(personality_names: list[str] | None = None, model: str | None =
     s.append(_entry("general", "check_now", "Check for updates now", "bool", False,
                     "Look right away.", action=True))
     # ---- desktop ----
-    s.append(_entry("desktop", "raise_key", "Raise hotkey", "key", "Meta+A",
+    s.append(_entry("desktop", "raise_key", "Raise hotkey", "key", "Meta+Z",
                     "Lifts the desk over your windows. Rebind it in System Settings, Shortcuts.",
                     readonly=True))
     s.append(_entry("desktop", "reset_layout", "Reset the layout", "bool", False,

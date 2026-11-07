@@ -228,7 +228,7 @@ class StoreTests(Tmp):
     def test_snapshot_shows_readonly_and_hides_buttons_state(self):
         snap = make(self.dir).snapshot()
         self.assertEqual(snap["general"]["ptt_key"], "Meta+S")
-        self.assertEqual(snap["desktop"]["raise_key"], "Meta+A")
+        self.assertEqual(snap["desktop"]["raise_key"], "Meta+Z")
         self.assertIs(snap["desktop"]["reset_layout"], False)
 
     def test_sounds_json_is_migrated_once(self):

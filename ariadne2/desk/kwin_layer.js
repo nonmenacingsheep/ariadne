@@ -1,5 +1,5 @@
 // Keeps the Ariadne 2 desk layer pinned to the ultrawide, below every window,
-// and owns Meta+A. The desk loads this for as long as it runs.
+// and owns Meta+Z. The desk loads this for as long as it runs.
 //
 // Wayland won't let a client place itself, stay below others or skip the
 // taskbar, so all of that is asked of KWin here. Raised or not is read from
@@ -138,7 +138,9 @@ function pin(w) {
 registerShortcut("Ariadne2 Talk", "Ariadne 2: talk (press, speak, press)", "Meta+S",
     function () { callDBus(SERVICE, PATH, IFACE, "Talk"); });
 
-registerShortcut("Ariadne2 Raise", "Ariadne 2: bring to front", "Meta+A",
+// Meta+Z: Meta+A is Plasma's "Walk through activities", which kept the key, so
+// this never fired. A new name, since KDE keeps a shortcut's old binding by name.
+registerShortcut("Ariadne2 Bring to front", "Ariadne 2: bring to front", "Meta+Z",
     function () {
         var w = layer();
         if (!w) return;

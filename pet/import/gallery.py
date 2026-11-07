@@ -6,9 +6,8 @@
 Each clip becomes a looping WebP (<dir>/webp/<clip>.webp) beside its prompt
 (the Kimodo lists in pet/import/*.txt), the file it came from, and what of
 hers plays it (a role in pet.gd, an interaction in play.json, an episode beat,
-a place state). The page keeps his verdicts (good / remake / remove and a
-note) in the browser as he goes and exports them as JSON; the frames
-themselves are fan-model renders and stay on this machine.
+a place state). Every clip is numbered so he can say in chat which need work; the
+frames are fan-model renders and stay on this machine.
 """
 import json
 import re
@@ -66,8 +65,14 @@ for c in clips:
         ims = [Image.open(p).convert("RGBA") for p in frames]
         ims[0].save(dst, save_all=True, append_images=ims[1:], duration=67, loop=0, quality=72, method=4)
     base = re.sub(r"_s\d+$", "", name)
-    rows.append({**c, "family": family(name), "prompt": prompts.get(name) or prompts.get(base, ""),
+    rows.append({**c, "num": 0, "family": family(name), "prompt": prompts.get(name) or prompts.get(base, ""),
                  "used": used_by(name), "webp": f"webp/{name}.webp"})
+# Numbered in the order the page shows them (by family, then name), so he can
+# say "#14 needs work" in chat; clips.txt is the same list as text.
+rows.sort(key=lambda r: (r["family"], r["name"]))
+for i, r in enumerate(rows, 1):
+    r["num"] = i
+(out / "clips.txt").write_text("".join(f"#{r['num']} {r['name']}  ({r['seconds']}s, {', '.join(r['used']) or 'not used'})\n" for r in rows))
 (out / "data.js").write_text("const CLIPS = " + json.dumps(rows) + ";\n")
 shutil.copy(HERE / "gallery.html", out / "index.html")
 print(f"{len(rows)} clips -> {out / 'index.html'}")

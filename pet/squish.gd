@@ -28,19 +28,20 @@ var last_tilt := Vector3.ZERO  # (a test run's readout: how far gravity is towar
 # The bounce: about 2 Hz and lively (soft), 3 Hz and tighter (firm); how far at most.
 # The bounce: Hz, damping, how far her moves throw them (m); how far gravity
 # hangs them (m, fully upside down), how far they tip (rad), how much they flatten.
-const SOFT := [2.0, 0.22, 0.025, 0.065, 0.95, 0.35]
-const FIRM := [3.2, 0.4, 0.012, 0.025, 0.38, 0.12]
+const SOFT := [2.0, 0.22, 0.025, 0.065, 0.95, 0.245]
+const FIRM := [3.2, 0.4, 0.012, 0.025, 0.38, 0.084]
 const PUSH := 0.6              # how much of her chest's acceleration they feel
 const LEAN := [0.12, 0.45]     # gravity this far from upright (of 2) counts not at all .. fully: a lean while standing doesn't
 const HEAD_FROM := 1.0         # toward her head: none till she is past level (of 2: lying is 1), all of it upside down
 
-const ZONE := 0.055            # metres round the breast an arm starts to press
+const ZONE := 0.04             # metres round the breast an arm starts to press
 const TIP := 0.05              # the end past Breast_2 (its spring chain's extended end)
 const MOST := 0.07             # how far aside, at most (metres at the tip)
 const TURN_W := 15.0           # rad/s: eases in over ~0.2 s
 const TURN_Z := 0.9            # damping: barely any overshoot
 const FLAT := 0.3              # how much a full press flattens it
-const FILL := 0.4              # of that, how much it fills out across (jacket off)
+const FILL := 0.2              # of that, how much it fills out across (jacket off)
+const ARM := 0.5               # how much of an arm's way into the zone it moves them aside
 
 
 func setup(sk: Skeleton3D) -> void:
@@ -101,7 +102,14 @@ func _process_modification_with_delta(delta: float) -> void:
 					depth = into
 					push = (p - q).normalized() * into
 		most_in = maxf(most_in, depth)
-		push = push.limit_length(MOST * size * (0.5 if firm else 1.0))     # the jacket holds them close
+		# Never pushed out of her chest: with her arms crossed or her hands up at
+		# her face, the forearms pass in front and below, and pushing straight
+		# away from them threw her breasts out and to the sides. What's left is
+		# the press along her chest, gentler.
+		var out_w := (xf.basis * sk.get_bone_global_pose(s[0]).basis.y).normalized()
+		if push.dot(out_w) > 0.0:
+			push -= out_w * push.dot(out_w)
+		push = (push * ARM).limit_length(MOST * size * (0.5 if firm else 1.0))     # the jacket holds them close
 		if push.length() > 1e-5:
 			s[4] = push.normalized()
 		var lever := tip - j1

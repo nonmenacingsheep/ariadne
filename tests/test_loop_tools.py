@@ -341,6 +341,7 @@ class RecordTests(unittest.TestCase):
         # a long output is cut, and the whole record keeps to its cap
         long = outcome({"content": text.replace("Eneba", "E" * 400)})
         self.assertLess(len(long), loop.GIST + 50)
+        self.assertTrue(long.endswith('…"'))
 
     def test_only_the_latest_record_keeps_whole_results(self):
         big = "x" * 700
@@ -352,7 +353,6 @@ class RecordTests(unittest.TestCase):
         sent = loop.as_sent(hist)
         self.assertLess(len(sent[2]["content"]), loop.OLD_GIST + 200)       # the older reply's, cut back
         self.assertIn(big, sent[4]["content"])                              # the latest, whole
-        self.assertTrue(long.endswith('…"'))
 
     def test_outcome_says_no_output_only_when_there_was_none(self):
         from ariadne2.core.loop import outcome

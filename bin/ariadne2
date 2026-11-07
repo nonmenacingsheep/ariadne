@@ -163,7 +163,8 @@ stop_rest() {
   kill -TERM $(hers "$PET_RE") $(hers "$PET2D_RE") 2>/dev/null
   wait $desk $pet $pet2d 2>/dev/null
 }
-trap 'kill $core 2>/dev/null; stop_rest; wait $core 2>/dev/null; rm -f "$LAUNCHER"' EXIT
+# (the pid file only if it's still ours: a launcher replacing this one has written its own)
+trap 'kill $core 2>/dev/null; stop_rest; wait $core 2>/dev/null; [ "$(cat "$LAUNCHER" 2>/dev/null)" = "$$" ] && rm -f "$LAUNCHER"' EXIT
 trap 'exit 143' INT TERM
 
 # Until the desk or the core ends. A game in front ends the core on purpose

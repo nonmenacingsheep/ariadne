@@ -1,6 +1,6 @@
 """Export a VRChat-style Booth avatar .blend as a GLB for the 3D body (pet/).
 
-blender -b <avatar>.blend --python pet/import/avatar_export.py -- pet/models/<name>.glb [--all] [skip collection ...]
+blender -b <avatar>.blend --python pet/import/avatar_export.py -- pet/models/<name>.glb [--all] [--cover Body=Pants+Top] [skip collection ...]
 
 These come rigged with the humanoid bone names (Hips, Spine, Chest,
 UpperArm_L...), VRChat mouth shapes and blink, and MMD expressions, so the
@@ -19,7 +19,12 @@ work is making the file game-ready, the way jane_export.py does for an MMD rig:
   each piece's fit keys (the ear band under a cap, the body tucked in for a
   bikini), which pet/models/<name>.json sets per outfit;
 - each material rebuilt as a plain Principled BSDF on its main texture (their
-  own toon node trees don't export), alpha from it where it has any.
+  own toon node trees don't export), alpha from it where it has any;
+- with --cover Body=Pants+Top, the body's skin those clothes hide is split off
+  as Body_Under, for the outfit to hide: shrink keys alone left her hips
+  peeking through wide pants when she sat or bent. A face goes if every ray
+  out of it, across the half it faces, hits the clothes; skin under a gap
+  (a shoulder cut-out, the leg openings) sees out and stays.
 The .blend itself is never saved.
 """
 import sys
@@ -29,7 +34,8 @@ import bpy
 args = sys.argv[sys.argv.index("--") + 1:]
 out = args[0]
 every = "--all" in args
-skip = {a for a in args[1:] if a != "--all"}
+cover = args[args.index("--cover") + 1] if "--cover" in args else ""
+skip = {a for a in args[1:] if a not in ("--all", "--cover", cover)}
 FACE_KEYS = ("vrc.v_aa", "vrc.Blink", "まばたき")
 HELPERS = ("DataTransfer",)
 
@@ -110,6 +116,58 @@ for o in keep:
         for m in others:
             print("dropped", o.name, m.name)
             o.modifiers.remove(m)
+
+# Skin under clothes, split off (--cover).
+if cover:
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    body_name, cloth = cover.split("=")
+    body = bpy.data.objects[body_name]
+    dg = bpy.context.evaluated_depsgraph_get()
+    verts, polys = [], []
+    for name in cloth.split("+"):
+        ob = bpy.data.objects[name].evaluated_get(dg)
+        me = ob.to_mesh()
+        base = len(verts)
+        verts += [ob.matrix_world @ v.co for v in me.vertices]
+        polys += [[base + i for i in p.vertices] for p in me.polygons]
+        ob.to_mesh_clear()
+    tree = BVHTree.FromPolygons(verts, polys)
+    mw = body.matrix_world
+    nm = mw.to_3x3().inverted().transposed()
+    # Rays across the hemisphere a point faces: its normal, then rings at 35 and 70 degrees.
+    import math
+    def rays(n):
+        t = n.orthogonal().normalized()
+        b = n.cross(t)
+        out = [n]
+        for tilt in (math.radians(35), math.radians(70)):
+            for k in range(8):
+                a = k * math.tau / 8
+                out.append((n * math.cos(tilt) + (t * math.cos(a) + b * math.sin(a)) * math.sin(tilt)).normalized())
+        return out
+    hid = []
+    for v in body.data.vertices:
+        p = mw @ v.co
+        n = (nm @ v.normal).normalized()
+        hid.append(all(tree.ray_cast(p + n * 0.001, d, 0.3)[0] is not None for d in rays(n)))
+    under = [f.index for f in body.data.polygons if all(hid[i] for i in f.vertices)]
+    print("COVER", body_name, len(under), "of", len(body.data.polygons), "faces hidden by", cloth)
+    if under:
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.context.view_layer.objects.active = body
+        body.select_set(True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="DESELECT")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for i in under:
+            body.data.polygons[i].select = True
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.separate(type="SELECTED")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        piece = next(o for o in bpy.context.selected_objects if o is not body)
+        piece.name = body_name + "_Under"
+        keep.append(piece)
 
 # Materials: a Principled BSDF on the main texture.
 def main_image(mat):

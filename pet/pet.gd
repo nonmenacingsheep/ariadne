@@ -178,6 +178,10 @@ var state_until := 0.0
 var target_x := 0.0
 var yaw := 0.0
 var yaw_target := 0.0
+var yaw_v := 0.0                           # how fast she's turning, rad/s
+const YAW_K := 30.0                         # the turn's spring: critically damped, settles in about 0.8 s
+const YAW_C := 11.0
+const YAW_MAX := 3.0                        # rad/s at most: a half turn takes about a second
 var clip := ""
 var floors := []                           # [y, x0, x1] in metres
 var layout_mtime := 0
@@ -466,7 +470,8 @@ func _dress() -> void:
 	for m in body.find_children("*", "MeshInstance3D", true, false):
 		for sh in shapes:
 			var only_on := String(sh).get_slice("/", 0) if String(sh).contains("/") else ""
-			if only_on != "" and only_on != String(m.name):
+			# (the body's hidden-under-clothes piece, <Body>_Under, takes the body's shapes)
+			if only_on != "" and only_on != String(m.name) and only_on + "_Under" != String(m.name):
 				continue
 			var idx := (m as MeshInstance3D).find_blend_shape_by_name(String(sh).get_slice("/", 1) if only_on != "" else sh)
 			if idx >= 0:
@@ -527,7 +532,7 @@ const JIGGLE := [
 	["Hair_Bang_1_1", "hair_bang_1_3", 1.4, 0.5, 0.15, 0.01],
 	["Hair_Bang_2_1_L", "Hair_Bang_2_2_L", 1.4, 0.5, 0.15, 0.01], ["Hair_Bang_2_1_R", "Hair_Bang_2_2_R", 1.4, 0.5, 0.15, 0.01],
 	["Hair_Top_1", "Hair_Top_2", 1.2, 0.45, 0.2, 0.015],
-	["Kemomimi_L", "Kemomimi_L", 0.8, 0.22, 0.04, 0.01], ["Kemomimi_R", "Kemomimi_R", 0.8, 0.22, 0.04, 0.01],
+	["Kemomimi_L", "Kemomimi_L", 0.35, 0.12, 0.08, 0.01], ["Kemomimi_R", "Kemomimi_R", 0.35, 0.12, 0.08, 0.01],     # a cat's: loose, they flop and wobble
 	["Tail_1", "Tail_4", 0.6, 0.18, 0.35, 0.02], ["Tail_1", "Tail_3", 0.6, 0.18, 0.35, 0.02],     # (light drag: it lags and overshoots)
 	["Earrings_1_L", "Earrings_2_L", 1.0, 0.3, 0.5, 0.008], ["Earrings_1_R", "Earrings_2_R", 1.0, 0.3, 0.5, 0.008],
 	["Necklace_1", "Necklace_2", 0.9, 0.4, 0.6, 0.01],
@@ -1730,6 +1735,10 @@ func _play(name: String, blend := 0.3, speed := 1.0) -> void:
 	if pick == "":
 		return
 	clip = name
+	# Eased into: half again as long as asked (he found her moves began too
+	# abruptly). Quick ones (a jump, a fall, under 0.2 s) stay quick.
+	if blend >= 0.2:
+		blend = minf(blend * 1.5, 1.2)
 	_play_variant(pick, blend)
 	ap.speed_scale = speed
 
@@ -2019,9 +2028,9 @@ const SOMA_LEG := 0.855
 const JANE_LEG := 0.805                    # Jane's legs (the body most of her tuning was done on)
 var leg_length := 0.0
 func _gait_speed() -> float:
-	# Easing in over the first 0.35 s, while the walk blends in from standing
+	# Easing in over the first 0.5 s, while the walk blends in from standing
 	# (at full speed at once, her planted feet skated those first frames).
-	var ease := smoothstep(0.0, 0.35, t - gait_from)
+	var ease := smoothstep(0.0, 0.5, t - gait_from)
 	if gait_velocity.has(variant) and leg_length > 0.1:
 		return (gait_velocity[variant] as Vector2).length() * (leg_length / SOMA_LEG) * ap.speed_scale * ease
 	return WALK_SPEED * _stride() * ease
@@ -2280,7 +2289,8 @@ func _process(delta: float) -> void:
 	_update_click_area()
 	_tell(delta)
 	var busy: bool = state in ["wander", "fall", "held", "tumble", "getup", "react", "dance", "knocked"] or speaking or t < mood_until or (slab and slab.visible)
-	Engine.max_fps = FPS_BUSY if busy else FPS_IDLE
+	# (held or tumbling, at least 60: at 30 her 120 Hz physics drew in uneven steps and a swing looked jittery)
+	Engine.max_fps = (maxi(FPS_BUSY, 60) if state in RAGDOLL else FPS_BUSY) if busy else FPS_IDLE
 
 
 func _think(_delta: float) -> void:
@@ -2412,8 +2422,14 @@ func _move(delta: float) -> void:
 		# Turning in step with a blend between two lying clips (_play_variant).
 		yaw = lerp_angle(yaw_glide[0], yaw_glide[1], clampf((t - yaw_glide[2]) / yaw_glide[3], 0.0, 1.0))
 		yaw_target = yaw
+		yaw_v = 0.0
 	else:
-		yaw = lerp_angle(yaw, yaw_target, clampf(delta * 5.0, 0.0, 1.0))
+		# A turn eases in and out on a damped spring, never faster than YAW_MAX
+		# (easing straight toward it started every turn at full speed: a half
+		# turn began at 15 rad/s and she snapped round, hair and chest flung).
+		var err := wrapf(yaw_target - yaw, -PI, PI)
+		yaw_v = clampf(yaw_v + (YAW_K * err - YAW_C * yaw_v) * delta, -YAW_MAX, YAW_MAX)
+		yaw = wrapf(yaw + yaw_v * delta, -PI, PI) if absf(err) > 1e-4 or absf(yaw_v) > 1e-4 else yaw
 
 
 # --- reacting to him (docs/PET_AI_PLAN.md, phase 4) ---------------------------
@@ -3385,7 +3401,7 @@ func _snapshot_seq(what: String) -> void:
 		var name := what.substr(5)
 		depth = -0.4
 		brain_quiet = true
-		yaw = {"side": PI / 2, "three-quarter": 0.6}.get(OS.get_environment("PET_FILM_VIEW"), 0.0)
+		yaw = {"side": PI / 2, "three-quarter": 0.6, "back": PI}.get(OS.get_environment("PET_FILM_VIEW"), 0.0)
 		yaw_target = yaw
 		look_until = 1e9
 		_set_state("workout", 1e9)
@@ -3729,7 +3745,30 @@ func _grab_test(bone: String) -> void:
 	e.pressed = true
 	e.position = p
 	_input(e)
+	# Jitter: how much each part's frame-to-frame step changes (its second
+	# difference, mm), worst and mean, while she's held, tumbles and lies there.
+	var watch := {}
+	for n in ["Head", "Chest", "Hips", "LeftHand", "RightFoot", "Kemomimi_L", "Ear.L", "Tail_3", "Breast_L", "Breast_1.L", "Hair_Twintails_3_L", "Hair_Back_1_2"]:
+		if skel.find_bone(n) >= 0:
+			watch[n] = [skel.find_bone(n), [], 0.0, 0.0, 0]
+	# (sampled as drawn: just before each frame is drawn, physics and springs and all)
+	RenderingServer.frame_pre_draw.connect(func():
+		for n in watch:
+			var w: Array = watch[n]
+			w[1].append(skel.global_transform * skel.get_bone_global_pose(w[0]).origin)
+			if w[1].size() >= 3:
+				var jerk: float = ((w[1][-1] - w[1][-2]) - (w[1][-2] - w[1][-3])).length() * 1000.0
+				w[2] = maxf(w[2], jerk)
+				w[3] += jerk
+				w[4] += 1
+				w[1].pop_front())
 	for i in 160:
+		if i in [110, 140]:                    # held still from 110 to 140
+			print("JITTER held %d " % i + " ".join(watch.keys().map(func(n): return "%s %.1f/%.1f" % [n, watch[n][2], watch[n][3] / maxf(watch[n][4], 1)])))
+			for n in watch:
+				watch[n][2] = 0.0
+				watch[n][3] = 0.0
+				watch[n][4] = 0
 		var at := p + Vector2(0, -minf(i, 30) * 10.0)
 		if i >= 50 and i < 110:
 			at.x += sin((i - 50) * 0.2) * 160.0
@@ -3750,6 +3789,12 @@ func _grab_test(bone: String) -> void:
 	_input(e)
 	for i in 600:
 		await get_tree().process_frame
+		if i % 60 == 59:
+			print("JITTER %d " % i + " ".join(watch.keys().map(func(n): return "%s %.1f/%.1f" % [n, watch[n][2], watch[n][3] / maxf(watch[n][4], 1)])))
+			for n in watch:
+				watch[n][2] = 0.0
+				watch[n][3] = 0.0
+				watch[n][4] = 0
 		if i % 20 == 0:
 			print("TUMBLE %d state %s still %.2f landed %s hips %s" % [i, state, ragdoll.still_for, ragdoll.landed, ragdoll.at("Hips")])
 		if state not in RAGDOLL and state != "getup":

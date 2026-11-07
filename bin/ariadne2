@@ -5,12 +5,21 @@
 #   bin/ariadne2 --stop   close whatever is running
 cd "$(dirname "$0")/.." || exit 1
 
-# Her processes, by their own command lines from the start (a shell that only
-# mentions them, like one running this, mustn't match).
-CORE_RE='^[^ ]*python[0-9.]* -m ariadne2[.]core( |$)'
-DESK_RE='^python3 -m ariadne2[.]desk'
-PET_RE='^[^ ]*[Gg]odot[^ ]* --path pet'
-PET2D_RE='^python3 -m ariadne2[.]pet2d'
+# Her processes: ones whose program is Python or Godot and that run her module
+# (or pet/). A shell that only mentions them, like one running this, isn't one,
+# and neither a regex over the whole line can tell (her Python's path has a
+# space in it here), so each is checked by its own first argument.
+CORE_RE='-m ariadne2[.]core( |$)'
+DESK_RE='-m ariadne2[.]desk( |$)'
+PET_RE='--path pet( |$)'
+PET2D_RE='-m ariadne2[.]pet2d( |$)'
+hers() {
+  local p a
+  for p in $(pgrep -f -- "$1"); do
+    mapfile -d '' -t a < "/proc/$p/cmdline" 2>/dev/null || continue
+    case "${a[0]##*/}" in python*|[Gg]odot*) echo "$p" ;; esac
+  done
+}
 RUN=${XDG_RUNTIME_DIR:-/tmp}
 LAUNCHER=$RUN/ariadne2-launcher.pid     # this script's pid while it runs (or waits out a game)
 GAME_FLAG=$RUN/ariadne2-game            # a game in front: the pid to wait on (ariadne2/desk/game.py)
@@ -19,9 +28,9 @@ stop_running() {
   # A launcher waiting out a game has nothing else running: it goes too.
   old=$(cat "$LAUNCHER" 2>/dev/null)
   [ -n "$old" ] && [ "$old" != "$$" ] && kill -TERM "$old" 2>/dev/null
-  pkill -TERM -f "$DESK_RE"; pkill -TERM -f "$CORE_RE"; pkill -TERM -f "$PET_RE"; pkill -TERM -f "$PET2D_RE"
+  kill -TERM $(hers "$DESK_RE") $(hers "$CORE_RE") $(hers "$PET_RE") $(hers "$PET2D_RE") 2>/dev/null
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    pgrep -f "$DESK_RE" >/dev/null || pgrep -f "$CORE_RE" >/dev/null || return 0
+    [ -z "$(hers "$DESK_RE")$(hers "$CORE_RE")" ] && return 0
     sleep 0.3
   done
 }
@@ -29,7 +38,7 @@ if [ "$1" = "--stop" ]; then stop_running; rm -f "$GAME_FLAG"; echo "Ariadne 2 s
 
 # The desk allows one copy, and a second launch would just hand over to the
 # old one and quit, so launching again means replacing what's running.
-if pgrep -f "$DESK_RE" >/dev/null || pgrep -f "$CORE_RE" >/dev/null || \
+if [ -n "$(hers "$DESK_RE")$(hers "$CORE_RE")" ] || \
     { [ -n "$(cat "$LAUNCHER" 2>/dev/null)" ] && kill -0 "$(cat "$LAUNCHER")" 2>/dev/null; }; then
   echo "stopping the Ariadne 2 that's already running"
   stop_running
@@ -130,7 +139,7 @@ start_all() {
 
 stop_rest() {
   kill $desk $pet $pet2d 2>/dev/null
-  pkill -TERM -f "$PET_RE" 2>/dev/null; pkill -TERM -f "$PET2D_RE" 2>/dev/null
+  kill -TERM $(hers "$PET_RE") $(hers "$PET2D_RE") 2>/dev/null
   wait $desk $pet $pet2d 2>/dev/null
 }
 trap 'kill $core 2>/dev/null; stop_rest; wait $core 2>/dev/null; rm -f "$LAUNCHER"' EXIT

@@ -21,7 +21,8 @@ from .spotify_web import SCAN_CAP, SpotifyWeb, WebCalls, _row  # noqa: F401
 log = logging.getLogger("ariadne2.adapters.spotify")
 
 PERIOD = 5.0               # state is republished this often while playing
-EXTRAS_PERIOD = 30.0       # shuffle/repeat/queue/liked refresh while playing
+EXTRAS_PERIOD = 120.0      # shuffle/repeat/queue/liked refresh while playing (and on each new track);
+                           # Spotify's development-mode quota is small, and a 429 locks it out for an hour
 DEBOUNCE = 0.1             # a track change fires several signals at once
 SETTLE_SCALE = 1.0         # tests set 0: commands needn't wait for the player to report
 SEEK_SLACK = 1.5           # position further than this from expected = a seek

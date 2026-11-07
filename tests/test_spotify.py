@@ -742,7 +742,7 @@ class WebClientTests(unittest.TestCase):
         import io, urllib.error
         return urllib.error.HTTPError("u", code, "x", headers or {}, io.BytesIO(body))
 
-    def test_429_with_retry_after_stops_knocking_on_that_path(self):
+    def test_429_with_retry_after_stops_knocking_on_every_path(self):
         from ariadne2.adapters import spotify_web
         w = spotify_web.SpotifyWeb("/nonexistent/o.json")
         with mock.patch.object(w, "_token", return_value="t"), \
@@ -756,9 +756,9 @@ class WebClientTests(unittest.TestCase):
             self.assertIn("30 min", str(cm.exception))      # capped, not 2 hours
             with self.assertRaises(WebError):
                 w.request("GET", "/me/library/contains")
-            up.side_effect = None                      # a different path is unaffected
-            up.return_value.__enter__.return_value.read.return_value = b"{}"
-            self.assertEqual(w.request("GET", "/me/player"), {})
+            with self.assertRaises(WebError):          # Spotify limits the whole app
+                w.request("GET", "/me/player")
+            self.assertEqual(up.call_count, 1)
 
     def test_plain_text_success_is_not_a_crash(self):
         from ariadne2.adapters import spotify_web

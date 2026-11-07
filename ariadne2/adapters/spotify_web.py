@@ -40,7 +40,7 @@ class SpotifyWeb:
     def __init__(self, path: str | os.PathLike | None = None) -> None:
         self._path = Path(path) if path else None
         self._lock = threading.Lock()
-        self._cool: dict[str, float] = {}      # path -> when Spotify's 429 on it lifts
+        self._cool = 0.0                       # when Spotify's 429 lifts (it limits the whole app)
 
     @property
     def path(self) -> Path:
@@ -100,9 +100,9 @@ class SpotifyWeb:
 
     def request(self, method: str, path: str, body: dict | None = None,
                 params: dict | None = None) -> dict:
-        # Spotify can lock an endpoint for hours (Retry-After). Don't keep knocking:
-        # every refused call is held against the quota.
-        wait = self._cool.get(path, 0) - time.time()
+        # Spotify can lock the app out for hours (Retry-After). Don't keep knocking on
+        # any endpoint: every refused call is held against the quota and stretches it.
+        wait = self._cool - time.time()
         if wait > 0:
             raise WebError(f"Spotify is rate limiting that; try again in {_span(wait)}.", "rate")
         url = API + path + (("?" + urllib.parse.urlencode(params)) if params else "")
@@ -136,9 +136,10 @@ class SpotifyWeb:
                 except ValueError:
                     secs = 0.0
                 if secs > 0:
-                    self._cool[path] = time.time() + secs
+                    self._cool = time.time() + secs
                     raise WebError(f"Spotify is rate limiting that; try again in {_span(secs)}.",
                                    "rate") from e
+                self._cool = time.time() + 30
                 raise WebError("Spotify is rate limiting; wait a moment.", "rate") from e
             raise WebError(f"Spotify said {e.code}: {detail}", "http") from e
         except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
@@ -209,6 +210,14 @@ class WebCalls:
         and 403s the old /me/tracks/contains; try the new one, keep the old as fallback."""
         uri = f"spotify:track:{tid}"
         new = {"GET": "/me/library/contains"}.get(method, "/me/library")
+        old = "/me/tracks/contains" if method == "GET" else "/me/tracks"
+        if getattr(self, "_lib_old", False):      # the new one refused before: don't spend a call on it
+            try:
+                return await self._web(method, old, params={"ids": tid})
+            except AdapterError as e:
+                if getattr(e.__cause__, "kind", "") not in ("denied", "http"):
+                    raise
+                self._lib_old = False
         try:
             return await self._web(method, new, params={"uris": uri})
         except AdapterError as first:
@@ -216,9 +225,10 @@ class WebCalls:
             # would fail there too, and its message is the one worth showing.
             if getattr(first.__cause__, "kind", "") not in ("denied", "http"):
                 raise
-            old = "/me/tracks/contains" if method == "GET" else "/me/tracks"
             try:
-                return await self._web(method, old, params={"ids": tid})
+                got = await self._web(method, old, params={"ids": tid})
+                self._lib_old = True
+                return got
             except AdapterError:
                 raise first
 

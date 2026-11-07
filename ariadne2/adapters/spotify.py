@@ -522,7 +522,14 @@ class SpotifyAdapter(WebCalls, Adapter):
         tid = track_id(self._snap.get("metadata") or {})
         if not tid:
             raise AdapterError("nothing is playing that can be liked")
-        await self._library("DELETE" if remove else "PUT", tid)
+        try:
+            await self._library("DELETE" if remove else "PUT", tid)
+        except AdapterError as e:
+            if getattr(e.__cause__, "kind", "") in ("denied", "scope"):
+                raise AdapterError("Spotify refused to change his Liked Songs. If that keeps "
+                                   "happening, sign in to Spotify again from the settings so the "
+                                   "'user-library-modify' permission is granted.") from e.__cause__
+            raise
         self._extras = {**self._extras, "track_id": tid, "liked": not remove}
         await self.refresh()
         what = f"{self._state['title']} — {self._state['artist']}"
@@ -536,6 +543,12 @@ class SpotifyAdapter(WebCalls, Adapter):
             return await self.run(verb, {}, announce=False)
         if control == "jump":                       # his click on a row: value is the track uri
             return await self._jump(value)
+        if control == "like":
+            try:
+                return await super().press(control, value)
+            except AdapterError:
+                await self.publish_state()          # the heart flipped at once; put it back
+                raise
         return await super().press(control, value)
 
     def press_args(self, control: str, value) -> dict:

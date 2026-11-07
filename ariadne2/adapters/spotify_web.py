@@ -24,6 +24,7 @@ from .base import AdapterError
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 API = "https://api.spotify.com/v1"
 HTTP_TIMEOUT = 15
+COOL_CAP = 1800            # longest we sit out a Retry-After, seconds (it can say hours)
 SCAN_CAP = 1000            # most context tracks read while looking for the current one
 
 
@@ -39,6 +40,7 @@ class SpotifyWeb:
     def __init__(self, path: str | os.PathLike | None = None) -> None:
         self._path = Path(path) if path else None
         self._lock = threading.Lock()
+        self._cool: dict[str, float] = {}      # path -> when Spotify's 429 on it lifts
 
     @property
     def path(self) -> Path:
@@ -98,6 +100,11 @@ class SpotifyWeb:
 
     def request(self, method: str, path: str, body: dict | None = None,
                 params: dict | None = None) -> dict:
+        # Spotify can lock an endpoint for hours (Retry-After). Don't keep knocking:
+        # every refused call is held against the quota.
+        wait = self._cool.get(path, 0) - time.time()
+        if wait > 0:
+            raise WebError(f"Spotify is rate limiting that; try again in {_span(wait)}.", "rate")
         url = API + path + (("?" + urllib.parse.urlencode(params)) if params else "")
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method)
@@ -107,21 +114,39 @@ class SpotifyWeb:
         try:
             with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
                 raw = r.read().decode("utf-8", "replace")
-                return json.loads(raw) if raw.strip() else {}
+                try:
+                    return json.loads(raw) if raw.strip() else {}
+                except ValueError:
+                    return {}      # a player command that worked can answer in plain text
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")[:200]
             if e.code == 401:
                 raise WebError("Spotify rejected the saved login.", "auth") from e
             if e.code == 403:
+                if "scope" in detail.lower():
+                    raise WebError("Spotify says the saved login lacks a permission for that; "
+                                   "sign in to Spotify again from the settings.", "scope") from e
                 raise WebError(f"Spotify refused that ({detail or 'forbidden'}).", "denied") from e
             if e.code == 404 and "device" in detail.lower():
                 raise WebError("Spotify has no active device; open the Spotify app first.",
                                "http") from e
             if e.code == 429:
+                try:
+                    secs = min(float(e.headers.get("Retry-After") or 0), COOL_CAP)
+                except ValueError:
+                    secs = 0.0
+                if secs > 0:
+                    self._cool[path] = time.time() + secs
+                    raise WebError(f"Spotify is rate limiting that; try again in {_span(secs)}.",
+                                   "rate") from e
                 raise WebError("Spotify is rate limiting; wait a moment.", "rate") from e
             raise WebError(f"Spotify said {e.code}: {detail}", "http") from e
         except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
             raise WebError(f"couldn't reach Spotify ({e.__class__.__name__}).", "network") from e
+
+
+def _span(secs: float) -> str:
+    return f"{int(secs // 60) + 1} min" if secs >= 60 else f"{int(secs) + 1} s"
 
 
 def _row(t: dict) -> dict:
@@ -186,9 +211,16 @@ class WebCalls:
         new = {"GET": "/me/library/contains"}.get(method, "/me/library")
         try:
             return await self._web(method, new, params={"uris": uri})
-        except AdapterError:
+        except AdapterError as first:
+            # Only a refusal says "try the other endpoint"; a rate limit or a bad login
+            # would fail there too, and its message is the one worth showing.
+            if getattr(first.__cause__, "kind", "") not in ("denied", "http"):
+                raise
             old = "/me/tracks/contains" if method == "GET" else "/me/tracks"
-            return await self._web(method, old, params={"ids": tid})
+            try:
+                return await self._web(method, old, params={"ids": tid})
+            except AdapterError:
+                raise first
 
     async def _search(self, query: str, kind: str) -> dict:
         found = await self._web("GET", "/search", params={"q": query, "type": kind, "limit": 1})

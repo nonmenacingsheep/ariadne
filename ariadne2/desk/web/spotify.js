@@ -13,7 +13,7 @@ const Spotify = (() => {
     like: '<svg viewBox="0 0 16 16"><path d="M8 14S1 9.5 1 5.3A3.3 3.3 0 0 1 8 4a3.3 3.3 0 0 1 7 1.3C15 9.5 8 14 8 14z"/></svg>',
   };
   const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
-  let w = null, st = {}, timer = null, artUrl = "", volTimer = null, dragging = false, listKey = "", trackKey = "";
+  let w = null, st = {}, timer = null, artUrl = "", volTimer = null, dragging = false, scrubbing = false, scrubS = 0, listKey = "", trackKey = "";
 
   function build(widget, send) {
     w = widget; listKey = ""; trackKey = ""; artUrl = "";
@@ -33,12 +33,26 @@ const Spotify = (() => {
       const c = b.dataset.c;
       if (c === "play") { st.status = st.status === "playing" ? "paused" : "playing"; render(); }   // flip now; the core confirms
       if (c === "shuffle") { st.shuffle = !st.shuffle; render(); }
+      if (c === "like") { st.liked = st.liked !== true; render(); }   // the core sets it back if Spotify refuses
       send({ t: "press", widget: "spotify", control: c });
     });
-    q(".sp-track").addEventListener("click", e => {
-      const r = e.currentTarget.getBoundingClientRect(), s = (e.clientX - r.left) / r.width * (st.length_s || 0);
-      st.position_s = s; st.updated = Date.now() / 1000; tick();
-      send({ t: "press", widget: "spotify", control: "scrub", value: Math.round(s) });
+    // The bar: click to seek, drag to scrub. It follows the pointer at once and
+    // the seek goes out once, on release, so a drag isn't a hundred seeks.
+    const track = q(".sp-track");
+    const posAt = x => { const r = track.getBoundingClientRect(); return Math.max(0, Math.min(1, (x - r.left) / r.width)) * (st.length_s || 0); };
+    track.addEventListener("pointerdown", e => {
+      if (e.button !== 0 || !st.length_s) return;      // left button only; nothing to seek in until the length is known
+      e.preventDefault(); e.stopPropagation(); track.setPointerCapture(e.pointerId);
+      scrubbing = true; scrubS = posAt(e.clientX); tick();
+      const move = ev => { scrubS = posAt(ev.clientX); tick(); };
+      const up = ev => {
+        track.removeEventListener("pointermove", move); track.removeEventListener("pointerup", up); track.removeEventListener("pointercancel", up);
+        scrubbing = false;
+        if (ev.type !== "pointerup") { tick(); return; }
+        st.position_s = scrubS; st.updated = Date.now() / 1000; tick();
+        send({ t: "press", widget: "spotify", control: "scrub", value: Math.round(scrubS) });
+      };
+      track.addEventListener("pointermove", move); track.addEventListener("pointerup", up); track.addEventListener("pointercancel", up);
     });
     // Volume: drag or click the track, or scroll anywhere on the control.
     // Changes show at once; the press goes out once you pause, not per notch.
@@ -143,6 +157,7 @@ const Spotify = (() => {
     const len = st.length_s || 0;
     let pos = st.position_s || 0;
     if (st.status === "playing" && st.updated) pos += Date.now() / 1000 - st.updated;
+    if (scrubbing) pos = scrubS;                       // his finger, not the player, owns the bar for now
     pos = Math.min(pos, len || pos);
     const f = len ? Math.max(0, Math.min(1, pos / len)) : 0, bar = w.bd.querySelector(".sp-track");
     bar.style.setProperty("--f", (f * 100).toFixed(2) + "%");

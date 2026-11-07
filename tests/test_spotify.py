@@ -292,6 +292,28 @@ class WebVerbTests(AdapterCase):
         await a.run("like")
         self.assertIn(("PUT", "/me/tracks", None, {"ids": "TRACK1"}), web.calls)
 
+    async def test_like_rate_limit_is_not_hidden_by_the_fallback(self):
+        r = self.routes()
+        r[("PUT", "/me/library")] = WebError("Spotify is rate limiting that; try again in 5 min.", "rate")
+        web = FakeWeb(routes=r)
+        a = self.adapter = self.make(web=web)
+        await a.start()
+        with self.assertRaises(AdapterError) as cm:
+            await a.run("like")
+        self.assertIn("rate limiting", str(cm.exception))
+        self.assertNotIn(("PUT", "/me/tracks", None, {"ids": "TRACK1"}), web.calls)
+
+    async def test_like_refused_both_ways_says_to_sign_in_again(self):
+        r = self.routes()
+        r[("PUT", "/me/library")] = WebError("Spotify refused that.", "denied")
+        r[("PUT", "/me/tracks")] = WebError("Spotify refused that.", "denied")
+        a = self.adapter = self.make(web=FakeWeb(routes=r))
+        await a.start()
+        with self.assertRaises(AdapterError) as cm:
+            await a.run("like")
+        self.assertIn("sign in to Spotify again", str(cm.exception))
+        self.assertIn("user-library-modify", str(cm.exception))
+
     async def test_no_match_and_no_device_are_plain_errors(self):
         r = self.routes()
         r[("GET", "/search")] = {"tracks": {"items": []}}
@@ -355,6 +377,15 @@ class PressTests(AdapterCase):
         self.assertEqual(a.press_args("like", None), {"remove": False})
         with self.assertRaises(AdapterError):
             a.press_args("volume", None)
+
+    async def test_failed_like_press_puts_the_heart_back(self):
+        r = {("PUT", "/me/library"): WebError("no", "rate")}
+        a = self.adapter = self.make(web=FakeWeb(routes=r))
+        await a.start()
+        before = len(self.states())
+        with self.assertRaises(AdapterError):
+            await a.press("like")
+        self.assertGreater(len(self.states()), before)       # the page hears the real state again
 
     async def test_verbs_light_the_right_controls(self):
         a = self.adapter = self.make()
@@ -706,6 +737,47 @@ class WebClientTests(unittest.TestCase):
             self.assertEqual((saved["access_token"], saved["refresh_token"]), ("new", "r2"))
             self.assertEqual(oct(os.stat(path).st_mode & 0o777), "0o600")
             self.assertGreater(saved["expires_at"], time.time())
+
+    def _http(self, code, body=b"", headers=None):
+        import io, urllib.error
+        return urllib.error.HTTPError("u", code, "x", headers or {}, io.BytesIO(body))
+
+    def test_429_with_retry_after_stops_knocking_on_that_path(self):
+        from ariadne2.adapters import spotify_web
+        w = spotify_web.SpotifyWeb("/nonexistent/o.json")
+        with mock.patch.object(w, "_token", return_value="t"), \
+                mock.patch("urllib.request.urlopen",
+                           side_effect=self._http(429, b"{}", {"Retry-After": "8157"})) as up:
+            for _ in range(3):
+                with self.assertRaises(WebError) as cm:
+                    w.request("GET", "/me/library/contains")
+                self.assertEqual(cm.exception.kind, "rate")
+            self.assertEqual(up.call_count, 1)          # the other two never left the machine
+            self.assertIn("30 min", str(cm.exception))      # capped, not 2 hours
+            with self.assertRaises(WebError):
+                w.request("GET", "/me/library/contains")
+            up.side_effect = None                      # a different path is unaffected
+            up.return_value.__enter__.return_value.read.return_value = b"{}"
+            self.assertEqual(w.request("GET", "/me/player"), {})
+
+    def test_plain_text_success_is_not_a_crash(self):
+        from ariadne2.adapters import spotify_web
+        w = spotify_web.SpotifyWeb("/nonexistent/o.json")
+        with mock.patch.object(w, "_token", return_value="t"), \
+                mock.patch("urllib.request.urlopen") as up:
+            up.return_value.__enter__.return_value.read.return_value = b"OK, done"
+            self.assertEqual(w.request("POST", "/me/player/next"), {})
+
+    def test_403_about_scope_says_sign_in_again(self):
+        from ariadne2.adapters import spotify_web
+        w = spotify_web.SpotifyWeb("/nonexistent/o.json")
+        with mock.patch.object(w, "_token", return_value="t"), \
+                mock.patch("urllib.request.urlopen",
+                           side_effect=self._http(403, b'{"error":{"message":"Insufficient client scope"}}')):
+            with self.assertRaises(WebError) as cm:
+                w.request("PUT", "/me/library")
+        self.assertEqual(cm.exception.kind, "scope")
+        self.assertIn("sign in", str(cm.exception))
 
 
 if __name__ == "__main__":

@@ -339,7 +339,7 @@ class RecordTests(unittest.TestCase):
                                'Kinguin | The Forever Winter"')
         self.assertNotIn("$ ", gist)
         # a long output is cut, and the whole record keeps to its cap
-        long = outcome({"content": text.replace("Eneba", "E" * 400)})
+        long = outcome({"content": text.replace("Eneba", "E" * (loop.GIST + 300))})
         self.assertLess(len(long), loop.GIST + 50)
         self.assertTrue(long.endswith('…"'))
 

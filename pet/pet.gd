@@ -411,6 +411,8 @@ func _load_body(path: String) -> void:
 			bones[b] = i
 	_load_clips()
 	_measure_legs()
+	if squish:
+		squish.size = leg_length / JANE_LEG if leg_length > 0.1 else 1.0
 	carry_pose = {}
 	_sample_carry_pose()
 	clip = ""
@@ -419,11 +421,14 @@ func _load_body(path: String) -> void:
 	# flat fill light so its shade side isn't black.
 	var glb := path.ends_with(".glb")
 	if glb:
-		_toonify(body)
+		_toonify(body, float(outfits.get("tone", {}).get("albedo", 1.0)))
 	_add_jiggle()
 	_add_ragdoll()
+	var tone: Dictionary = outfits.get("tone", {})
 	if fill:
-		fill.environment.ambient_light_energy = TOON_FILL if glb else 0.0
+		fill.environment.ambient_light_energy = TOON_FILL * float(tone.get("fill", 1.0)) if glb else 0.0
+	if sun:
+		sun.light_energy = SUN * float(tone.get("light", 1.0))
 	weapon = null                              # went with the old body
 	_dress()
 
@@ -816,8 +821,13 @@ func _ear_frame(happy: float) -> void:
 # Anime look for GLB bodies: two-tone lighting, a soft rim, no gloss, both
 # sides of thin cloth drawn, and a thin dark outline (an inverted-hull pass).
 const TOON_FILL := 0.35
+const SUN := 1.1
+var sun: DirectionalLight3D
+# A body's "tone" (models/<name>.json): albedo times its colours, light and fill
+# times the sun and the fill. Shiromoji's near-white skin and hair, lit for
+# Jane's tan, washed out to pure white with no shade.
 const OUTLINE_M := 0.0016                   # outline thickness, metres
-func _toonify(root: Node) -> void:
+func _toonify(root: Node, albedo := 1.0) -> void:
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if not mi.mesh:
@@ -828,6 +838,8 @@ func _toonify(root: Node) -> void:
 				continue
 			var m := src.duplicate() as StandardMaterial3D
 			m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+			if albedo != 1.0:
+				m.albedo_color = Color(m.albedo_color.r * albedo, m.albedo_color.g * albedo, m.albedo_color.b * albedo, m.albedo_color.a)
 			m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 			m.metallic = 0.0
 			m.roughness = 1.0
@@ -913,17 +925,18 @@ func _camera() -> void:
 	add_child(cam)
 	_frame_camera()
 	_make_shadow()
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-30, 20, 0)
-	light.light_energy = 1.1
-	add_child(light)
+	sun = DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-30, 20, 0)
+	sun.light_energy = SUN * float(outfits.get("tone", {}).get("light", 1.0))
+	add_child(sun)
 	# Ambient fill, on only for bodies without their own toon shader (_load_body).
 	fill = WorldEnvironment.new()
 	fill.environment = Environment.new()
 	fill.environment.background_mode = Environment.BG_CLEAR_COLOR
 	fill.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	fill.environment.ambient_light_color = Color(1.0, 0.96, 0.98)
-	fill.environment.ambient_light_energy = TOON_FILL if body_path.ends_with(".glb") else 0.0
+	fill.environment.ambient_light_energy = TOON_FILL * float(outfits.get("tone", {}).get("fill", 1.0)) \
+			if body_path.ends_with(".glb") else 0.0
 	add_child(fill)
 
 
@@ -1930,6 +1943,7 @@ func ground_ahead(ahead: float) -> Vector3:
 # velocity is in its hip-heights, so her legs over SOMA's give her pace.
 # (Scaling by hip height left Jane 13% fast: her feet slid forward.)
 const SOMA_LEG := 0.855
+const JANE_LEG := 0.805                    # Jane's legs (the body most of her tuning was done on)
 var leg_length := 0.0
 func _gait_speed() -> float:
 	# Easing in over the first 0.35 s, while the walk blends in from standing

@@ -1,5 +1,5 @@
 {
-	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing).",
+	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing). tone: albedo times her colours, light and fill times the sun and fill (her near-white skin washed out).",
 	"default": "Sweater",
 	"outfits": {
 		"Sweater": {
@@ -7,10 +7,13 @@
 				"Sweater",
 				"Sweater_Jewerly",
 				"Sweater_Vine",
-				"WidePants",
-				"Underwear"
+				"WidePants"
 			],
-			"firm": true
+			"firm": false,
+			"shapes": {
+				"Body_2/Sweater": 1.0,
+				"Sweater/Sweater.001": 1.0
+			}
 		},
 		"Swimsuit": {
 			"show": [
@@ -18,7 +21,28 @@
 				"Swimsuit_Jewerly",
 				"Swimsuit_Vine"
 			],
+			"firm": false,
+			"shapes": {
+				"Body_2/Bikini_1": 1.0
+			}
+		},
+		"Underwear": {
+			"show": [
+				"Underwear"
+			],
+			"shapes": {
+				"Body_2/Bikini_1": 1.0
+			},
 			"firm": false
 		}
+	},
+	"tone": {
+		"albedo": 0.82,
+		"light": 0.9,
+		"fill": 0.85
+	},
+	"shapes": {
+		"Body_2/Sweater": 0.0,
+		"Body_2/Bikini_1": 0.0
 	}
 }

@@ -20,6 +20,7 @@ var sides: Array = []          # [Breast_1, Breast_2, turn [angle, rate], squash
                                #  bounce [offset, rate (her chest's frame), last place, speed, acceleration (world, smoothed), gravity turn (world), flat]
 var arms: Array = []           # [bone, its child (-1: the hand, out past its joint), radius]
 var firm := false              # jacket on: it holds them in (no filling out)
+var size := 1.0                # her build against Jane's (leg length): the zone and arms scale with it
 var most_in := 0.0             # a test run's deepest press this frame, metres
 var most_bounce := 0.0         # and the furthest either breast has bounced, metres
 
@@ -52,7 +53,9 @@ func setup(sk: Skeleton3D) -> void:
 		if b1 >= 0 and b2 >= 0:
 			sides.append([b1, b2, [Vector3.ZERO, Vector3.ZERO], [0.0, 0.0], Vector3.UP,
 					[Vector3.ZERO, Vector3.ZERO, Vector3.INF, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, 0.0]])
-	for a in [["UpperArm", "LowerArm", 0.05], ["LowerArm", "Hand", 0.045], ["Hand", "", 0.045]]:
+	# Forearms and hands: crossing her arms, hugging herself. (Not the upper arms:
+	# hanging at her sides they sat in the zone the whole time on a slight build.)
+	for a in [["LowerArm", "Hand", 0.045], ["Hand", "", 0.045]]:
 		for side in ["Left", "Right"]:
 			var b := sk.find_bone(side + a[0])
 			if b >= 0:
@@ -91,12 +94,12 @@ func _process_modification_with_delta(delta: float) -> void:
 		for p in [j2, (j2 + tip) * 0.5, tip]:
 			for g in segs:
 				var q := Geometry3D.get_closest_point_to_segment(p, g[0], g[1])
-				var into: float = ZONE + float(g[2]) - p.distance_to(q)
+				var into: float = (ZONE + float(g[2])) * size - p.distance_to(q)
 				if into > depth:
 					depth = into
 					push = (p - q).normalized() * into
 		most_in = maxf(most_in, depth)
-		push = push.limit_length(MOST * (0.5 if firm else 1.0))     # the jacket holds them close
+		push = push.limit_length(MOST * size * (0.5 if firm else 1.0))     # the jacket holds them close
 		if push.length() > 1e-5:
 			s[4] = push.normalized()
 		var lever := tip - j1
@@ -105,7 +108,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		turn[1] = (turn[1] as Vector3) + (TURN_W * TURN_W * (goal - (turn[0] as Vector3)) - 2.0 * TURN_Z * TURN_W * (turn[1] as Vector3)) * delta
 		turn[0] = (turn[0] as Vector3) + (turn[1] as Vector3) * delta
 		var sq: Array = s[3]
-		var flat := maxf(clampf(depth / ZONE, 0.0, 1.0) * FLAT, float(s[5][6]))
+		var flat := maxf(clampf(depth / (ZONE * size), 0.0, 1.0) * FLAT, float(s[5][6]))
 		if depth <= 0.0 and float(s[5][6]) > 0.002:
 			s[4] = (xf.basis * sk.get_bone_global_pose(s[0]).basis.z).normalized()   # (lying back: flattened toward her chest)
 		sq[1] = float(sq[1]) + (TURN_W * TURN_W * (flat - float(sq[0])) - 2.0 * TURN_Z * TURN_W * float(sq[1])) * delta

@@ -65,6 +65,10 @@ class WantedTests(unittest.TestCase):
             self.assertIsNone(pet2d.wanted_model({}))                                   # default: the 3D body
             self.assertEqual(pet2d.wanted_model({"avatar": {"model": "jian"}}), "jian")
             self.assertIsNone(pet2d.wanted_model({"avatar": {"model": "jian"}, "desktop": {"body": False}}))
+            # (a 3D one chosen: the window closes, exit 44, and bin/ariadne2 waits; not for a Live2D one it can't show yet)
+            self.assertTrue(pet2d.three_d_chosen({}))
+            self.assertTrue(pet2d.three_d_chosen({"avatar": {"model": "3d:shiromoji"}}))
+            self.assertFalse(pet2d.three_d_chosen({"avatar": {"model": "jian"}, "desktop": {"body": False}}))
             self.assertIsNone(pet2d.wanted_model({"avatar": {"model": "gone"}}))       # deleted folder
 
 

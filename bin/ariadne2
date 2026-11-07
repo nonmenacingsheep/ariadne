@@ -4,6 +4,10 @@
 #   bin/ariadne2 --demo   fake actions every few seconds, to test the wires
 #   bin/ariadne2 --stop   close whatever is running
 cd "$(dirname "$0")/.." || exit 1
+# All of it in one block, read in full before any of it runs: bash reads a
+# script as it goes, so editing this file while it runs (it waits out games
+# for hours) would otherwise feed the running copy pieces of the new one.
+{
 
 # Her processes: ones whose program is Python or Godot and that run her module
 # (or pet/). A shell that only mentions them, like one running this, isn't one,
@@ -101,6 +105,15 @@ if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -n "$GODOT" ] &
 fi
 rm -f "$GAME_FLAG"
 core= desk= pet= pet2d=
+# Which body he's chosen (Avatar > Model): 3d ("aries", "3d:<name>") or live2d
+# (a model folder's name). Read straight from the settings file, every 2 s
+# while a body waits: no Python started for it.
+SETTINGS_FILE=${ARIADNE2_SETTINGS:-${XDG_CONFIG_HOME:-$HOME/.config}/ariadne2/settings.json}
+body_kind() {
+  local m
+  m=$(sed -n 's/^ *"model": *"\([^"]*\)".*/\1/p' "$SETTINGS_FILE" 2>/dev/null | head -n 1)
+  case "${m:-aries}" in aries|3d:*) echo 3d ;; *) echo live2d ;; esac
+}
 
 start_all() {
   # Her core runs ~70 threads, and glibc gives each its own malloc arena: 80 of
@@ -114,12 +127,16 @@ start_all() {
   # reach it, so their loading overlaps the core's.
   # Staying on through a game ("Turn off during games" off), her body closes
   # itself while it's in front (exit 42) and comes back when the desk takes
-  # the flag down.
+  # the flag down. Only the body she wears runs: the 3D one while a 3D model
+  # is chosen, the Live2D window while a Live2D one is; each closes itself
+  # (exit 44) when he picks the other kind, and waits here till it's back.
   if [ -n "$PET3D" ]; then
     ( while :; do
+        until [ "$(body_kind)" = 3d ]; do sleep 2; done
         $GATE "$GODOT" --path pet --display-driver x11
-        [ $? -eq 42 ] || break
-        while [ -e "$GAME_FLAG" ]; do sleep 1; done
+        code=$?
+        if [ $code -eq 42 ]; then while [ -e "$GAME_FLAG" ]; do sleep 1; done
+        elif [ $code -ne 44 ]; then break; fi
       done ) >/dev/null 2>&1 &
     pet=$!
   fi
@@ -127,7 +144,11 @@ start_all() {
   # a Live2D model (and waits for Cubism Core if it isn't downloaded yet).
   # Through XWayland like the desk, for the click-through region.
   if [ -z "$ARIADNE2_NO_PET" ]; then
-    GDK_BACKEND=x11 python3 -m ariadne2.pet2d 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" >&2) &
+    ( while :; do
+        until [ "$(body_kind)" = live2d ]; do sleep 2; done
+        GDK_BACKEND=x11 python3 -m ariadne2.pet2d
+        [ $? -eq 44 ] || break
+      done ) 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" >&2) &
     pet2d=$!
   fi
   # Through XWayland: as a native Wayland window the desk sometimes kept the
@@ -169,3 +190,5 @@ while :; do
   fi
   break
 done
+exit
+}

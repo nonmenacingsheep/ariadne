@@ -87,6 +87,16 @@ def biggest_monitor() -> tuple[int, int]:
 CORE = WEB / "vendor" / "live2dcubismcore.min.js"
 
 
+NOT_MINE = 44           # exit code: a 3D body is chosen; bin/ariadne2 starts this again for a Live2D one
+_exit = {"code": 0}
+
+
+def three_d_chosen(settings: dict) -> bool:
+    av = settings.get("avatar") if isinstance(settings.get("avatar"), dict) else {}
+    name = str(av.get("model") or "aries")
+    return name == "aries" or name.startswith("3d:")
+
+
 def wanted_model(settings: dict) -> str | None:
     """The Live2D model to show, or None while the 3D body (or no body) is chosen."""
     av = settings.get("avatar") if isinstance(settings.get("avatar"), dict) else {}
@@ -264,6 +274,13 @@ class PetWindow(Gtk.Window):
         if want == self.model:
             return
         self.model = want
+        if want is None and three_d_chosen(self.settings):
+            # Her 3D body is the one: this window (and its ~300 MB) goes till a
+            # Live2D one is picked again (bin/ariadne2 waits for that).
+            log.info("body: a 3D one is chosen; closing")
+            _exit["code"] = NOT_MINE
+            self.get_application().quit()
+            return
         log.info("body: %s", want or "hidden (3D or none chosen)")
         if want:
             try:
@@ -408,7 +425,8 @@ def main() -> int:
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, app.quit)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, app.quit)
     try:
-        return app.run([])
+        code = app.run([])
+        return _exit["code"] or code
     finally:
         try:
             from ..desk import kwin

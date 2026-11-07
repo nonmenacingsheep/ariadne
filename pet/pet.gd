@@ -2229,6 +2229,7 @@ func _bed_sleep() -> void:
 # --- every frame ------------------------------------------------------------
 # His settings (~/.config/ariadne2/settings.json): the avatar section and
 # whether her body is shown. Re-read when the file changes.
+const NOT_MINE := 44                       # exit code: a Live2D body is chosen (bin/ariadne2)
 func _read_settings() -> void:
 	var path := OS.get_environment("HOME") + "/.config/ariadne2/settings.json"
 	var m := FileAccess.get_modified_time(path)
@@ -2275,6 +2276,11 @@ func _read_settings() -> void:
 		screen = Vector2.ZERO                 # forces the camera to re-fit
 	# Hidden while she wears another body (a Live2D model: ariadne2/pet2d).
 	var want_path := _model_path(str(av.get("model", "aries")))
+	if want_path == "" and snapshot_path == "" and OS.get_environment("PET_MODEL") == "":
+		# A Live2D body is the one (ariadne2/pet2d): this one closes, card and
+		# all, till a 3D one is picked again (bin/ariadne2 waits for that).
+		get_tree().quit(NOT_MINE)
+		return
 	if OS.get_environment("PET_MODEL") == "" and want_path != "" and want_path != body_path \
 			and ResourceLoader.exists(want_path):
 		_load_body(want_path)

@@ -1209,6 +1209,7 @@ func _react(clip_name: String) -> void:
 
 
 # --- animation --------------------------------------------------------------
+var clip_from := {}                        # clip -> the file it came from (the gallery shows it)
 func _load_clips() -> void:
 	ap = AnimationPlayer.new()
 	body.add_child(ap)
@@ -1229,6 +1230,7 @@ func _load_clips() -> void:
 			if player:
 				for name in player.get_animation_list():
 					if not clip_lib.has_animation(name):
+						clip_from[name] = String(path).get_file()
 						var anim := player.get_animation(name)
 						if String(path).begins_with(KIMODO_DIR) or String(path) == OS.get_environment("PET_PREVIEW_GLB"):
 							if String(name).begins_with("stop_"):
@@ -3335,6 +3337,10 @@ func _snapshot_seq(what: String) -> void:
 	if what.begins_with("poke:") or what.begins_with("pin:"):   # a mode's click on a bone (_mode_test)
 		_set_state("idle", 99.0)
 		_mode_test(what.get_slice(":", 0), what.get_slice(":", 1))
+	if what == "gallery":                        # every clip on her, frames for pet/import/gallery.py
+		await _gallery(OS.get_environment("PET_GALLERY_DIR"))
+		get_tree().quit()
+		return
 	if what.begins_with("walk:"):                # a walk style (walk_hands_ ...), across the room and back
 		depth = -0.8
 		_set_state("idle", 0.5)
@@ -3479,6 +3485,57 @@ func _chest_test(pick: String) -> void:
 			print("SQUISH %d arm in %.3f m bounce %.3f m" % [i, squish.most_in, squish.most_bounce])
 			squish.most_bounce = 0.0
 	get_tree().quit()
+
+
+# Every clip she has, played once from its start on her (in place, her springs
+# and face living as usual), filmed by a small camera of its own at 15 fps
+# into <dir>/<clip>/NNN.png, with <dir>/clips.json (name, seconds, frames,
+# source file). Her own window draws nothing meanwhile, so she doesn't dance
+# about his desktop for half an hour. pet/import/gallery.py makes the page.
+func _gallery(dir: String) -> void:
+	brain_quiet = true
+	_set_state("react", 1e9)
+	get_viewport().disable_3d = true
+	DisplayServer.window_set_mouse_passthrough(PackedVector2Array([Vector2.ZERO, Vector2(1, 0), Vector2(1, 1)]))
+	var sv := SubViewport.new()
+	sv.size = Vector2i(300, 400)
+	sv.transparent_bg = true
+	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(sv)
+	var c := Camera3D.new()
+	c.fov = 42.0
+	sv.add_child(c)
+	c.current = true
+	var at := Vector3(pos.x, 0.0, depth)
+	c.global_position = at + Vector3(0.0, 0.95, 2.9)
+	c.look_at(at + Vector3(0.0, 0.82, 0.0))
+	DirAccess.make_dir_recursive_absolute(dir)
+	var only := OS.get_environment("PET_GALLERY_ONLY")       # a few, by prefix: "walk_,crouch_"
+	var names := Array(ap.get_animation_list()).filter(func(n): return not String(n).contains("@") and n != "RESET" \
+			and (only == "" or Array(only.split(",")).any(func(p): return String(n).begins_with(p))))
+	names.sort()
+	var made := []
+	for n in names:
+		var a := ap.get_animation(n)
+		var secs := clampf(a.length * (ceilf(2.5 / maxf(a.length, 0.1)) if a.loop_mode != Animation.LOOP_NONE else 1.0), 0.5, 8.0)
+		ap.play(n, 0.0)
+		ap.seek(0.0, true)
+		clip = n
+		variant = n
+		variant_until = 1e9
+		var sub := dir.path_join(String(n).validate_filename())
+		DirAccess.make_dir_recursive_absolute(sub)
+		var count := int(ceil(secs * 15.0))
+		for k in count:
+			await get_tree().create_timer(1.0 / 15.0).timeout
+			await RenderingServer.frame_post_draw
+			sv.get_texture().get_image().save_png(sub.path_join("%03d.png" % k))
+		made.append({"name": n, "seconds": snappedf(a.length, 0.01), "frames": count,
+				"loops": a.loop_mode != Animation.LOOP_NONE, "from": clip_from.get(n, "")})
+		print("GALLERY %d/%d %s" % [made.size(), names.size(), n])
+	var f := FileAccess.open(dir.path_join("clips.json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(made))
+	f.close()
 
 
 # A test run's close look at her face: each of her body-driven faces and a few

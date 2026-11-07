@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Her Clips</title>
+<style>
+  :root { --bg: #16151b; --card: #211f28; --line: #34313f; --text: #e9e6ee; --dim: #9a95a8;
+          --good: #3fb37f; --remake: #e0a53a; --remove: #e0525f; --accent: #c43b52; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: rgba(22,21,27,.96); border-bottom: 1px solid var(--line);
+           padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  h1 { font-size: 17px; margin: 0 12px 0 0; }
+  input[type=search] { background: var(--card); border: 1px solid var(--line); color: var(--text);
+                       border-radius: 8px; padding: 6px 10px; min-width: 200px; }
+  select, button { background: var(--card); border: 1px solid var(--line); color: var(--text);
+                   border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; }
+  button:hover, select:hover { border-color: var(--dim); }
+  .counts { color: var(--dim); margin-left: auto; }
+  .counts b.good { color: var(--good); } .counts b.remake { color: var(--remake); } .counts b.remove { color: var(--remove); }
+  main { padding: 16px; }
+  h2 { font-size: 15px; color: var(--dim); margin: 22px 0 10px; text-transform: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 2px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .card.good { border-color: var(--good); } .card.remake { border-color: var(--remake); } .card.remove { border-color: var(--remove); opacity: .75; }
+  .card img { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: #0f0e13; display: block; }
+  .meta { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .name { font-weight: 600; word-break: break-all; }
+  .sub { color: var(--dim); font-size: 12px; }
+  .prompt { font-size: 12px; color: #c9c4d6; }
+  .tags span { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: #2c2936; margin: 0 4px 2px 0; color: var(--dim); }
+  .tags span.unused { color: #e08a95; }
+  .verdict { display: flex; gap: 6px; padding: 0 10px 6px; }
+  .verdict button { flex: 1; padding: 5px 0; font-size: 12px; }
+  .verdict button.on.good { background: var(--good); border-color: var(--good); color: #0c1f16; }
+  .verdict button.on.remake { background: var(--remake); border-color: var(--remake); color: #241a05; }
+  .verdict button.on.remove { background: var(--remove); border-color: var(--remove); color: #2a0a0e; }
+  textarea { margin: 0 10px 10px; background: #18171e; border: 1px solid var(--line); color: var(--text);
+             border-radius: 8px; padding: 6px 8px; font: 12px/1.35 system-ui, sans-serif; resize: vertical; min-height: 30px; }
+  .hidden { display: none !important; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr 1fr; } header { padding: 8px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Her clips</h1>
+  <input type="search" id="q" placeholder="Search name, prompt, family…">
+  <select id="show">
+    <option value="all">All</option><option value="unrated">Unrated</option>
+    <option value="good">Good</option><option value="remake">Remake</option><option value="remove">Remove</option>
+    <option value="unused">Not used by anything</option>
+  </select>
+  <select id="from"><option value="">All sources</option></select>
+  <button id="export" title="Save your verdicts as a file">Export</button>
+  <button id="import" title="Load verdicts from a file">Import</button>
+  <input type="file" id="file" accept="application/json" class="hidden">
+  <span class="counts" id="counts"></span>
+</header>
+<main id="main"></main>
+<script src="data.js"></script>
+<script>
+const KEY = "aries_clip_verdicts_v1";
+let verdicts = {};
+try { verdicts = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { verdicts = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(verdicts)); } catch (e) {} counts(); };
+window.getVerdicts = () => verdicts;          // (read back by Claude)
+
+const main = document.getElementById("main");
+const families = {};
+for (const c of CLIPS) (families[c.family] ??= []).push(c);
+const froms = [...new Set(CLIPS.map(c => c.from))].sort();
+for (const f of froms) { const o = document.createElement("option"); o.value = f; o.textContent = f; document.getElementById("from").append(o); }
+
+const cards = [];
+for (const fam of Object.keys(families).sort()) {
+  const h = document.createElement("h2"); h.textContent = `${fam} (${families[fam].length})`; main.append(h);
+  const grid = document.createElement("div"); grid.className = "grid"; main.append(grid);
+  for (const c of families[fam]) {
+    const v = verdicts[c.name] || {};
+    const el = document.createElement("div");
+    el.className = "card " + (v.verdict || "");
+    el.innerHTML = `
+      <img loading="lazy" alt="">
+      <div class="meta">
+        <div class="name"></div>
+        <div class="sub"></div>
+        <div class="prompt"></div>
+        <div class="tags"></div>
+      </div>
+      <div class="verdict">
+        <button class="good">Good</button><button class="remake">Remake</button><button class="remove">Remove</button>
+      </div>
+      <textarea placeholder="Note (what's wrong, what it should be)"></textarea>`;
+    el.querySelector("img").src = c.webp;
+    el.querySelector(".name").textContent = c.name;
+    el.querySelector(".sub").textContent = `${c.seconds}s${c.loops ? " · loop" : ""} · ${c.from}`;
+    el.querySelector(".prompt").textContent = c.prompt || "";
+    const tags = el.querySelector(".tags");
+    if (c.used.length) for (const u of c.used) { const s = document.createElement("span"); s.textContent = u; tags.append(s); }
+    else { const s = document.createElement("span"); s.className = "unused"; s.textContent = "not used"; tags.append(s); }
+    const ta = el.querySelector("textarea");
+    ta.value = v.note || "";
+    ta.addEventListener("input", () => { (verdicts[c.name] ??= {}).note = ta.value; save(); });
+    for (const b of el.querySelectorAll(".verdict button")) {
+      const kind = b.className;
+      if (v.verdict === kind) b.classList.add("on");
+      b.addEventListener("click", () => {
+        const cur = (verdicts[c.name] ??= {});
+        cur.verdict = cur.verdict === kind ? undefined : kind;
+        el.className = "card " + (cur.verdict || "");
+        for (const o of el.querySelectorAll(".verdict button")) o.classList.toggle("on", o.className.split(" ")[0] === cur.verdict);
+        save(); filter();
+      });
+    }
+    grid.append(el);
+    cards.push({ c, el, grid, h });
+  }
+}
+
+function filter() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const show = document.getElementById("show").value;
+  const from = document.getElementById("from").value;
+  const seen = new Map();
+  for (const { c, el, grid, h } of cards) {
+    const v = (verdicts[c.name] || {}).verdict;
+    let ok = (!q || (c.name + " " + c.prompt + " " + c.family).toLowerCase().includes(q)) && (!from || c.from === from);
+    if (show === "unrated") ok = ok && !v;
+    else if (show === "unused") ok = ok && !c.used.length;
+    else if (show !== "all") ok = ok && v === show;
+    el.classList.toggle("hidden", !ok);
+    seen.set(grid, (seen.get(grid) || 0) + (ok ? 1 : 0));
+    seen.set(h, seen.get(grid));
+  }
+  for (const [node, n] of seen) node.classList.toggle("hidden", !n);
+}
+function counts() {
+  const n = { good: 0, remake: 0, remove: 0 };
+  for (const k in verdicts) if (n[verdicts[k].verdict] !== undefined) n[verdicts[k].verdict]++;
+  const rated = n.good + n.remake + n.remove;
+  document.getElementById("counts").innerHTML =
+    `${rated} / ${CLIPS.length} rated · <b class="good">${n.good} good</b> · <b class="remake">${n.remake} remake</b> · <b class="remove">${n.remove} remove</b>`;
+}
+document.getElementById("q").addEventListener("input", filter);
+document.getElementById("show").addEventListener("change", filter);
+document.getElementById("from").addEventListener("change", filter);
+document.getElementById("export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(verdicts, null, 1)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "clip_verdicts.json"; a.click();
+});
+document.getElementById("import").addEventListener("click", () => document.getElementById("file").click());
+document.getElementById("file").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { verdicts = JSON.parse(await f.text()); save(); location.reload(); } catch (err) { alert("That file isn't a verdicts export."); }
+});
+counts(); filter();
+</script>
+</body>
+</html>

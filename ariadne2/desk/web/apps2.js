@@ -120,7 +120,7 @@ const System = (() => {
     const g = w.bd.querySelector(".sy-grid"); g.innerHTML = "";
     g.append(bar("CPU", d.cpu), bar("MEM", d.mem, d.mem_total_gb ? `${(d.mem_used_gb || 0).toFixed(1)}/${Math.round(d.mem_total_gb)} GB` : ""));
     if (d.gpu != null) g.append(bar("GPU", d.gpu, d.gpu_mem != null ? `vram ${Math.round(d.gpu_mem)}%` : ""));
-    for (const k of (d.disks || []).slice(0, 2)) g.append(bar(k.name.toUpperCase(), k.used_pct, `${Math.round(k.free_gb)} GB free`));
+    for (const k of (d.disks || []).slice(0, 6)) g.append(bar(k.name.toUpperCase(), k.used_pct, `${Math.round(k.free_gb)} GB free`));
     const low = (d.disks || []).find(k => k.free_gb < 10);
     if (w.tag && !w.tagWas) w.tag.textContent = low ? `${low.name.toUpperCase()} LOW` : "";
   }

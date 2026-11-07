@@ -81,31 +81,117 @@ def disk_row(name: str, path: str) -> dict | None:
             "free_gb": round(avail / GIB, 1)}
 
 
-def scan_disks(home: str, mounts: str = MOUNTS, label=mount_label) -> list[dict]:
-    """Home, then every separate drive mounted directly under /var/mnt (named by its label)."""
+# What isn't a drive: kernel and container plumbing, and the container's own overlay root.
+PSEUDO = {"tmpfs", "devtmpfs", "ramfs", "proc", "sysfs", "devpts", "cgroup", "cgroup2", "overlay",
+          "squashfs", "efivarfs", "securityfs", "debugfs", "tracefs", "configfs", "fusectl", "pstore",
+          "bpf", "mqueue", "hugetlbfs", "autofs", "binfmt_misc", "selinuxfs", "nsfs", "rpc_pipefs",
+          "fuse.portal", "fuse.gvfsd-fuse", "fuse.sshfs", "fuse.rclone"}
+RUN_MEDIA = "/run/media"        # where the desktop mounts a USB stick or card, in a folder per user
+HOST_ROOT = "/run/host/sysroot"  # a distrobox/toolbox container sees the host's root here
+
+
+def _unescape(field: str) -> str:
+    """mountinfo writes a space as \\040 (octal) in paths."""
+    import re
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
+
+
+def read_mounts(text: str | None = None) -> dict[str, tuple[str, str, str]]:
+    """mountpoint -> (fstype, source, options) from /proc/self/mountinfo (or the text given)."""
+    if text is None:
+        try:
+            text = Path("/proc/self/mountinfo").read_text("utf-8", "replace")
+        except OSError:
+            return {}
+    table = {}
+    for line in text.splitlines():
+        left, sep, right = line.partition(" - ")
+        parts, tail = left.split(), right.split()
+        if not sep or len(parts) < 6 or len(tail) < 2:
+            continue
+        table[_unescape(parts[4])] = (tail[0], tail[1], parts[5])
+    return table
+
+
+def _mount_for(path: str, table: dict) -> tuple[str, str, str] | None:
+    """The mount `path` sits on: the longest mountpoint that is a prefix of it."""
+    best = None
+    for point in table:
+        if (path == point or path.startswith(point.rstrip("/") + "/")) and (best is None or len(point) > len(best)):
+            best = point
+    return table[best] if best is not None else None
+
+
+def scan_disks(home: str, mounts: str = MOUNTS, label=mount_label, media: str | None = None,
+               roots: tuple = ("/", HOST_ROOT), table=read_mounts) -> list[dict]:
+    """Home, the system (root) drive, every separate drive mounted directly under /var/mnt (named
+    by its label), then removable ones under /run/media/<user>/. A drive is listed once: the same
+    st_dev, or the same /dev source (btrfs subvolumes each have their own st_dev), is skipped, and
+    so are pseudo filesystems and read-only removable drives (a mounted disc is always full)."""
+    mnt_table = table() if callable(table) else table
     rows, seen = [], set()
+
+    def fresh(path: str) -> bool:
+        """True (and remember it) when no drive already listed is the one `path` is on."""
+        try:
+            keys = {("dev", os.stat(path).st_dev)}
+        except OSError:
+            return False
+        m = _mount_for(path, mnt_table)
+        if m and m[1].startswith("/dev/"):
+            keys.add(("src", m[1]))
+        if keys & seen:
+            return False
+        seen.update(keys)
+        return True
+
+    def pseudo(path: str, need_rw: bool = False) -> bool:
+        m = _mount_for(path, mnt_table)
+        return bool(m) and (m[0] in PSEUDO or (need_rw and "ro" in m[2].split(",")))
+
     row = disk_row("Home", home)
-    if row:
+    if row and fresh(home):
         rows.append(row)
-        seen.add(os.stat(home).st_dev)
+    # The system drive. In a container "/" is the container's own overlay, so look for the host's
+    # root instead; on this machine that is the same btrfs volume as Home, and is then not repeated.
+    for cand in roots:
+        if os.path.isdir(cand) and not pseudo(cand):     # (an immutable root is read-only; that's fine)
+            row = disk_row("System", cand)
+            if row and fresh(cand):
+                rows.append(row)
+            break
     try:
         entries = sorted(os.scandir(mounts), key=lambda e: e.name)
     except OSError:
         entries = []
     for e in entries:
-        if not e.is_dir() or not os.path.ismount(e.path):
+        if not e.is_dir() or not os.path.ismount(e.path) or pseudo(e.path):
             continue
-        try:
-            dev = os.stat(e.path).st_dev
-        except OSError:
+        if not fresh(e.path):
             continue
-        if dev in seen:
-            continue
-        seen.add(dev)
         row = disk_row(label(e.path) or e.name.capitalize(), e.path)
         if row:
             rows.append(row)
+    user_dir = media if media is not None else os.path.join(RUN_MEDIA, _user())
+    try:
+        entries = sorted(os.scandir(user_dir), key=lambda e: e.name)
+    except OSError:
+        entries = []
+    for e in entries:
+        if not e.is_dir() or not os.path.ismount(e.path) or pseudo(e.path, True) or not fresh(e.path):
+            continue
+        row = disk_row(label(e.path) or e.name, e.path)         # an unlabelled stick is named by its id
+        if row:
+            rows.append(row)
     return rows
+
+
+def _user() -> str:
+    try:
+        import pwd
+        return pwd.getpwuid(os.getuid()).pw_name
+    except (ImportError, KeyError):
+        return os.environ.get("USER", "")
 
 
 def is_low(row: dict) -> bool:

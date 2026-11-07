@@ -57,11 +57,63 @@ class ParseTests(unittest.TestCase):
             labels = {os.path.join(mnt, "games"): "Olympus"}
             with mock.patch.object(sysmod.os, "stat", stat), \
                     mock.patch.object(sysmod.os.path, "ismount", lambda p: p in mounted):
-                rows = sysmod.scan_disks(home, mnt, label=labels.get)
+                rows = sysmod.scan_disks(home, mnt, label=labels.get, media=os.path.join(t, "none"), roots=(), table={})
         self.assertEqual([r["name"] for r in rows], ["Home", "Olympus", "Nolabel"])
         self.assertEqual(rows[1]["path"], os.path.join(mnt, "games"))
         for r in rows:
             self.assertEqual(set(r), {"name", "path", "used_pct", "free_gb"})
+
+    def scan(self, table_text, make, devs, mounted_names, label=lambda p: None, roots=()):
+        """scan_disks on a temp tree with a fake mount table: `make` folders are created, `devs`
+        maps a folder (relative) to its st_dev, `mounted_names` are the mount points."""
+        with tempfile.TemporaryDirectory() as t:
+            for d in make:
+                os.makedirs(os.path.join(t, d))
+            real_stat = os.stat
+
+            def stat(path, *a, **k):
+                r = real_stat(path, *a, **k)
+                rel = os.path.relpath(str(path), t)
+                return types.SimpleNamespace(st_dev=devs[rel], st_mode=r.st_mode) if rel in devs else r
+            mounted = {os.path.join(t, n) for n in mounted_names}
+            table = sysmod.read_mounts(table_text.replace("@", t))
+            with mock.patch.object(sysmod.os, "stat", stat), \
+                    mock.patch.object(sysmod.os.path, "ismount", lambda p: p in mounted):
+                return sysmod.scan_disks(os.path.join(t, "home"), os.path.join(t, "mnt"), label=label,
+                                         media=os.path.join(t, "run/media/me"),
+                                         roots=tuple(os.path.join(t, r) for r in roots), table=table)
+
+    def test_removable_drive_and_the_system_drive_are_listed(self):
+        table = ("1 0 0:1 / @/root ro - ext4 /dev/nvme0n1p2 ro\n"
+                 "2 1 0:2 / @/home rw - ext4 /dev/nvme0n1p3 rw\n"
+                 "3 1 0:3 / @/run/media/me/STICK rw,nosuid - exfat /dev/sdb1 rw\n")
+        rows = self.scan(table, ["home", "mnt", "root", "run/media/me/STICK"],
+                         {"home": 2, "root": 1, "run/media/me/STICK": 3},
+                         ["run/media/me/STICK"], roots=("root",))
+        self.assertEqual([r["name"] for r in rows], ["Home", "System", "STICK"])     # an unlabelled stick: its id
+
+    def test_system_drive_not_repeated_when_home_is_on_it(self):
+        # one btrfs volume, two subvolumes: different st_dev, same /dev source (this machine's case)
+        table = ("1 0 0:1 / @/root ro - btrfs /dev/nvme0n1p7 ro\n"
+                 "2 1 0:2 / @/home rw - btrfs /dev/nvme0n1p7 rw\n")
+        rows = self.scan(table, ["home", "mnt", "root"], {"home": 2, "root": 1}, [], roots=("root",))
+        self.assertEqual([r["name"] for r in rows], ["Home"])
+
+    def test_pseudo_overlay_and_read_only_removable_are_skipped(self):
+        table = ("1 0 0:1 / @/root rw - overlay overlay rw\n"
+                 "2 1 0:2 / @/home rw - ext4 /dev/nvme0n1p3 rw\n"
+                 "3 1 0:3 / @/run/media/me/DISC ro,nosuid - iso9660 /dev/sr0 ro\n"
+                 "4 1 0:4 / @/run/media/me/RAM rw - tmpfs tmpfs rw\n"
+                 "5 1 0:5 / @/run/media/me/OK rw - vfat /dev/sdc1 rw\n")
+        rows = self.scan(table, ["home", "mnt", "root", "run/media/me/DISC", "run/media/me/RAM", "run/media/me/OK"],
+                         {"home": 2, "root": 1, "run/media/me/DISC": 3, "run/media/me/RAM": 4, "run/media/me/OK": 5},
+                         ["run/media/me/DISC", "run/media/me/RAM", "run/media/me/OK"], roots=("root",))
+        self.assertEqual([r["name"] for r in rows], ["Home", "OK"])
+
+    def test_read_mounts_decodes_spaces_and_survives_junk(self):
+        t = sysmod.read_mounts("garbage\n36 1 8:1 / /mnt/My\\040Stick rw,x shared:1 - vfat /dev/sdc1 rw\n")
+        self.assertEqual(t, {"/mnt/My Stick": ("vfat", "/dev/sdc1", "rw,x")})
+        self.assertEqual(sysmod.read_mounts(""), {})
 
     def test_low_and_recovered(self):
         self.assertTrue(sysmod.is_low(disk("a", 9.9, 10)))

@@ -26,8 +26,8 @@ var most_bounce := 0.0         # and the furthest either breast has bounced, met
 # The bounce: about 2 Hz and lively (soft), 3 Hz and tighter (firm); how far at most.
 # The bounce: Hz, damping, how far her moves throw them (m); how far gravity
 # hangs them (m, fully upside down), how far they tip (rad), how much they flatten.
-const SOFT := [2.0, 0.22, 0.025, 0.05, 0.75, 0.2]
-const FIRM := [3.2, 0.4, 0.012, 0.02, 0.3, 0.08]
+const SOFT := [2.0, 0.22, 0.025, 0.065, 0.95, 0.2]
+const FIRM := [3.2, 0.4, 0.012, 0.025, 0.38, 0.08]
 const PUSH := 0.6              # how much of her chest's acceleration they feel
 const LEAN := [0.12, 0.45]     # gravity this far from upright (of 2) counts not at all .. fully: a lean while standing doesn't
 

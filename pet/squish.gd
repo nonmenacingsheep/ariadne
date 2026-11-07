@@ -23,14 +23,16 @@ var firm := false              # jacket on: it holds them in (no filling out)
 var size := 1.0                # her build against Jane's (leg length): the zone and arms scale with it
 var most_in := 0.0             # a test run's deepest press this frame, metres
 var most_bounce := 0.0         # and the furthest either breast has bounced, metres
+var last_tilt := Vector3.ZERO  # (a test run's readout: how far gravity is toward her head, into her chest, and in all)
 
 # The bounce: about 2 Hz and lively (soft), 3 Hz and tighter (firm); how far at most.
 # The bounce: Hz, damping, how far her moves throw them (m); how far gravity
 # hangs them (m, fully upside down), how far they tip (rad), how much they flatten.
-const SOFT := [2.0, 0.22, 0.025, 0.065, 0.95, 0.2]
-const FIRM := [3.2, 0.4, 0.012, 0.025, 0.38, 0.08]
+const SOFT := [2.0, 0.22, 0.025, 0.065, 0.95, 0.35]
+const FIRM := [3.2, 0.4, 0.012, 0.025, 0.38, 0.12]
 const PUSH := 0.6              # how much of her chest's acceleration they feel
 const LEAN := [0.12, 0.45]     # gravity this far from upright (of 2) counts not at all .. fully: a lean while standing doesn't
+const HEAD_FROM := 1.0         # toward her head: none till she is past level (of 2: lying is 1), all of it upside down
 
 const ZONE := 0.055            # metres round the breast an arm starts to press
 const TIP := 0.05              # the end past Breast_2 (its spring chain's extended end)
@@ -110,9 +112,11 @@ func _process_modification_with_delta(delta: float) -> void:
 		var sq: Array = s[3]
 		var flat := maxf(clampf(depth / (ZONE * size), 0.0, 1.0) * FLAT, float(s[5][6]))
 		if depth <= 0.0 and float(s[5][6]) > 0.002:
-			s[4] = (xf.basis * sk.get_bone_global_pose(s[0]).basis.z).normalized()   # (lying back: flattened toward her chest)
+			# (lying back: flattened toward her chest, along the bone's own way out of
+			# it, its y as in _bounce; z flattened them sideways and they stood up tall)
+			s[4] = (xf.basis * sk.get_bone_global_pose(s[0]).basis.y).normalized()
 		sq[1] = float(sq[1]) + (TURN_W * TURN_W * (flat - float(sq[0])) - 2.0 * TURN_Z * TURN_W * float(sq[1])) * delta
-		sq[0] = clampf(float(sq[0]) + float(sq[1]) * delta, 0.0, FLAT)
+		sq[0] = clampf(float(sq[0]) + float(sq[1]) * delta, 0.0, maxf(FLAT, float(s[5][6])))      # (lying back can flatten past an arm's press)
 		var ang: Vector3 = turn[0]
 		var g1 := sk.get_bone_global_pose(s[0])
 		var b := s[0] as int
@@ -160,6 +164,15 @@ func _bounce(sk: Skeleton3D, s: Array, xf: Transform3D, to_skel: Basis, delta: f
 	var g_up: Vector3 = upright.inverse() * Vector3.DOWN
 	var off := g_now - g_up                                   # 0 upright .. 2 upside down
 	var how := smoothstep(LEAN[0], LEAN[1], off.length())
+	# Toward her head is only gravity's doing once she's well past lying flat:
+	# on her back or side, losing the pull to her feet lifts them a little, not
+	# the half of upside down that a straight share gave (they rose to her chin
+	# lying down, as if pushed). Sideways and into her chest stay as they are.
+	var headward := -g_up.normalized()
+	var along := off.dot(headward)                            # 0 upright, 1 lying, 2 upside down
+	off += headward * along * (smoothstep(HEAD_FROM, 2.0, along) - 1.0)
+	var g_eff := (g_up + off).normalized()
+	last_tilt = Vector3(along, maxf(0.0, -g_now.dot((chest.inverse() * (xf.basis * g.basis.y)).normalized())), (g_now - g_up).length())
 	var spec: Array = FIRM if firm else SOFT
 	# Where they hang: along her chest, never into it (her forward is the
 	# breast bone's own way out of her chest, in the chest's frame).
@@ -169,7 +182,7 @@ func _bounce(sk: Skeleton3D, s: Array, xf: Transform3D, to_skel: Basis, delta: f
 		hang -= out * hang.dot(out)
 	# Tipped toward it: the turn from upright's hang to now's (world), and
 	# flattened when gravity presses them back into her (lying on her back).
-	var tip_turn := (out.cross(g_now) - out.cross(g_up)) * how * float(spec[4])
+	var tip_turn := (out.cross(g_eff) - out.cross(g_up)) * how * float(spec[4])
 	st[5] = (xf.basis * sk.get_bone_global_pose(par).basis).orthonormalized() * tip_turn.limit_length(float(spec[4]))
 	st[6] = maxf(0.0, -g_now.dot(out)) * how * float(spec[5])
 	# The spring: toward that hang, thrown about by her moves.

@@ -3789,7 +3789,7 @@ func _grab_test(bone: String) -> void:
 				c.global_position = at + f * 1.3 + f.cross(Vector3.UP).normalized() * 0.9
 				c.look_at(at)
 				if squish and Engine.get_process_frames() % 20 == 0:
-					print("HANG %.3f m tip %.2f rad flat %.2f" % [(squish.sides[0][5][0] as Vector3).length(), (squish.sides[0][5][5] as Vector3).length(), float(squish.sides[0][5][6])]))
+					print("HANG %.3f m tip %.2f rad flat %.2f  headward %.2f into %.2f off %.2f" % [(squish.sides[0][5][0] as Vector3).length(), (squish.sides[0][5][5] as Vector3).length(), float(squish.sides[0][5][6]), squish.last_tilt.x, squish.last_tilt.y, squish.last_tilt.z]))
 	var p := cam.unproject_position(skel.global_transform * skel.get_bone_global_pose(skel.find_bone(bone)).origin)
 	var e := InputEventMouseButton.new()
 	e.button_index = MOUSE_BUTTON_LEFT

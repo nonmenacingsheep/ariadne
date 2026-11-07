@@ -1,5 +1,5 @@
 {
-	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing). tone: albedo times her colours, light and fill times the sun and fill (her near-white skin washed out).",
+	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing). tone: albedo times her colours, light and fill times the sun and fill (her near-white skin washed out). Her feet arch into her heeled sandals (Body_2/Heel; they were flat, floating over the sole).",
 	"default": "Sweater",
 	"outfits": {
 		"Sweater": {
@@ -43,6 +43,7 @@
 	},
 	"shapes": {
 		"Body_2/Sweater": 0.0,
-		"Body_2/Bikini_1": 0.0
+		"Body_2/Bikini_1": 0.0,
+		"Body_2/Heel": 1.0
 	}
 }

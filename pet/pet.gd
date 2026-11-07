@@ -3508,7 +3508,7 @@ func _chest_test(pick: String) -> void:
 	c.fov = 16.0
 	c.current = true
 	for i in 24:
-		var chest := skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Chest")).origin
+		var chest := skel.global_transform * skel.get_bone_global_pose(skel.find_bone(OS.get_environment("PET_CAM_BONE") if OS.get_environment("PET_CAM_BONE") != "" else "Chest")).origin
 		var side := i % 2 == 0
 		c.global_position = chest + (Vector3(1.6, 0.0, 0.5) if side else Vector3(0.0, 0.05, 1.7))
 		c.look_at(chest)

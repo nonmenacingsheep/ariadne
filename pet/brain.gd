@@ -239,7 +239,11 @@ func next() -> void:
 			var at: Vector3 = pet.room.spot(step["face"]).get("drop", Vector3(pet.pos.x, 0, pet.depth - 1.0))
 			pet.yaw_target = atan2(at.x - pet.pos.x, at.z - pet.depth)
 			pet.look_until = pet.t + float(step.get("for", 2.0))
-		pet._play(_first_clip(step["play"]), 0.25 if step.get("quick", false) else 0.4, float(step.get("speed", 1.0)))
+		var role := _first_clip(step["play"])
+		if role == "":
+			next()                             # nothing she has for it now
+			return
+		pet._play(role, 0.25 if step.get("quick", false) else 0.4, float(step.get("speed", 1.0)))
 		if step.get("end", false):
 			# To the end of the clip (and the move into its stance before it, if any).
 			var secs := maxf(0.3, pet.variant_until - pet.t)
@@ -265,12 +269,15 @@ func next() -> void:
 # A beat's clip: the first of its choices she has ("crouch_peer_" before the
 # plain crouch, until the new takes are in).
 func _first_clip(c: Variant) -> String:
-	if c is Array:
-		for x in c:
-			if _has(x) or pet.ROLES.has(x):
-				return x
-		return (c as Array).back()
-	return c
+	for x in (c if c is Array else [c]):
+		if _has(x) or (pet.ROLES.has(x) and pet._variant(x) != ""):
+			return x
+	return ""                                  # none she has (taken out): the beat is skipped
+
+
+# Every play beat in these has a clip she still has.
+func _playable(beats: Array) -> bool:
+	return beats.all(func(b): return not (b as Dictionary).has("play") or _first_clip(b["play"]) != "")
 
 
 # An episode: the one picked from those she can do (their clips are here, the
@@ -286,6 +293,11 @@ func _episode() -> Array:
 		if e.get("night", false) and not _night() or e.get("day", false) and _night():
 			continue
 		if not (e.get("needs", []) as Array).all(func(c): return _has(c) or pet.ROLES.has(c)):
+			continue
+		# Its own beats playable, and at least one ending that is (clips he took out).
+		var main := (e["beats"] as Array).filter(func(b): return not b.has("branch"))
+		var ends := (e["beats"] as Array).filter(func(b): return b.has("branch"))
+		if not _playable(main) or ends.any(func(b): return not (b["branch"] as Array).any(func(c): return _playable(c[1]))):
 			continue
 		var w: float = float(e.get("weight", 1.0))
 		for f in e.get("mood", {}):
@@ -307,6 +319,7 @@ func _beats(beats: Array) -> Array:
 	for b in beats:
 		var d: Dictionary = (b as Dictionary).duplicate()
 		if d.has("branch"):
+			d["branch"] = (d["branch"] as Array).filter(func(c): return _playable(c[1]))     # endings she can still play
 			var total := 0.0
 			for c in d["branch"]:
 				total += float(c[0])
@@ -387,8 +400,8 @@ func _score(a: String, on_widget: bool) -> float:
 		"sit_floor": return 0.25 + tired * 0.6 + sorrow * 0.3 if _has("floor_sit_") else 0.0
 		"lie": return 0.1 + tired * 0.7 + sorrow * 0.2 if _has("lie_idle_") else 0.0
 		"nap":
-			if not allow["nap"] or _bed():
-				return 0.0
+			if not allow["nap"] or _bed() or pet._variant("Crouch_Idle") == "":
+				return 0.0                     # (no lying-down clips: no naps)
 			return 3.0 if float(n["energy"]) < 0.2 else maxf(0.0, tired - 0.5) * 0.8
 		"sit_ledge":
 			if not allow["sit_on_widgets"] or (not on_widget and _ledges().is_empty()):

@@ -264,6 +264,8 @@ var trip_style := ""
 var look_node: Node3D = null               # watching a thing (a bug crawling) till look_until
 var look_spot := Vector3.INF               # or a point (the floor in front of her)
 var poking := false
+var asked_at := -1e9                       # when he last asked her something (chat or voice)
+var saluted := true                        # her first step for it has been taken (with a salute, now and then)
 var squish                                 # squish.gd: her arms pressing her breasts aside
 var poke_z := 0.0                          # depth of the point he's pressing
 # What a left click on her does, picked from her right-click menu: "play" (tap,
@@ -1031,6 +1033,13 @@ func _on_message(msg: Dictionary) -> void:
 			var phase := str(msg.get("phase", ""))
 			var w := str(msg.get("widget", ""))
 			if phase == "started" and allow["react_to_work"]:
+				# The first thing she does for what he just asked: now and then a
+				# playful salute ("on it"), then she gets to it.
+				if not saluted and t - asked_at < 90.0 and randf() < 0.6 and state in ["idle", "wander", "dance"] \
+						and _variant("solo_salute_") != "":
+					_set_state("react", 2.6)
+					_play("solo_salute_", 0.3)
+				saluted = true
 				_watch(w, 3.0)
 				_slab_show(w)
 			elif phase == "done":
@@ -1053,6 +1062,8 @@ func _on_message(msg: Dictionary) -> void:
 		"chat":
 			_stir()
 			if msg.get("role", "") == "you":
+				asked_at = t
+				saluted = false
 				_attend()
 				if msg.get("done", false):
 					life.bump("affection", 0.03)
@@ -1210,6 +1221,7 @@ func _react(clip_name: String) -> void:
 
 # --- animation --------------------------------------------------------------
 var clip_from := {}                        # clip -> the file it came from (the gallery shows it)
+const REMOVED_FILE := "res://clips_removed.txt"   # clips he took out (one name a line; # comments)
 func _load_clips() -> void:
 	ap = AnimationPlayer.new()
 	body.add_child(ap)
@@ -1217,6 +1229,11 @@ func _load_clips() -> void:
 	ap.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	if clip_lib == null:                   # read once; every body plays the same humanoid clips
 		clip_lib = AnimationLibrary.new()
+		var removed := {}
+		if FileAccess.file_exists(REMOVED_FILE):
+			for line in FileAccess.get_file_as_string(REMOVED_FILE).split("\n"):
+				if line.strip_edges() != "" and not line.begins_with("#"):
+					removed[line.strip_edges()] = true
 		var paths: Array = CLIPS.duplicate()
 		# Kimodo clips (pet/import/: BVH -> GLB, soma_bonemap.tres), each played in place.
 		for f in DirAccess.get_files_at(KIMODO_DIR):
@@ -1229,6 +1246,8 @@ func _load_clips() -> void:
 			var player := _find(src, "AnimationPlayer") as AnimationPlayer
 			if player:
 				for name in player.get_animation_list():
+					if removed.has(String(name)):
+						continue
 					if not clip_lib.has_animation(name):
 						clip_from[name] = String(path).get_file()
 						var anim := player.get_animation(name)
@@ -1421,9 +1440,9 @@ const ROLES := {
 	# Asleep on the floor: curled cross-legged, lying on her side or back.
 	"Crouch_Idle": [["Crouch_Idle", 0.01], ["nap_", 1.5], ["lie_idle_", 1.0], ["floor_sit_", 0.5]],
 	"Crouching": [["Crouch_Idle", 0.01], ["crouch_idle_", 1.0]],
-	"Dance": [["Dance", 0.01], ["dance_", 1.5]],
+	"Dance": [["Dance", 0.01], ["dance_", 1.5], ["held_", 0.8], ["solo_airguitar_", 0.8]],     # (held_1 reads as a dance, he said)
 	"Jump": [["Jump", 0.01], ["fall_", 1.0], ["jump_", 0.3]],
-	"Held": [["Jump", 0.01], ["held_", 1.0]],
+	"Held": [["Jump", 0.01]],                  # (her ragdoll has her when held; held_1 dances now)
 	"Jump_Land": [["Jump_Land", 0.01], ["land_", 1.0]],
 	"Death01": [["Death01", 0.01], ["knocked_", 1.0]],
 	"PickUp_Table": [["PickUp_Table", 0.01], ["pickup_", 1.0]],
@@ -1979,7 +1998,10 @@ func _settle_to_sleep() -> void:
 	if pstate != "":                           # in a place: dozing off there (in bed, lying back first)
 		_play(places.sleep_state(pstate), 1.0, 0.6)
 		return
-	_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)      # the stance move comes first
+	var pose := "Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle"
+	if _variant(pose) == "":
+		pose = "Idle"                          # no lying-down clips: she dozes off where she stands
+	_play(pose, 1.0, 0.6)      # the stance move comes first
 
 
 # Waking: from a floor nap she gets up (get_up_*), from a widget seat she

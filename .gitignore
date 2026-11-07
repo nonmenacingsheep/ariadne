@@ -18,6 +18,8 @@ pet/models/shiromoji*
 !pet/models/shiromoji_bonemap.tres
 !pet/models/shiromoji.glb.import
 !pet/models/shiromoji.json
+# Bodies dropped in ~/Aries Models, converted (ariadne2/core/body3d.py): his, not the repo's
+pet/models/dropin/
 
 # Kimodo clips: generated ones are committed; the NVIDIA sample test stays local
 pet/assets/anims/kimodo/test.glb*

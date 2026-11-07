@@ -1,8 +1,10 @@
-"""New Live2D bodies, from the drop folder or the Files menu (pet2d/importer.py).
+"""New bodies, from the drop folder or the Files menu: Live2D (pet2d/importer.py)
+and 3D (body3d.py: a .vrm, .glb or .blend, converted and checked).
 
 ~/Aries Models is the drop folder: a model download (zip, rar, 7z or an
-unpacked folder) put there is added within half a minute and appears in the
-Avatar widget's Model list. Each download is imported once (by name, size and
+unpacked folder, or a loose .vrm/.glb/.blend) put there is added within half a
+minute (a 3D one takes a minute or two more) and appears in the Avatar
+widget's Model list. Each download is imported once (by name, size and
 time), so it can stay there. The Files widget's "Use as her body" does the
 same for any download and switches her to it.
 """
@@ -17,6 +19,7 @@ from pathlib import Path
 
 from .. import protocol
 from ..pet2d import importer
+from . import body3d
 
 log = logging.getLogger("ariadne2.body_models")
 
@@ -29,12 +32,17 @@ NEEDS_CORE = ("Live2D models need Live2D's Cubism Core to show. Get it in the Av
 NO_BODY = ("I don't have a body on screen yet. For a Live2D one, put a model download in ~/Aries Models "
            "(or right-click it in Files > Use as her body). For the 3D one, a VRoid .vrm goes at "
            "pet/models/aries.vrm and needs Godot 4 (install.sh can fetch it).")
-README = """Put a Live2D model here to give Aries a new body.
+README = """Put a model here to give Aries a new body.
 
-Drop the download in as it came: a .zip, .rar or .7z, or the unpacked
-folder (anything with a .model3.json inside, like VTube Studio models).
-Within half a minute it's added, and you can pick it in the Avatar widget
-(the drawer under ARIES) > Model.
+Live2D: drop the download in as it came: a .zip, .rar or .7z, or the
+unpacked folder (anything with a .model3.json inside, like VTube Studio models).
+
+3D: a .vrm (VRoid and the like), a .glb, or a .blend (Blender, converted for
+you), loose or in its download. It needs a humanoid skeleton (hips, spine,
+head, arms, legs), which most avatars have; she walks about in it.
+
+Within half a minute it's added (3D takes a minute or two to convert), and you
+can pick it in the Avatar widget (the drawer under ARIES) > Model.
 
 You can also right-click a download in her Files widget > Use as her body.
 """
@@ -68,9 +76,10 @@ class BodyModels:
     async def add(self, path: str | Path, wear: bool = False) -> str | None:
         """Import one download; with wear, switch her body to it. Says how it went in the chat."""
         async with self._busy:
+            path = Path(path)
             try:
-                slug, said = await asyncio.to_thread(importer.import_model, Path(path))
-            except importer.ImportError_ as e:
+                slug, said = await asyncio.to_thread(self._import, path)
+            except (importer.ImportError_, body3d.ImportError_) as e:
                 await self._say(f"Couldn't add that model: {e}")
                 return None
             except Exception as e:
@@ -84,8 +93,20 @@ class BodyModels:
                     log.warning("couldn't switch to %s: %s", slug, e)
             await self.publish(self.settings.message())        # the Model list now has it
             await self._say(said + (" She's wearing it now." if wear else " Pick it in Avatar > Model.")
-                            + ("" if CORE.exists() else " " + NEEDS_CORE))
+                            + ("" if CORE.exists() or slug.startswith("3d:") else " " + NEEDS_CORE))
             return slug
+
+    def _import(self, path: Path) -> tuple[str, str]:
+        """Live2D or 3D, by what's in it: a 3D file or a folder of one is 3D; an archive
+        is Live2D unless it has no Live2D model in it and a 3D body instead."""
+        if body3d.is_candidate(path) and not importer.is_candidate(path):
+            return body3d.import_model(path)
+        try:
+            return importer.import_model(path)
+        except importer.ImportError_ as e:
+            if path.suffix.lower() in importer.ARCHIVES and ".model3.json" in str(e):
+                return body3d.import_model(path)
+            raise
 
     async def scan(self) -> None:
         folder = drop_folder()
@@ -108,7 +129,7 @@ class BodyModels:
                 key = _key(p)
             except OSError:
                 continue
-            if key in seen or not await asyncio.to_thread(importer.is_candidate, p):
+            if key in seen or not await asyncio.to_thread(lambda: importer.is_candidate(p) or body3d.is_candidate(p)):
                 continue
             seen.add(key)                       # once, even if it fails: no retry loop on a bad file
             seen_path.parent.mkdir(parents=True, exist_ok=True)

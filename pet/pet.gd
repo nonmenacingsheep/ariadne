@@ -363,14 +363,20 @@ func _game_sleep() -> void:
 
 # --- which body ---------------------------------------------------------------
 # A 3D model in models/: aries.vrm, or a GLB imported with the humanoid bone
-# map (models/jane.glb + jane_bonemap.tres; docs/JANE_3D_PLAN.md). The Avatar
-# "Model" setting names it ("aries", or "3d:<file stem>"); a change swaps
-# bodies while she runs.
+# map (models/jane.glb + jane_bonemap.tres; docs/JANE_3D_PLAN.md), or one
+# dropped in ~/Aries Models (models/dropin/<stem>/<stem>.glb or .vrm, converted by
+# ariadne2/core/body3d.py). The Avatar "Model" setting names it ("aries", or
+# "3d:<file stem>"); a change swaps bodies while she runs.
 func _model_path(setting: String) -> String:
 	if setting == "aries":
 		return MODEL
 	if setting.begins_with("3d:"):
-		return "res://models/%s.glb" % setting.substr(3)
+		var stem := setting.substr(3)
+		for p in ["res://models/%s.glb" % stem, "res://models/dropin/%s/%s.glb" % [stem, stem],
+				"res://models/dropin/%s/%s.vrm" % [stem, stem]]:
+			if ResourceLoader.exists(p):
+				return p
+		return "res://models/%s.glb" % stem
 	return ""
 
 

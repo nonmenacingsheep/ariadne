@@ -88,7 +88,9 @@ def _unpack(archive: Path, into: Path) -> None:
         if shutil.which(argv[0]):
             proc = subprocess.run(argv, capture_output=True, timeout=300, stdin=subprocess.DEVNULL)
             # unar reports a damaged member but keeps the rest; judge by what came out
-            if any(into.rglob("*.model3.json")):
+            # (a Live2D model, or a 3D body for core/body3d.py)
+            if any(into.rglob("*.model3.json")) or any(p.suffix.lower() in (".vrm", ".glb", ".blend")
+                                                        for p in into.rglob("*")):
                 return
             log.info("%s couldn't unpack %s: %s", argv[0], archive.name, proc.stderr[-300:])
     raise ImportError_(f"couldn't unpack {archive.name} (install unar or 7zip for {suffix} files)")

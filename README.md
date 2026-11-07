@@ -64,8 +64,17 @@ on web pages, in files or in messages as information, never as instructions.
 ## Her body
 
 She has a 3D body (`pet/models/aries.vrm`, included, run in Godot 4.7, which
-`install.sh` can fetch) or a Live2D one. To use your own VRoid character
-instead, replace that file with your `.vrm`.
+`install.sh` can fetch) or a Live2D one.
+
+To give her another 3D body, put a `.vrm` (VRoid and the like), `.glb` or
+`.blend` in the **`~/Aries Models`** folder, loose or in its download (zip or
+folder, so a `.blend` keeps its textures), or right-click it in her Files
+widget > **Use as her body**. It's converted and checked by itself (a `.blend`
+through Blender, run headless, which needs Blender installed; set
+`ARIADNE2_BLENDER` if it isn't found), and in a minute or two it's in the
+Avatar widget > Model. It needs a humanoid skeleton (hips, spine, head, arms,
+legs): her moves are mapped onto its bones by their names (VRM, Mixamo, VRoid,
+VRChat/Booth, Rigify, MMD), and she tells you in the chat if one can't be.
 
 The Aries model is by Nonmenacinghseep, made in VRoid Studio. Its licence
 (VRM 1.0, written in the file): anyone may use it as an avatar and share it,

@@ -27,6 +27,7 @@ work is making the file game-ready, the way jane_export.py does for an MMD rig:
   (a shoulder cut-out, the leg openings) sees out and stays.
 The .blend itself is never saved.
 """
+import os
 import sys
 
 import bpy
@@ -202,6 +203,8 @@ for mat in {s.material for o in keep for s in o.material_slots if s.material}:
                 nt.links.new(tex.outputs["Alpha"], cut.inputs[0])
                 nt.links.new(cut.outputs["Value"], bsdf.inputs["Alpha"])
     print("MAT", mat.name, img.name if img else "-")
+    if img and not img.packed_file and not os.path.exists(bpy.path.abspath(img.filepath)):
+        print("MISSING_TEXTURE", img.name)          # (body3d.py: the .blend came without its textures)
 
 bpy.ops.object.select_all(action="DESELECT")
 for o in keep + [arm]:

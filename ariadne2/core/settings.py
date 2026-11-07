@@ -85,8 +85,11 @@ PET_MODELS = Path(__file__).resolve().parents[2] / "pet" / "models"          # 3
 def outfits(model: str | None) -> list[tuple[str, str]]:
     """The outfits of the body she wears (pet/models/<name>.json): "" is its usual one."""
     stem = model[3:] if model and model.startswith("3d:") else ""
+    cfg = PET_MODELS / f"{stem}.json"
+    if stem and not cfg.exists():
+        cfg = PET_MODELS / "dropin" / stem / f"{stem}.json"    # a drop-in body (body3d.py)
     try:
-        doc = json.loads((PET_MODELS / f"{stem}.json").read_text()) if stem else {}
+        doc = json.loads(cfg.read_text()) if stem else {}
     except (OSError, ValueError):
         doc = {}
     names = [n for n in doc.get("outfits", {}) if isinstance(n, str)]
@@ -103,6 +106,9 @@ def bodies() -> list[tuple[str, str]]:
     for glb in sorted(models.glob("*.glb")):
         if (models / f"{glb.stem}_bonemap.tres").exists():
             out.append((f"3d:{glb.stem}", f"{glb.stem.replace('_', ' ').title()} (3D, walks about)"))
+    # ...and the ones dropped in ~/Aries Models, converted and checked (body3d.py).
+    from . import body3d
+    out += body3d.bodies()
     try:
         for d in sorted(LIVE2D_MODELS.iterdir()):
             if d.is_dir() and any(d.glob("*.model3.json")):

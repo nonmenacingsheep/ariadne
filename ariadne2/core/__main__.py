@@ -62,6 +62,14 @@ def _make_ears(server, voice, conversation):
 
 
 log = logging.getLogger("ariadne2.core")
+_T0 = time.monotonic()
+GAME_EXIT = 43          # "a game's on": bin/ariadne2 waits it out, then starts her again
+GAME_GRACE = 120        # seconds she may take to finish what she's doing first
+
+
+def _mark(what: str) -> None:
+    """How long starting up took to get this far (the log reads where the seconds go)."""
+    log.info("startup: %s at %.1f s", what, time.monotonic() - _T0)
 
 
 def _route_press(adapters, msg: dict) -> None:
@@ -124,14 +132,17 @@ async def run(args: argparse.Namespace) -> None:
             engine.observe(msg)
 
     adapters = adapters_mod.load_adapters(publish)
+    _mark("adapters loaded")
     voice = ears = None
     if not args.quiet:
         voice = _make_voice(server)
     from .extensions import Extensions, ExtensionTools
     from .settings_tool import SettingsTools
     extensions = Extensions(server.publish)
+    _mark("voice")
     memory = MemoryToolset()
     memory.warm()           # the model and the old transcript, loaded off the main thread
+    _mark("memory")
     from .later import Later
     from .clipboard import ClipboardTools
     later = Later(lambda text, consent: conversation.wake(text, consent))
@@ -157,11 +168,14 @@ async def run(args: argparse.Namespace) -> None:
     memory.resumed(conversation.resume(memory.talk.rows()))     # a restart picks up where the talk was
     settings.hooks[("general", "flows_on_her_own")] = lambda v: setattr(engine, "her_runs", bool(v))
     conversation.on_text = engine.hear
+    _mark("conversation")
     if voice and not args.no_ears:
         ears = _make_ears(server, voice, conversation)
+        _mark("ears")
 
     settings_mod.bind_core(settings, conversation=conversation, voice=voice, ears=ears, operate=operate_mod)
     settings.apply_all(skip=_cli_overrides(args))
+    _mark("settings applied")
 
     from .claude_live import LiveClaude
     live_claude = LiveClaude(server.publish)
@@ -213,10 +227,19 @@ async def run(args: argparse.Namespace) -> None:
             if path:
                 _spawn_flow(body_models.add(str(path), wear=True))
             return None
-        # A game in front (the desk saw it, desk/game.py): her body hears it and
-        # closes till the game's gone. Her ears stay on.
+        # A game in front (the desk saw it, desk/game.py): her body closes, and
+        # (his "Turn off during games") she finishes what she's in the middle of
+        # and turns herself off (GAME_EXIT); bin/ariadne2 waits out the game and
+        # starts her again. The game gone again before then (an alt-tab), she
+        # stays. With it off she stays up through it, listening.
         if msg.get("t") == "game":
-            _spawn_flow(server.publish({"t": "game", "on": bool(msg.get("on"))}))
+            on = bool(msg.get("on"))
+            _spawn_flow(server.publish({"t": "game", "on": on}))
+            if on and settings.get("desktop", "game_off") and (game_off["task"] is None or game_off["task"].done()):
+                game_off["task"] = asyncio.ensure_future(_off_for_game())
+            elif not on and game_off["task"] is not None and not game_off["task"].done():
+                game_off["task"].cancel()
+                log.info("the game's gone before I went: staying")
             return None
         if msg.get("t") == "update_do":
             _spawn_flow(updater.on_desk(msg))
@@ -240,10 +263,25 @@ async def run(args: argparse.Namespace) -> None:
         server.demo.echo_chat = False      # the real loop answers; demo keeps its fake actions
         server.demo.skip = set(adapters)   # ...except in widgets a real adapter drives
     stop = asyncio.Event()
+    game_off: dict = {"task": None, "exit": False}
+
+    async def _off_for_game() -> None:
+        try:
+            await asyncio.wait_for(conversation.idle(), GAME_GRACE)   # her reply, a tool she's running
+        except asyncio.TimeoutError:
+            log.warning("still busy after %d s of a game: going anyway", GAME_GRACE)
+        for _ in range(int(GAME_GRACE * 2)):                         # the end of what she's saying
+            if not (voice and voice.speaking):
+                break
+            await asyncio.sleep(0.5)
+        log.info("a game is on: turning myself off till it's over")
+        game_off["exit"] = True
+        stop.set()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
     await server.start()
+    _mark("listening for the desk")
     from . import pet_inbox
     inbox_task = asyncio.create_task(pet_inbox.watch(conversation.submit))
 
@@ -266,6 +304,7 @@ async def run(args: argparse.Namespace) -> None:
             await adapter.start()
         except Exception:
             log.exception("adapter %s failed to start", adapter.name)
+    _mark("adapters started")
     await engine.start()
     updater.start()
     extensions.start()
@@ -275,6 +314,7 @@ async def run(args: argparse.Namespace) -> None:
     for part in (voice, ears):
         if part:
             await part.start()
+    _mark("ready")
     try:
         await stop.wait()
     finally:
@@ -298,6 +338,7 @@ async def run(args: argparse.Namespace) -> None:
                 log.exception("adapter %s failed to stop", adapter.name)
         await server.stop()
         log.info("stopped")
+    return game_off["exit"]
 
 
 def main() -> None:
@@ -311,7 +352,8 @@ def main() -> None:
     p.add_argument("--no-ears", action="store_true", help="voice, but no mic")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    asyncio.run(run(args))
+    if asyncio.run(run(args)):
+        raise SystemExit(GAME_EXIT)
 
 
 if __name__ == "__main__":

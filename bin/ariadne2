@@ -5,21 +5,36 @@
 #   bin/ariadne2 --stop   close whatever is running
 cd "$(dirname "$0")/.." || exit 1
 
+# Her processes, by their own command lines from the start (a shell that only
+# mentions them, like one running this, mustn't match).
+CORE_RE='^[^ ]*python[0-9.]* -m ariadne2[.]core( |$)'
+DESK_RE='^python3 -m ariadne2[.]desk'
+PET_RE='^[^ ]*[Gg]odot[^ ]* --path pet'
+PET2D_RE='^python3 -m ariadne2[.]pet2d'
+RUN=${XDG_RUNTIME_DIR:-/tmp}
+LAUNCHER=$RUN/ariadne2-launcher.pid     # this script's pid while it runs (or waits out a game)
+GAME_FLAG=$RUN/ariadne2-game            # a game in front: the pid to wait on (ariadne2/desk/game.py)
+
 stop_running() {
-  pkill -TERM -f "^python3 -m ariadne2.desk"; pkill -TERM -f "m ariadne2.core"; pkill -TERM -f "[Gg]odot.*--path pet"; pkill -TERM -f "m ariadne2[.]pet2d"
+  # A launcher waiting out a game has nothing else running: it goes too.
+  old=$(cat "$LAUNCHER" 2>/dev/null)
+  [ -n "$old" ] && [ "$old" != "$$" ] && kill -TERM "$old" 2>/dev/null
+  pkill -TERM -f "$DESK_RE"; pkill -TERM -f "$CORE_RE"; pkill -TERM -f "$PET_RE"; pkill -TERM -f "$PET2D_RE"
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "m ariadne2.core" >/dev/null || return 0
+    pgrep -f "$DESK_RE" >/dev/null || pgrep -f "$CORE_RE" >/dev/null || return 0
     sleep 0.3
   done
 }
-if [ "$1" = "--stop" ]; then stop_running; echo "Ariadne 2 stopped"; exit 0; fi
+if [ "$1" = "--stop" ]; then stop_running; rm -f "$GAME_FLAG"; echo "Ariadne 2 stopped"; exit 0; fi
 
 # The desk allows one copy, and a second launch would just hand over to the
 # old one and quit, so launching again means replacing what's running.
-if pgrep -f "^python3 -m ariadne2.desk" >/dev/null || pgrep -f "ariadne2.core" >/dev/null; then
+if pgrep -f "$DESK_RE" >/dev/null || pgrep -f "$CORE_RE" >/dev/null || \
+    { [ -n "$(cat "$LAUNCHER" 2>/dev/null)" ] && kill -0 "$(cat "$LAUNCHER")" 2>/dev/null; }; then
   echo "stopping the Ariadne 2 that's already running"
   stop_running
 fi
+echo $$ > "$LAUNCHER"
 
 # KDE's System Monitor (and her Tasks) know an app by its systemd scope,
 # app-<desktop id>-*.scope. Started through distrobox she runs in the
@@ -61,47 +76,87 @@ for p in "$PWD/.venv/bin/python" "$HOME/Claude Projects/ariadne/.venv-3.12/bin/p
   [ -z "$PY" ] && [ -x "$p" ] && PY=$p
 done
 [ -n "$PY" ] || PY=python3
-# Her core runs ~70 threads, and glibc gives each its own malloc arena: 80 of
-# them, 2.3 GB, most of it freed space kept back from the system. Two will do.
-MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2} "$PY" -m ariadne2.core "$@" &
-core=$!
-trap 'kill $core 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
-# Her body (pet/, Godot on the GPU), if its model is there. Started through
-# godot-gate.sh like every Godot run here (it links the host GPU libraries and
-# waits for the machine to be quiet enough). ARIADNE2_NO_PET=1 skips it.
 GODOT=${ARIADNE2_GODOT:-/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64}
 [ -x "$GODOT" ] || GODOT=$PWD/tools/godot/godot          # install.sh can fetch it here
 [ -x "$GODOT" ] || GODOT=$(command -v godot4 || command -v godot || true)
 GATE=$HOME/.local/bin/godot-gate.sh; [ -x "$GATE" ] || GATE=
+PET3D=
 if [ -z "$ARIADNE2_NO_PET" ] && [ -f pet/models/aries.vrm ] && [ -n "$GODOT" ] && [ -x "$GODOT" ]; then
+  PET3D=1
   # A fresh copy has never been imported (pet/.godot isn't in git), and Godot
   # can't load the model or the animations until it has: do it once.
   if [ ! -d pet/.godot/imported ] || [ -n "$(find pet/models -newer pet/.godot/imported -name '*.glb' -o -newer pet/.godot/imported -name '*.vrm' 2>/dev/null)" ]; then
     echo "preparing her 3D body (first run, a few seconds)"
     timeout 300 "$GODOT" --headless --path pet --import >/dev/null 2>&1
   fi
-  # Her body closes itself while a game is in front (exit 42, ariadne2/desk/game.py);
-  # it comes back once the desk takes the flag down.
-  GAME_FLAG=${XDG_RUNTIME_DIR:-/tmp}/ariadne2-game
-  rm -f "$GAME_FLAG"
-  ( sleep 2
-    while :; do
-      $GATE "$GODOT" --path pet --display-driver x11
-      [ $? -eq 42 ] || break
-      while [ -e "$GAME_FLAG" ]; do sleep 1; done
-    done ) >/dev/null 2>&1 &
-  pet=$!
-  trap 'kill $core $pet 2>/dev/null; pkill -f "[Gg]odot.*--path pet" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
 fi
-# Her Live2D body (ariadne2/pet2d): idles hidden unless the Avatar "Model" names
-# a Live2D model (and waits for Cubism Core if it isn't downloaded yet).
-# Through XWayland like the desk, for the click-through region.
-if [ -z "$ARIADNE2_NO_PET" ]; then
-  ( sleep 2; GDK_BACKEND=x11 exec python3 -m ariadne2.pet2d ) 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" >&2) &
-  pet2d=$!
-  trap 'kill $core $pet $pet2d 2>/dev/null; pkill -f "[Gg]odot.*--path pet" 2>/dev/null; pkill -f "[a]riadne2.pet2d" 2>/dev/null; wait $core 2>/dev/null' EXIT INT TERM
-fi
-# Through XWayland: as a native Wayland window the desk sometimes kept the
-# size KWin first gave it on the smaller monitor and refused to grow, cutting
-# off everything past x=1920. KWin resizes X11 windows reliably.
-GDK_BACKEND=${ARIADNE2_GDK_BACKEND:-x11} python3 -m ariadne2.desk 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" -e "^$" >&2)
+rm -f "$GAME_FLAG"
+core= desk= pet= pet2d=
+
+start_all() {
+  # Her core runs ~70 threads, and glibc gives each its own malloc arena: 80 of
+  # them, 2.3 GB, most of it freed space kept back from the system. Two will do.
+  MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2} "$PY" -m ariadne2.core "$@" &
+  core=$!
+  # Her body (pet/, Godot on the GPU), if its model is there. Started through
+  # godot-gate.sh like every Godot run here (it links the host GPU libraries and
+  # waits for the machine to be quiet enough). ARIADNE2_NO_PET=1 skips it. It
+  # and the Live2D one start with the core, not after it: each keeps trying to
+  # reach it, so their loading overlaps the core's.
+  # Staying on through a game ("Turn off during games" off), her body closes
+  # itself while it's in front (exit 42) and comes back when the desk takes
+  # the flag down.
+  if [ -n "$PET3D" ]; then
+    ( while :; do
+        $GATE "$GODOT" --path pet --display-driver x11
+        [ $? -eq 42 ] || break
+        while [ -e "$GAME_FLAG" ]; do sleep 1; done
+      done ) >/dev/null 2>&1 &
+    pet=$!
+  fi
+  # Her Live2D body (ariadne2/pet2d): idles hidden unless the Avatar "Model" names
+  # a Live2D model (and waits for Cubism Core if it isn't downloaded yet).
+  # Through XWayland like the desk, for the click-through region.
+  if [ -z "$ARIADNE2_NO_PET" ]; then
+    GDK_BACKEND=x11 python3 -m ariadne2.pet2d 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" >&2) &
+    pet2d=$!
+  fi
+  # Through XWayland: as a native Wayland window the desk sometimes kept the
+  # size KWin first gave it on the smaller monitor and refused to grow, cutting
+  # off everything past x=1920. KWin resizes X11 windows reliably.
+  GDK_BACKEND=${ARIADNE2_GDK_BACKEND:-x11} python3 -m ariadne2.desk 2> >(grep -v -e "^libEGL warning" -e "^pci id for fd" -e "^$" >&2) &
+  desk=$!
+}
+
+stop_rest() {
+  kill $desk $pet $pet2d 2>/dev/null
+  pkill -TERM -f "$PET_RE" 2>/dev/null; pkill -TERM -f "$PET2D_RE" 2>/dev/null
+  wait $desk $pet $pet2d 2>/dev/null
+}
+trap 'kill $core 2>/dev/null; stop_rest; wait $core 2>/dev/null; rm -f "$LAUNCHER"' EXIT
+trap 'exit 143' INT TERM
+
+# Until the desk or the core ends. A game in front ends the core on purpose
+# (exit 43, ariadne2/core/__main__.py, once she's finished what she was
+# doing): then everything else goes too, and all that's left of her is this
+# loop, looking every 2 s for the game's process (the flag holds it); when
+# it's gone she starts again.
+while :; do
+  start_all "$@"
+  wait -n -p ended $core $desk
+  code=$?
+  if [ "$ended" = "$core" ] && [ $code -eq 43 ]; then
+    stop_rest
+    game=$(cat "$GAME_FLAG" 2>/dev/null)
+    echo "$(date '+%F %T') launcher: a game's on; off till it's over (pid ${game:-?})"
+    if [ -n "$game" ]; then
+      while [ -d "/proc/$game" ]; do sleep 2; done
+    else
+      sleep 60                          # (no pid to go by: look again in a minute)
+    fi
+    rm -f "$GAME_FLAG"
+    echo "$(date '+%F %T') launcher: the game's over; starting"
+    continue
+  fi
+  break
+done

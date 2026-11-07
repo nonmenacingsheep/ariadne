@@ -238,6 +238,8 @@ def build_schema(personality_names: list[str] | None = None, model: str | None =
                     "Show her walking about on the desktop."))
     s.append(_entry("desktop", "quiet_fullscreen", "Quiet while fullscreen", "bool", True,
                     "No sound effects while a fullscreen window (a game) is focused. Her voice is unaffected."))
+    s.append(_entry("desktop", "game_off", "Turn off during games", "bool", True,
+                    "In a fullscreen game she shuts down, back when it closes. Off: she keeps listening."))
     s.append(_entry("desktop", "autostart", "Start when I log in", "bool", False,
                     "Open with the desktop."))
     # ---- avatar (the pet) ----

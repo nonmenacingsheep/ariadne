@@ -39,3 +39,23 @@ class IsGame(unittest.TestCase):
 
     def test_a_gone_process_is_not(self):
         self.assertFalse(game.is_game(999, self.root))
+
+
+class WatchPid(IsGame):
+    """Which process's end is the game's end (bin/ariadne2 waits on it)."""
+
+    def test_steams_reaper_not_the_game_window_nor_steam(self):
+        self.add(10, 1, "/home/r/.local/share/Steam/ubuntu12_32/steam")
+        self.add(20, 10, "reaper", "SteamLaunch", "AppId=3321460", "--", "proton", "waitforexitandrun")
+        self.add(30, 20, "S:\\steamapps\\common\\Crimson Desert\\bin64\\CrimsonDesert.exe")
+        self.assertEqual(game.watch_pid(30, self.root), 20)
+
+    def test_a_game_launcher_app_stays_open_so_its_game_is_watched(self):
+        self.add(10, 1, "/app/bin/heroic", "--no-sandbox")
+        self.add(20, 10, "/usr/bin/umu-run", "Game.exe")
+        self.add(30, 20, "C:\\Games\\Game.exe")
+        self.assertEqual(game.watch_pid(30, self.root), 20)
+
+    def test_nothing_marked_above_it_is_the_window_itself(self):
+        self.add(40, 1, "/opt/game/game.x86_64")
+        self.assertEqual(game.watch_pid(40, self.root), 40)

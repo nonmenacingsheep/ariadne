@@ -60,6 +60,22 @@ TARGET_PEAK = 0.7
 MAX_GAIN = 40.0
 
 
+
+def _build(factory, name: str, **kw):
+    """The model from the files already here: faster-whisper asks Hugging Face
+    about it first on every load otherwise (each command after an idle unload,
+    and nothing at all with the network down). Fetched only if it isn't here."""
+    try:
+        return factory(name, local_files_only=True, **kw)
+    except TypeError:
+        return factory(name, **kw)              # (a stand-in that doesn't take it)
+    except Exception as exc:
+        if "local" not in str(exc).lower() and "not found" not in str(exc).lower() and "cache" not in str(exc).lower():
+            raise
+        log.info("ears: fetching %s", name)
+        return factory(name, **kw)
+
+
 @dataclass
 class Heard:
     text: str
@@ -152,7 +168,7 @@ class Transcriber:
                 from faster_whisper import WhisperModel as factory
             where, precision = ("cpu", "int8") if name in CPU_MODELS else self.device()
             try:
-                model = factory(name, device=where, compute_type=precision)
+                model = _build(factory, name, device=where, compute_type=precision)
                 if where != "cpu":
                     # Prove it before trusting it: building the model touches none of
                     # the maths libraries; the first transcription does.
@@ -165,7 +181,7 @@ class Transcriber:
                     raise
                 log.warning("ears: GPU speech failed (%s); using the CPU", str(exc)[:100])
                 self._device = ("cpu", "int8")
-                model = factory(name, device="cpu", compute_type="int8")
+                model = _build(factory, name, device="cpu", compute_type="int8")
             self._models[name] = model
             self._used[name] = self.clock()     # a load can take seconds; idle counts from its end
             return model

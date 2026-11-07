@@ -133,6 +133,7 @@ A right-click mute on a widget is `set voice sound_<kind> false`.
 | `theme` | choice: `classic`, `liquid_glass` | `classic` | **page reads it**: the desk's look. Classic is the red cyberpunk acrylic slabs (desk.css); Liquid Glass adds `html.lg` (glass.css). Live, no restart: desk.js `setTheme` on every `settings` message; layer.py also reads it from the file at start so the page doesn't flash the other look |
 | `body` | bool | true | **pet reads it**: false hides or quits her body |
 | `quiet_fullscreen` | bool | true | **page reads it**: no sound effects while a fullscreen window is focused (voice unaffected) |
+| `game_off` | bool | true | **core reads it** on the desk's `game` message: true, she finishes what she's doing (up to 2 min) and quits with exit 43, and bin/ariadne2 waits out the game's process, then starts her; false, she stays up listening and only her widgets and body close (desk/game.py) |
 | `autostart` | bool | false | writes or removes `~/.config/autostart/ariadne2.desktop` (not run at startup) |
 
 ### avatar (the pet reads these)

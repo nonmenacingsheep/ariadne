@@ -85,11 +85,14 @@ class Layer(Gtk.Window):
     # -- a game in front -----------------------------------------------------
     # KWin reports the active window (kwin_layer.js). A game that stays in front
     # 2 s puts her to sleep: the page and its WebKit renderer close (~440 MB of
-    # the card, ~0.5 GB of RAM), the window goes, and the core is told so her
-    # body closes too. 3 s without one brings it all back, so an alt-tab and
-    # straight back doesn't rebuild everything. The core keeps listening.
+    # the card, ~0.5 GB of RAM), the window goes, and the core is told; it
+    # finishes what she's doing and quits, and bin/ariadne2 waits on the game's
+    # process (in the flag) to start her again. Back out of the game before the
+    # core has gone (3 s without one) and it all comes back as it was.
     def front(self, full: bool, pid: int) -> None:
         want = bool(full and pid and game.is_game(pid))
+        if want:
+            self._game_pid = game.watch_pid(pid)
         if want == self._front_want:
             return
         self._front_want = want
@@ -108,7 +111,7 @@ class Layer(Gtk.Window):
         log.info("a game is in front: sleeping" if on else "the game's gone: waking")
         flag = game.flag_path()
         if on:
-            flag.touch()
+            flag.write_text(str(getattr(self, "_game_pid", 0) or ""))
         else:
             flag.unlink(missing_ok=True)
         self.link.send({"t": "game", "on": on})

@@ -1320,6 +1320,7 @@ func _load_clips() -> void:
 								anim.loop_mode = Animation.LOOP_LINEAR
 							anim = _in_place(anim, String(name).begins_with("stop_"))
 						anim = _without_eyes(anim)
+						anim = _chest_as_one(anim)
 						clip_lib.add_animation(name, anim)
 						_lying_heads(name, anim)
 			src.free()
@@ -1385,6 +1386,42 @@ func _without_eyes(src: Animation) -> Animation:
 	var anim := src.duplicate(true) as Animation
 	for i in range(drop.size() - 1, -1, -1):
 		anim.remove_track(drop[i])
+	return anim
+
+
+# Some clips twist Chest one way and UpperChest straight back (getting up off
+# her stomach: about 160 degrees each). On a body with both bones that
+# cancels; Jane, Kuromoji and Shiromoji have no UpperChest, so the twist back
+# went nowhere and her torso lay turned round on the floor, then swung back
+# as she stood. So Chest takes both turns and UpperChest none: where her
+# upper chest ends up is unchanged on every body, and on one that has the bone
+# its bend comes at the one joint.
+func _chest_as_one(src: Animation) -> Animation:
+	var chest := -1
+	var upper := -1
+	for tr in src.get_track_count():
+		if src.track_get_type(tr) != Animation.TYPE_ROTATION_3D:
+			continue
+		var p := String(src.track_get_path(tr))
+		if p.ends_with(":Chest"):
+			chest = tr
+		elif p.ends_with(":UpperChest"):
+			upper = tr
+	if chest < 0 or upper < 0:
+		return src
+	var anim := src.duplicate(true) as Animation
+	var times := {}
+	for tr in [chest, upper]:
+		for k in anim.track_get_key_count(tr):
+			times[snappedf(anim.track_get_key_time(tr, k), 0.0001)] = true
+	var keys := []
+	for at in times:
+		keys.append([at, anim.rotation_track_interpolate(chest, at) * anim.rotation_track_interpolate(upper, at)])
+	for k in range(anim.track_get_key_count(chest) - 1, -1, -1):
+		anim.track_remove_key(chest, k)
+	for kv in keys:
+		anim.rotation_track_insert_key(chest, kv[0], kv[1])
+	anim.remove_track(upper)
 	return anim
 
 

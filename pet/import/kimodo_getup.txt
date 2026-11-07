@@ -5,3 +5,14 @@ getup_front_1|4|A woman lying flat on her stomach on the floor pushes herself up
 getup_back_1|5|A woman lying on her back on the floor rolls over onto her stomach, pushes herself up onto her hands and knees and stands up.|lie_idle_2:0|idle_calm_1:0
 getup_side_1|4|A woman lying curled on her side on the floor props herself up on one arm, gets her feet under her and stands up.|bed_lie_side_1:-1|idle_calm_1:0
 getup_side_2|4|A woman lying on her side on the floor with her head on her arm pushes herself up on one hand, gets her feet under her and stands up.|lie_down_1:-1|idle_calm_1:0
+# Remakes (2026-11-07, his gallery notes: getup_front_1's torso turned round
+# rising, which was pet.gd's (_chest_as_one); get_up_1 "more natural"). He
+# kept getup_front_2; _3 and _4 are out (clips_removed.txt). Slower (6 s), facing forward throughout;
+# get_up_ from her back, as people do: sit up, a knee under, stand (sitting
+# on the floor pinned a third of the way: free, the sit-up sank her through it).
+getup_front_2|6|A woman lying on her stomach propped on her elbows plants both hands under her shoulders, pushes up onto her hands and knees, sits back on her heels, then steps one foot forward and stands up, facing forward the whole time.|lie_idle_1:0|idle_calm_1:0
+getup_front_3|6|A woman lying on her stomach on the floor pushes herself up onto her hands and knees, brings one foot forward under her and rises to stand, staying facing the same way.|lie_idle_1:0|idle_calm_1:0
+getup_front_4|6|A woman lying on her stomach on the floor slowly pushes herself up to kneeling upright, pauses, then puts one foot forward and stands up, steadying herself.|lie_idle_1:0|idle_calm_1:0
+get_up_2|6|A woman lying on her back on the floor sits up, tucks her legs to one side, gets onto one knee and stands up.|lie_idle_2:0|idle_calm_1:0|floor_sit_1:0@0.35
+get_up_3|6|A woman lying on her back on the floor sits up, bends her knees, pushes off the floor with one hand and stands up.|lie_idle_2:0|idle_calm_1:0|floor_sit_1:0@0.35
+get_up_4|6|A woman lying on her back on the floor sits up with a stretch, rolls forward onto her knees and stands up, brushing off her hands.|lie_idle_2:0|idle_calm_1:0|floor_sit_1:0@0.35

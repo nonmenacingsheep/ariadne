@@ -16,7 +16,7 @@ var logging := OS.get_environment("PET_BRAIN_LOG") != ""
 # name: [cooldown seconds, needs the floor (hops down first)]
 const ACTIVITIES := {
 	"idle": [10.0, false], "wander": [35.0, false], "stretch": [120.0, false],
-	"think": [60.0, false], "explore": [40.0, true], "sit_ledge": [60.0, false], "dance": [20.0, false],
+	"think": [60.0, false], "sit_ledge": [60.0, false], "dance": [20.0, false],
 	"watch_him": [45.0, true], "find_him": [60.0, true], "cheer": [120.0, false], "follow": [90.0, true],
 	# At her furniture (room.gd, docs/PET_LIFE_PLAN.md).
 	"meditate": [240.0, true], "workout": [300.0, true], "drink": [240.0, true], "tidy": [300.0, true],
@@ -28,7 +28,7 @@ const ACTIVITIES := {
 	"episode": [150.0, true],
 	# (Gone with their clips, his pass through the gallery 2026-11-06: sitting and
 	# lying on the floor, naps, eating, reading, work, games, phones, watering,
-	# sleeping in bed, looking around.)
+	# sleeping in bed, looking around; then crouching to explore.)
 }
 var episodes := {}                         # episodes.json
 var episode_at := {}                       # episode -> when it last ran (pet.t)
@@ -393,7 +393,6 @@ func _score(a: String, on_widget: bool) -> float:
 		"stretch": return (0.2 + tired * 0.4) \
 				if _has("stretch_") else 0.0
 		"think": return 0.3
-		"explore": return (0.35 + bored * 0.6) if allow["wander"] and _has("crouch_idle_") else 0.0
 		"sit_ledge":
 			if not allow["sit_on_widgets"] or (not on_widget and _ledges().is_empty()):
 				return 0.0
@@ -442,10 +441,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 		"episode": return _episode()
 		"stretch": return [{"play": "Stretch", "for": randf_range(4, 6)}]
 		"think": return [{"play": "Idle_FoldArms", "for": randf_range(5, 10)}]
-		"explore":
-			# Off somewhere further, then down on her heels to look at something on the floor.
-			return [{"go": _spot(randf_range(2.0, 5.0))}, {"play": "Crouching", "for": randf_range(5, 9)},
-					{"play": "LookAround", "for": 4.0}]
 		"sit_ledge":
 			if on_widget:
 				return [{"play": "Sitting_Idle", "state": "sit", "for": randf_range(15, 30)}]

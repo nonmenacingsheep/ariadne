@@ -241,3 +241,5 @@ work_mouse_1
 work_think_1
 work_type_1
 workout_situp_2
+crouch_idle_1
+crouch_lookup_1

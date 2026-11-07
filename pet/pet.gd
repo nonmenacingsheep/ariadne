@@ -390,7 +390,8 @@ func _load_body(path: String) -> void:
 	var mmd := not _find_shapes(body, "Eye_Joyful").is_empty()
 	var booth := not mmd and not _find_shapes(body, "まばたき").is_empty()
 	mmd_face = mmd
-	var map: Dictionary = MMD_FACE if mmd else (BOOTH_FACE if booth else FACE)
+	var map: Dictionary = (MMD_FACE if mmd else (BOOTH_FACE if booth else FACE)).duplicate()
+	map.merge(outfits.get("face", {}), true)        # her own looks for this body (a cat's, Shiromoji's)
 	face = {}
 	face_slots = {}
 	raw_shapes = {}
@@ -698,14 +699,16 @@ func _add_jiggle() -> void:
 		squish.firm = outfit_firm
 	tail_chain = -1
 	for i in chains.size():
-		if chains[i][0] == "Tail_0":
+		if chains[i][0] in ["Tail_0", "Tail_1"]:
 			tail_chain = i
 	ear_bones.clear()
-	for e in ["Ear.L", "Ear.R"]:
-		var eb := skel.find_bone(e)
-		if eb >= 0:
-			ear_bones.append([eb, skel.get_bone_rest(eb).basis.get_rotation_quaternion()])
-	for i in 8:
+	for pair in [["Ear.L", "Ear.R"], ["Kemomimi_L", "Kemomimi_R"]]:      # Jane's, a cat's (the Booth avatars)
+		if ear_bones.is_empty() and pair.all(func(e): return skel.find_bone(e) >= 0):
+			for e in pair:
+				var eb := skel.find_bone(e)
+				ear_bones.append([eb, skel.get_bone_rest(eb).basis.get_rotation_quaternion()])
+	var first := 0 if skel.find_bone("Tail_0") >= 0 else 1     # Jane's dragon tail starts at 0, a cat's at 1
+	for i in range(first, first + 8):
 		var b := skel.find_bone("Tail_%d" % i)
 		if b < 0:
 			break
@@ -776,15 +779,19 @@ func _tail_frame() -> void:
 	var up_k := clampf(tail_up, 0.0, 1.0)
 	wrap_k = lerpf(wrap_k, 1.0 if state in ["rest", "sit", "sleep"] else 0.0, 0.03)
 	if jiggle and tail_chain >= 0:
-		jiggle.set_gravity(tail_chain, lerpf(0.55, 0.08, up_k))
-		jiggle.set_stiffness(tail_chain, lerpf(0.42, 0.6, up_k))       # held up loosely: its own springs keep moving
+		# (a body's own: a cat's light tail holds itself up, stiffer than the dragon's)
+		var tg: Array = outfits.get("tail_gravity", [0.55, 0.08])
+		var ts: Array = outfits.get("tail_stiffness", [0.42, 0.6])
+		jiggle.set_gravity(tail_chain, lerpf(float(tg[0]), float(tg[1]), up_k))
+		jiggle.set_stiffness(tail_chain, lerpf(float(ts[0]), float(ts[1]), up_k))       # held up loosely: its own springs keep moving
 	var lift_k := 0.25 if state in ["sit", "sleep", "rest"] else 1.0
 	for i in tail_bones.size():
 		# (lying, a slight downward bend: it rests on the floor)
 		# (the root angled back a little first, so it meets the floor clear of her heels)
 		var down := (0.12 + 0.05 * sin(t * 0.7 * pace - i * 0.9)) * lift_k * (1.0 if i < 3 else 0.35) \
 				+ float([-0.3, -0.12, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0][mini(i, 7)])
-		var up: float = TAIL_UP[mini(i, TAIL_UP.size() - 1)] + 0.07 * sin(t * 0.9 * pace - i * 0.9)   # up and back, tip curling over
+		var shape: Array = outfits.get("tail_up", TAIL_UP)     # (a body's own: a cat's upright tail, hooked at the tip)
+		var up: float = float(shape[mini(i, shape.size() - 1)]) + 0.07 * sin(t * 0.9 * pace - i * 0.9)   # up and back, tip curling over
 		var curl: float = lerpf(down, -up, tail_up) + tail_swing.y * SWING_FALL[mini(i, 7)]
 		var side := (amp if i == 0 else 0.05 + 0.05 * happy) * sin(t * speed * pace - i * 0.6)
 		if i < 3:
@@ -809,7 +816,8 @@ func _ear_frame(happy: float) -> void:
 	for e in 2:
 		if t > ear_next[e] and state != "sleep":
 			ear_flick_at[e] = t
-			ear_next[e] = t + (randf_range(0.5, 2.0) / (0.5 + happy) if happy > 0.25 else randf_range(6.0, 15.0))
+			var calm_gap := Vector2(3.0, 8.0) if outfits.get("cat", false) else Vector2(6.0, 15.0)    # a cat's twitch a lot
+			ear_next[e] = t + (randf_range(0.5, 2.0) / (0.5 + happy) if happy > 0.25 else randf_range(calm_gap.x, calm_gap.y))
 			if randf() < 0.35:                 # both together
 				ear_flick_at[1 - e] = t
 				ear_next[1 - e] = maxf(ear_next[1 - e], t + 0.5)
@@ -2589,6 +2597,7 @@ func _face_frame(delta: float) -> void:
 	_shape("wince", wince)
 	if state != "sleep":
 		_alive_face(delta)
+		_rest_face()
 	_face_apply()
 
 
@@ -2608,6 +2617,23 @@ func _body_face(delta: float) -> void:
 	var down: bool = state == "tumble" and ragdoll and ragdoll.landed
 	flung = lerpf(flung, 1.0 if air else 0.0, clampf(delta * (12.0 if air else 4.0), 0.0, 1.0))
 	wince = lerpf(wince, 1.0 if down else 0.0, clampf(delta * 6.0, 0.0, 1.0))
+
+
+# A body's resting look (models/<name>.json "rest_face": Shiromoji's slightly
+# upturned cat eyes), and for a cat ("cat": true) the slow blink cats give
+# someone they trust: every half minute or so when she's settled, her eyes
+# close slowly, stay a moment, and open.
+var slow_blink_at := 20.0
+func _rest_face() -> void:
+	for sh in outfits.get("rest_face", {}):
+		_raw(sh, float(outfits["rest_face"][sh]))
+	if not outfits.get("cat", false):
+		return
+	if t > slow_blink_at + 2.0:
+		slow_blink_at = t + randf_range(20.0, 50.0)
+	var u := (t - slow_blink_at) / 1.8
+	if u > 0.0 and u < 1.0 and state in ["idle", "rest", "sit", "dance"] and not speaking:
+		_shape("blink", smoothstep(0.0, 0.35, u) * (1.0 - smoothstep(0.65, 1.0, u)))
 
 
 # Her face is never quite still: brows, lids and the corners of her mouth

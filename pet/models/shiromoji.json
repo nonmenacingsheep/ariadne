@@ -1,5 +1,5 @@
 {
-	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing). tone: albedo times her colours, light and fill times the sun and fill (her near-white skin washed out). Her feet arch into her heeled sandals (Body_2/Heel; they were flat, floating over the sole).",
+	"_doc": "Her outfits for this body (pet.gd _dress): each shows these meshes and hides every other mesh named in any outfit; shapes are blend shapes it sets; firm: clothes that hold her chest in (no free swing). tone: albedo times her colours, light and fill times the sun and fill (her near-white skin washed out). Her feet arch into her heeled sandals (Body_2/Heel; they were flat, floating over the sole). cat: a cat's ways (ears twitch often, the slow blink). tail_up: her tail's bend per segment when raised. rest_face: shapes always on a little. face: her own looks over the body's usual ones.",
 	"default": "Sweater",
 	"outfits": {
 		"Sweater": {
@@ -12,7 +12,18 @@
 			"firm": false,
 			"shapes": {
 				"Body_2/Sweater": 1.0,
-				"Sweater/Sweater.001": 1.0
+				"Sweater/Sweater.001": 1.0,
+				"Body_2/!_Shrink_UpperLeg_1_L": 1.0,
+				"Body_2/!_Shrink_UpperLeg_1_R": 1.0,
+				"Body_2/!_Shrink_UpperLeg_2_L": 1.0,
+				"Body_2/!_Shrink_UpperLeg_2_R": 1.0,
+				"Body_2/!_Shrink_Knee_L": 1.0,
+				"Body_2/!_Shrink_Knee_R": 1.0,
+				"Body_2/!_Shrink_LowerLeg_1_L": 1.0,
+				"Body_2/!_Shrink_LowerLeg_1_R": 1.0,
+				"Body_2/!_Shrink_LowerLeg_2_L": 1.0,
+				"Body_2/!_Shrink_LowerLeg_2_R": 1.0,
+				"Body_2/!_Shrink_Chest_Sweater": 1.0
 			}
 		},
 		"Swimsuit": {
@@ -39,6 +50,83 @@
 	},
 	"shapes": {
 		"Body_2/Sweater": 0.0,
-		"Body_2/Heel": 1.0
-	}
+		"Body_2/Heel": 1.0,
+		"Body_2/!_Shrink_UpperLeg_1_L": 0.0,
+		"Body_2/!_Shrink_UpperLeg_1_R": 0.0,
+		"Body_2/!_Shrink_UpperLeg_2_L": 0.0,
+		"Body_2/!_Shrink_UpperLeg_2_R": 0.0,
+		"Body_2/!_Shrink_Knee_L": 0.0,
+		"Body_2/!_Shrink_Knee_R": 0.0,
+		"Body_2/!_Shrink_LowerLeg_1_L": 0.0,
+		"Body_2/!_Shrink_LowerLeg_1_R": 0.0,
+		"Body_2/!_Shrink_LowerLeg_2_L": 0.0,
+		"Body_2/!_Shrink_LowerLeg_2_R": 0.0,
+		"Body_2/!_Shrink_Chest_Sweater": 0.0
+	},
+	"cat": true,
+	"tail_up": [
+		1.7,
+		0.4,
+		-0.25,
+		-0.6
+	],
+	"rest_face": {
+		"Tsurime_1": 0.35
+	},
+	"face": {
+		"joy": {
+			"笑い": 0.8,
+			"ω": 0.9,
+			"にこり": 0.5
+		},
+		"fun": {
+			"じと目": 0.3,
+			"ω": 0.8
+		},
+		"smirk": {
+			"ω": 0.7,
+			"じと目": 0.5,
+			"にやり": 0.3
+		},
+		"bored": {
+			"じと目": 1.0,
+			"ω": 0.3
+		},
+		"sleepy": {
+			"まばたき": 0.55,
+			"ω": 0.4
+		},
+		"hearts": {
+			"はぁと": 1.0,
+			"ω": 0.8
+		},
+		"blush": {
+			"なごみ": 0.5,
+			"ω": 0.6
+		},
+		"thoughtful": {
+			"じと目": 0.4,
+			"∧": 0.4
+		},
+		"angry": {
+			"怒り": 1.0,
+			"ｷﾘｯ": 0.8,
+			"▲": 0.6,
+			"瞳小": 0.3
+		},
+		"surprised": {
+			"びっくり": 1.0,
+			"上": 0.8,
+			"□": 0.5,
+			"瞳小": 0.5
+		}
+	},
+	"tail_gravity": [
+		0.3,
+		0.0
+	],
+	"tail_stiffness": [
+		0.6,
+		2.2
+	]
 }

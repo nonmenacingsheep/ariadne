@@ -10,7 +10,7 @@ import os
 import subprocess
 import sys
 
-K = "/var/mnt/games/AI/Kimodo"
+K = os.environ.get("KIMODO_DIR", "/var/mnt/games/AI/Kimodo")   # (the author's; see CLAUDE.md)
 OUT = f"{K}/clips/aries"
 CHECK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kimodo_check.py")
 for line in open(sys.argv[1]):

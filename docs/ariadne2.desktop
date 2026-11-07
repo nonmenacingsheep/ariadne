@@ -1,3 +1,5 @@
+# The author's own launcher (run in a distrobox named "claude"). install.sh writes one
+# for your machine to ~/.local/share/applications; this is only an example.
 [Desktop Entry]
 Type=Application
 Name=Ariadne 2

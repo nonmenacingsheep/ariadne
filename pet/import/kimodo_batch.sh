@@ -7,11 +7,11 @@
 # The Llama text encoder runs on the CPU (it needs ~17 GB VRAM on the GPU).
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd); PET=$(dirname "$HERE")
-K=/var/mnt/games/AI/Kimodo; OUT=$K/clips/aries; mkdir -p "$OUT"
+K=${KIMODO_DIR:-/var/mnt/games/AI/Kimodo}; OUT=$K/clips/aries; mkdir -p "$OUT"
 LIST=${1:-$HERE/kimodo_prompts.txt}; SEEDS=${2:-1}
 # (pet/import/kimodo_check.py checks stance clips; kimodo_keyed.py re-makes
 # ones that need a pinned start or end pose.)
-export HF_HOME=/var/mnt/games/AI/hf TEXT_ENCODER_DEVICE=cpu
+export HF_HOME=${HF_HOME:-/var/mnt/games/AI/hf} TEXT_ENCODER_DEVICE=cpu
 GATE=$HOME/.local/bin/godot-gate.sh; [ -x "$GATE" ] || GATE=
 # --pack: skip generating, just (re)cut loops and stops and pack what's there.
 PACK_ONLY=0; [ "${1:-}" = "--pack" ] && PACK_ONLY=1
@@ -57,5 +57,5 @@ $GATE blender -b --python "$HERE/bvh_to_glb.py" -- "$PET/assets/anims/kimodo/kim
   $(ls "$OUT"/*.bvh "$LOOPS"/*.bvh | grep -v '_try\.bvh$' | grep -Ev "${REMOVED:-^$}")
 # (kimodo.glb.import, committed, holds the retarget settings)
 rm -f "$PET"/.godot/imported/kimodo.glb-*
-$GATE /var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64 --headless --path "$PET" --import >/dev/null 2>&1
+$GATE ${ARIADNE2_GODOT:-/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64} --headless --path "$PET" --import >/dev/null 2>&1
 echo "done: $PET/assets/anims/kimodo/kimodo.glb (takes on disk: $(ls "$OUT"/*.bvh "$LOOPS"/*.bvh | wc -l); out: pet/clips_removed.txt)"

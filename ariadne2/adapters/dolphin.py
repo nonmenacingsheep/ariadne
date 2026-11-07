@@ -200,7 +200,7 @@ class DolphinAdapter(Adapter):
         path = {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
         self.verbs = [
             Verb("open", "Show a file or folder in Dolphin (a file is shown selected in its folder). Takes a "
-                 "path under his home or /var/mnt/games.", path, self._open_verb, "open"),
+                 "path under his home or a mounted drive.", path, self._open_verb, "open"),
             Verb("find", "Search file and folder names under his home and the games drive (all words must "
                  "appear in the name; case ignored). Returns up to 30 paths as text. 'where' narrows it: a "
                  "folder path, 'home' or 'games'.",

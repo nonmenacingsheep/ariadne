@@ -93,6 +93,16 @@ def history_items(entries: list[dict]) -> list[dict]:
     return items[-HISTORY:]
 
 
+
+
+def projects_root(home: Path) -> Path:
+    """Where his projects are, for the Claude widget's folder list: ARIADNE2_PROJECTS,
+    else ~/Claude Projects (the author's), else his home."""
+    env = os.environ.get("ARIADNE2_PROJECTS")
+    if env:
+        return Path(env).expanduser()
+    return home / "Claude Projects" if (home / "Claude Projects").is_dir() else home
+
 class LiveClaude:
     def __init__(self, publish, *, home: Path | None = None, projects: Path | None = None,
                  exe: str | None = None, spawn=asyncio.create_subprocess_exec) -> None:
@@ -106,7 +116,7 @@ class LiveClaude:
         self._stderr: list[str] = []
         self.state = "idle"
         self.session: str | None = None
-        self.cwd = str(self.home / "Claude Projects")
+        self.cwd = str(projects_root(self.home))
         self.mode = "default"
         self.model = ""
         self.cost = 0.0
@@ -126,7 +136,7 @@ class LiveClaude:
                        modes=list(MODES), models=list(MODELS))
 
     def folders(self) -> list[str]:
-        root = self.home / "Claude Projects"
+        root = projects_root(self.home)
         try:
             out = [str(p) for p in sorted(root.iterdir()) if p.is_dir() and not p.name.startswith(".")]
         except OSError:

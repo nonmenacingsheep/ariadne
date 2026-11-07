@@ -19,6 +19,12 @@ from .. import protocol
 
 log = logging.getLogger("ariadne2.adapters")
 
+# Where this machine mounts its other drives: an atomic desktop (Bazzite,
+# Silverblue) puts them under /var/mnt, most others under /mnt.
+# ARIADNE2_MOUNTS says otherwise. (Removable ones under /run/media are found separately.)
+import os as _os
+MOUNTS = _os.environ.get("ARIADNE2_MOUNTS") or ("/var/mnt" if _os.path.isdir("/var/mnt") else "/mnt")
+
 NOTE_MAX = 80                    # the failure note is one line in the widget
 
 # (id, verb, control, announced) of the verb running in this task; Adapter.progress reads it.

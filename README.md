@@ -106,6 +106,10 @@ commits are left alone. Turn it off under Settings > General.
 | `ARIADNE2_PYTHON` | The Python for the core. Default: `.venv`. |
 | `ARIADNE2_GODOT` | The Godot 4 binary for the 3D body. Default: `godot4` / `godot` on your PATH. |
 | `ARIADNE2_NO_PET=1` | Start without a body. |
+| `ARIADNE2_BLENDER` | Blender, for `.blend` bodies in the drop folder. Default: `blender` on your PATH. |
+| `ARIADNE2_MODELS_DIR` | The drop folder for new bodies. Default: `~/Aries Models`. |
+| `ARIADNE2_MOUNTS` | Where your other drives are mounted (Files and System widgets). Default: `/var/mnt` if it exists, else `/mnt`. |
+| `ARIADNE2_PROJECTS` | The folder of projects the Claude widget offers. Default: `~/Claude Projects` if it exists, else home. |
 
 ## Layout
 

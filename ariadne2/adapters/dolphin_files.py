@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-MOUNTS = "/var/mnt"                     # the games drive and friends live under here
+from .base import MOUNTS  # noqa: E402,F401  (the games drive and friends live under here)
 DOLPHIN_AGENT = "org.kde.dolphin"       # KActivities' name for Dolphin
 PARTIAL = (".part", ".crdownload", ".download", ".tmp", ".partial", ".!qb", ".opdownload", ".aria2")
 
@@ -127,7 +127,7 @@ class Guard:
         real = Path(os.path.realpath(p.parent)) / p.name if p != p.parent else p
         root = next((r for r in self.roots if real == r or r in real.parents), None)
         if root is None:
-            raise PathRefused(f"{real} is outside your home folder and /var/mnt, so I won't touch it")
+            raise PathRefused(f"{real} is outside your home folder and {self.mounts}, so I won't touch it")
         rel = real.relative_to(root).parts
         if any(sensitive_name(part) for part in rel):
             raise PathRefused(f"{self.shorten(real)} looks like it holds credentials or keys; "

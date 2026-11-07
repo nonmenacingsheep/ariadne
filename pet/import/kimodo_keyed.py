@@ -28,7 +28,7 @@ from scipy.spatial.transform import Rotation as R
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from kimodo_check import pinned_ok  # noqa: E402
 
-K = "/var/mnt/games/AI/Kimodo"
+K = os.environ.get("KIMODO_DIR", "/var/mnt/games/AI/Kimodo")   # (the author's; see CLAUDE.md)
 OUT = f"{K}/clips/aries"
 TRIES = 3
 

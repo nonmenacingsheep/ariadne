@@ -24,7 +24,7 @@ LOW_GB, LOW_PCT = 10.0, 5.0     # a disk is low under either
 CLEAR_GB, CLEAR_PCT = 11.0, 5.5  # ...and counts as recovered above both (so it can't flap at the line)
 HOT_PCT, HOT_CLEAR, HOT_SECONDS = 90.0, 80.0, 30.0
 GIB = 1024 ** 3
-MOUNTS = "/var/mnt"
+from .base import MOUNTS  # noqa: E402  (/var/mnt here; /mnt on most machines)
 
 
 def parse_gpu(text: str) -> tuple[float | None, float | None]:

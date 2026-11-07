@@ -137,11 +137,7 @@ class BodyModels:
             await self.add(p)
 
     def _three_d_ready(self) -> bool:
-        import shutil
-        godot = (os.environ.get("ARIADNE2_GODOT") or shutil.which("godot4") or shutil.which("godot")
-                 or (REPO / "tools" / "godot" / "godot").exists()
-                 or Path("/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64").exists())
-        return (REPO / "pet" / "models" / "aries.vrm").exists() and bool(godot)
+        return (REPO / "pet" / "models" / "aries.vrm").exists() and bool(body3d.godot())
 
     def core_status(self) -> str:
         return "Installed" if CORE.exists() else "Not installed"

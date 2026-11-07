@@ -25,9 +25,9 @@ import folder_paths
 HERE = os.path.dirname(os.path.realpath(__file__))
 PET = os.path.dirname(HERE)
 IMPORT = os.path.join(PET, "import")
-K = "/var/mnt/games/AI/Kimodo"
+K = os.environ.get("KIMODO_DIR", "/var/mnt/games/AI/Kimodo")   # (the author's; see CLAUDE.md)
 CLIPS = f"{K}/clips/aries"
-GODOT = "/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64"
+GODOT = os.environ.get("ARIADNE2_GODOT", "/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64")
 GATE = os.path.expanduser("~/.local/bin/godot-gate.sh")
 ENCODER_URL = "http://127.0.0.1:9550/"
 ENCODER_IDLE = 20 * 60
@@ -72,7 +72,7 @@ def _ensure_encoder(pbar) -> None:
     _encoder["used"] = time.time()
     if _encoder_up():
         return
-    env = dict(os.environ, HF_HOME="/var/mnt/games/AI/hf", TEXT_ENCODER_DEVICE="cpu", OMP_NUM_THREADS="6",
+    env = dict(os.environ, HF_HOME=os.environ.get("HF_HOME", "/var/mnt/games/AI/hf"), TEXT_ENCODER_DEVICE="cpu", OMP_NUM_THREADS="6",
                GRADIO_SERVER_NAME="127.0.0.1")
     log = open(f"{K}/clips/encoder.log", "w")
     _encoder["proc"] = subprocess.Popen([f"{K}/.venv/bin/kimodo_textencoder"], env=env, stdout=log, stderr=log)

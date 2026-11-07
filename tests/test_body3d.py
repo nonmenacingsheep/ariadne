@@ -170,8 +170,6 @@ class FileTests(unittest.TestCase):
             # A .blend's outfits (avatar_export.py --outfits) are its Outfit choices.
             (tmp / "mika" / "mika.json").write_text(json.dumps({"name": "Mika v2", "default": "Sweater",
                                                                  "outfits": {"Sweater": {}, "Swimsuit": {}}}))
-            with mock.patch.object(settings, "PET_MODELS", tmp.parent / "nowhere"):
-                pass
             with mock.patch.object(settings, "PET_MODELS", tmp.parent), mock.patch.object(B, "DROPIN", tmp):
                 (tmp.parent / "dropin").mkdir(exist_ok=True)
                 (tmp.parent / "dropin" / "mika").mkdir(exist_ok=True)

@@ -157,7 +157,6 @@ mat_plank_src_1
 mat_sit_lie_1
 mat_toes_1
 mat_warmup_1
-meditate_1
 nap_1
 nod_1
 nose_sneeze_1

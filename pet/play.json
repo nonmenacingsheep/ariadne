@@ -1,80 +1,211 @@
 {
-  "_doc": [
-    "Her interactions (docs/PET_PLAY_PLAN.md), read by play.gd.",
-    "kind: you (his gestures set it off), solo / glass (her brain picks them), desk (his desktop's events).",
-    "clips: [clip or prefix, weight or feeling] like pet.gd ROLES. face: a mood or look for its length. emote: above her head.",
-    "gain: needs and moods it moves (life.gd). cool: seconds before it can happen again.",
-    "weight: how much her brain likes it (a number or a feeling), for solo / thing / glass.",
-    "glass: walks up to the glass first.",
-    "needs: night | day | music | quiet: when it can happen.",
-    "mark: [heart | fog | hand | dot, bone, when] something left on the glass where that bone is, that far into the clip.",
-    "widget: true (any) or a widget's name: she goes behind it on the glass first (hiding, peeking, reading)."
-  ],
-
-  "pat":       {"kind": "you", "clips": [["play_pat_", 1.0]], "face": "joy", "emote": "heart", "gain": {"affection": 0.05}, "cool": 3},
-  "bonk":      {"kind": "you", "clips": [["play_bonk_1", "sorrow"], ["play_bonk_2", "joy"]], "face": "surprised", "emote": "anger", "gain": {"affection": 0.01}, "cool": 1.5},
-  "cheek":     {"kind": "you", "clips": [["play_cheek_", "shy"], ["play_boop_", "joy"]], "face": "blush", "emote": "heart", "gain": {"affection": 0.04}, "cool": 1.5},
-  "tickle":    {"kind": "you", "clips": [["play_tickle_", 1.0]], "face": "joy", "emote": "note", "gain": {"fun": 0.08, "affection": 0.03}, "cool": 2.5},
-  "highfive":  {"kind": "you", "clips": [["play_highfive_", 1.0]], "face": "joy", "emote": "star", "gain": {"fun": 0.04, "affection": 0.03}, "cool": 1.5},
-  "holdhand":  {"mark": ["hand", "RightHand", 0.35], "kind": "you", "clips": [["play_holdhand_", 1.0]], "face": "hearts", "emote": "heart", "gain": {"affection": 0.08}, "cool": 4},
-  "feet":      {"kind": "you", "clips": [["play_feet_", 1.0]], "face": "surprised", "emote": "exclaim", "cool": 1.5},
-  "hug":       {"mark": ["fog", "Head", 0.45], "kind": "you", "clips": [["play_hug_glass_", 1.0]], "face": "hearts", "emote": "heart", "gain": {"affection": 0.1}, "cool": 4},
-  "joy_jump":  {"kind": "you", "clips": [["play_joy_jump_", 1.0], ["cheer_", 0.5]], "face": "stars", "emote": "star", "gain": {"fun": 0.05}, "cool": 2},
-  "twirl":     {"kind": "you", "clips": [["play_twirl_", 1.0]], "face": "joy", "emote": "note", "cool": 1.5},
-  "dizzy":     {"kind": "you", "clips": [["play_dizzy_", 1.0]], "face": "surprised", "emote": "dizzy", "gain": {"fun": 0.03}, "cool": 30},
-  "shaken":    {"kind": "you", "clips": [["play_dizzy_", 1.0]], "face": "angry", "emote": "anger", "gain": {"affection": -0.03}, "cool": 5},
-  "glare":     {"kind": "you", "clips": [["play_glare_", 1.0]], "face": "angry", "emote": "anger", "cool": 5},
-  "wave_back": {"kind": "you", "clips": [["play_wave_back_", 1.0], ["wave_", 0.5]], "face": "joy", "gain": {"affection": 0.03}, "cool": 20},
-  "touch":     {"mark": ["dot", "RightHand", 0.55], "kind": "you", "clips": [["play_touch_", 1.0]], "face": "joy", "emote": "question", "gain": {"affection": 0.03}, "cool": 120},
-  "chase":     {"kind": "you", "clips": [["play_chase_", 1.0]], "face": "stars", "emote": "exclaim", "gain": {"fun": 0.05}, "cool": 120},
-  "search":    {"kind": "you", "clips": [["play_search_", 1.0]], "emote": "question", "cool": 60},
-  "huff":      {"kind": "you", "clips": [["play_huff_", 1.0]], "face": "angry", "emote": "anger", "cool": 6},
-  "listen":    {"kind": "you", "clips": [["play_listen_", 1.0], ["nod_", 0.4]], "cool": 0},
-  "knock":     {"mark": ["dot", "RightHand", 0.35], "kind": "you", "clips": [["play_knock_", 1.0]], "emote": "question", "glass": true, "cool": 300},
-  "hello":     {"kind": "you", "clips": [["play_hello_", 1.0], ["wave_", 0.4]], "face": "stars", "emote": "heart", "gain": {"affection": 0.06}, "cool": 120},
-  "morning":   {"kind": "you", "clips": [["play_morning_", 1.0]], "face": "joy", "emote": "sun", "cool": 3600},
-  "goodnight": {"kind": "you", "clips": [["play_night_", 1.0]], "face": "sleepy", "emote": "zzz", "cool": 3600},
-
-  "hum":        {"kind": "solo", "clips": [["solo_hum_", 1.0]], "emote": "note", "weight": "joy", "gain": {"fun": 0.03}, "cool": 120},
-  "skip":       {"kind": "solo", "clips": [["solo_skip_", 1.0]], "face": "joy", "weight": "light", "gain": {"fun": 0.04}, "cool": 120},
-  "cartwheel":  {"kind": "solo", "clips": [["solo_cartwheel_", 1.0]], "face": "stars", "weight": "light", "gain": {"fun": 0.05, "energy": -0.02}, "cool": 120},
-  "handstand":  {"kind": "solo", "clips": [["solo_handstand_", 1.0]], "face": "joy", "weight": 0.3, "gain": {"fun": 0.05}, "cool": 180},
-  "box":        {"kind": "solo", "clips": [["solo_box_", 1.0]], "weight": "angry", "gain": {"fitness": 0.03, "energy": -0.02}, "cool": 120},
-  "yoga":       {"kind": "solo", "clips": [["solo_yoga_", 1.0]], "weight": 0.35, "gain": {"energy": 0.01}, "cool": 240},
-  "sneeze":     {"kind": "solo", "clips": [["solo_sneeze_", 1.0]], "emote": "drop", "weight": 0.08, "cool": 600},
-  "hiccup":     {"kind": "solo", "clips": [["solo_hiccup_", 1.0]], "emote": "exclaim", "weight": 0.06, "cool": 900},
-  "nails":      {"kind": "solo", "clips": [["solo_nails_", 1.0]], "weight": "bored", "cool": 120},
-  "hair":       {"kind": "solo", "clips": [["solo_hair_", 1.0]], "weight": 0.4, "glass": true, "cool": 120},
-  "shoe":       {"kind": "solo", "clips": [["solo_shoe_", 1.0]], "weight": 0.15, "cool": 600},
-  "airguitar":  {"kind": "solo", "clips": [["solo_airguitar_", 1.0]], "face": "stars", "weight": "light", "needs": "music", "gain": {"fun": 0.06}, "cool": 120},
-  "practice":   {"kind": "solo", "clips": [["solo_practice_", 1.0]], "weight": 0.35, "gain": {"fun": 0.03}, "cool": 120},
-  "rps":        {"kind": "solo", "clips": [["solo_rps_", 1.0]], "face": "joy", "weight": "bored", "gain": {"fun": 0.03}, "cool": 120},
-  "spin":       {"kind": "solo", "clips": [["solo_spin_", 1.0]], "emote": "dizzy", "weight": "light", "gain": {"fun": 0.04}, "cool": 120},
-  "sigh":       {"kind": "solo", "clips": [["solo_sigh_", 1.0]], "emote": "drop", "weight": "sorrow", "cool": 120},
-  "pout":       {"kind": "solo", "clips": [["solo_pout_", 1.0]], "face": "angry", "weight": "lonely", "cool": 120},
-  "giggle":     {"kind": "solo", "clips": [["solo_giggle_", 1.0]], "face": "joy", "weight": "joy", "cool": 120},
-  "speck":      {"kind": "solo", "clips": [["solo_speck_", 1.0]], "emote": "question", "weight": 0.25, "glass": true, "cool": 300},
-  "floor_draw": {"kind": "solo", "clips": [["solo_floor_draw_", 1.0]], "weight": "bored", "cool": 120},
-  "tightrope":  {"kind": "solo", "clips": [["solo_tightrope_", 1.0]], "weight": 0.3, "cool": 120},
-  "salute":     {"kind": "solo", "clips": [["solo_salute_", 1.0]], "face": "joy", "weight": 0.15, "cool": 300},
-  "pebble":     {"kind": "solo", "clips": [["solo_pebble_", 1.0]], "weight": "bored", "cool": 120},
-  "shiver":     {"kind": "solo", "clips": [["solo_shiver_", 1.0]], "emote": "drop", "weight": 0.1, "needs": "night", "cool": 600},
-  "side_stretch": {"kind": "solo", "clips": [["solo_side_stretch_", 1.0]], "weight": "tired", "cool": 120},
-  "idea":       {"kind": "solo", "clips": [["solo_idea_", 1.0]], "emote": "idea", "weight": 0.3, "cool": 120},
-  "sway_dance": {"kind": "solo", "clips": [["solo_sway_dance_", 1.0]], "emote": "note", "weight": "joy", "needs": "music", "cool": 120},
-
-  "lean":       {"mark": ["fog", "Head", 0.5], "kind": "glass", "clips": [["glass_lean_", 1.0]], "weight": "bored", "glass": true, "cool": 120},
-  "face_glass": {"mark": ["fog", "Head", 0.35], "kind": "glass", "clips": [["glass_face_", 1.0]], "face": "joy", "weight": "lonely", "glass": true, "cool": 120},
-  "fog":        {"mark": ["heart", "Head", 0.4], "kind": "glass", "clips": [["glass_fog_", 1.0]], "face": "joy", "weight": 0.45, "glass": true, "cool": 180},
-  "tap":        {"mark": ["dot", "RightHand", 0.45], "widget": true, "kind": "glass", "clips": [["glass_tap_", 1.0]], "weight": 0.2, "glass": true, "cool": 120},
-  "peek":       {"widget": true, "kind": "glass", "clips": [["glass_peek_", 1.0], ["glass_hide_", 0.6]], "face": "joy", "weight": "light", "glass": true, "cool": 120},
-  "read_glass": {"widget": "chat", "kind": "glass", "clips": [["glass_read_", 1.0]], "weight": 0.3, "glass": true, "cool": 120},
-  "knock_glass":{"mark": ["dot", "RightHand", 0.35], "kind": "glass", "clips": [["play_knock_", 1.0]], "weight": "lonely", "glass": true, "cool": 240},
-
-  "music_on":   {"kind": "desk", "clips": [["desk_bob_", 1.0]], "emote": "note", "cool": 30},
-  "music_off":  {"kind": "desk", "clips": [["desk_shrug_", 1.0]], "emote": "drop", "cool": 30},
-  "new_song":   {"kind": "desk", "clips": [["glass_point_", 1.0], ["desk_bob_", 0.5]], "emote": "note", "cool": 60},
-  "startle":    {"kind": "desk", "clips": [["desk_startle_", 1.0]], "emote": "exclaim", "cool": 60},
-  "wince":      {"kind": "desk", "clips": [["desk_wince_", 1.0]], "emote": "drop", "cool": 5},
-  "watch":      {"kind": "desk", "clips": [["desk_watch_", 1.0], ["glass_point_", 0.5]], "cool": 30}
+	"_doc": [
+		"Her interactions (docs/PET_PLAY_PLAN.md), read by play.gd.",
+		"kind: you (his gestures set it off), solo / glass (her brain picks them), desk (his desktop's events).",
+		"clips: [clip or prefix, weight or feeling] like pet.gd ROLES. face: a mood or look for its length. emote: above her head.",
+		"gain: needs and moods it moves (life.gd). cool: seconds before it can happen again.",
+		"weight: how much her brain likes it (a number or a feeling), for solo / thing / glass.",
+		"glass: walks up to the glass first.",
+		"needs: night | day | music | quiet: when it can happen.",
+		"mark: [heart | fog | hand | dot, bone, when] something left on the glass where that bone is, that far into the clip.",
+		"widget: true (any) or a widget's name: she goes behind it on the glass first (hiding, peeking, reading)."
+	],
+	"joy_jump": {
+		"kind": "you",
+		"clips": [
+			[
+				"play_joy_jump_",
+				1.0
+			],
+			[
+				"cheer_",
+				0.5
+			]
+		],
+		"face": "stars",
+		"emote": "star",
+		"gain": {
+			"fun": 0.05
+		},
+		"cool": 2
+	},
+	"wave_back": {
+		"kind": "you",
+		"clips": [
+			[
+				"wave_",
+				0.5
+			]
+		],
+		"face": "joy",
+		"gain": {
+			"affection": 0.03
+		},
+		"cool": 20
+	},
+	"knock": {
+		"mark": [
+			"dot",
+			"RightHand",
+			0.35
+		],
+		"kind": "you",
+		"clips": [
+			[
+				"play_knock_",
+				1.0
+			]
+		],
+		"emote": "question",
+		"glass": true,
+		"cool": 300
+	},
+	"hello": {
+		"kind": "you",
+		"clips": [
+			[
+				"wave_",
+				0.4
+			]
+		],
+		"face": "stars",
+		"emote": "heart",
+		"gain": {
+			"affection": 0.06
+		},
+		"cool": 120
+	},
+	"skip": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_skip_",
+				1.0
+			]
+		],
+		"face": "joy",
+		"weight": "light",
+		"gain": {
+			"fun": 0.04
+		},
+		"cool": 120
+	},
+	"box": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_box_",
+				1.0
+			]
+		],
+		"weight": "angry",
+		"gain": {
+			"fitness": 0.03,
+			"energy": -0.02
+		},
+		"cool": 120
+	},
+	"nails": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_nails_",
+				1.0
+			]
+		],
+		"weight": "bored",
+		"cool": 120
+	},
+	"airguitar": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_airguitar_",
+				1.0
+			]
+		],
+		"face": "stars",
+		"weight": "light",
+		"needs": "music",
+		"gain": {
+			"fun": 0.06
+		},
+		"cool": 120
+	},
+	"tightrope": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_tightrope_",
+				1.0
+			]
+		],
+		"weight": 0.3,
+		"cool": 120
+	},
+	"salute": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_salute_",
+				1.0
+			]
+		],
+		"face": "joy",
+		"weight": 0.15,
+		"cool": 300
+	},
+	"shiver": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_shiver_",
+				1.0
+			]
+		],
+		"emote": "drop",
+		"weight": 0.1,
+		"needs": "night",
+		"cool": 600
+	},
+	"side_stretch": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_side_stretch_",
+				1.0
+			]
+		],
+		"weight": "tired",
+		"cool": 120
+	},
+	"idea": {
+		"kind": "solo",
+		"clips": [
+			[
+				"solo_idea_",
+				1.0
+			]
+		],
+		"emote": "idea",
+		"weight": 0.3,
+		"cool": 120
+	},
+	"knock_glass": {
+		"mark": [
+			"dot",
+			"RightHand",
+			0.35
+		],
+		"kind": "glass",
+		"clips": [
+			[
+				"play_knock_",
+				1.0
+			]
+		],
+		"weight": "lonely",
+		"glass": true,
+		"cool": 240
+	}
 }

@@ -1998,10 +1998,7 @@ func _settle_to_sleep() -> void:
 	if pstate != "":                           # in a place: dozing off there (in bed, lying back first)
 		_play(places.sleep_state(pstate), 1.0, 0.6)
 		return
-	var pose := "Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle"
-	if _variant(pose) == "":
-		pose = "Idle"                          # no lying-down clips: she dozes off where she stands
-	_play(pose, 1.0, 0.6)      # the stance move comes first
+	_play("Sitting_Idle" if floor_y > 0.01 else "Crouch_Idle", 1.0, 0.6)      # the stance move comes first
 
 
 # Waking: from a floor nap she gets up (get_up_*), from a widget seat she
@@ -2202,7 +2199,8 @@ func _process(delta: float) -> void:
 func _think(_delta: float) -> void:
 	if state in ["fall", "held", "tumble"] or (state in ["knocked", "getup"] and t < state_until):
 		return
-	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit", "rest"]:
+	if allow["nap"] and state != "sleep" and t - last_activity > SLEEP_AFTER and state in ["idle", "sit", "rest"] \
+			and _variant("Crouch_Idle") != "":   # (no pose to sleep in since his clip pass: she stays up)
 		_set_state("sleep", 1e9)
 		_settle_to_sleep()
 		return

@@ -15,22 +15,20 @@ var logging := OS.get_environment("PET_BRAIN_LOG") != ""
 
 # name: [cooldown seconds, needs the floor (hops down first)]
 const ACTIVITIES := {
-	"idle": [10.0, false], "wander": [35.0, false], "look_around": [60.0, false], "stretch": [120.0, false],
-	"think": [60.0, false], "explore": [40.0, true], "sit_floor": [60.0, true], "lie": [90.0, true],
-	"nap": [300.0, true], "sit_ledge": [60.0, false], "dance": [20.0, false],
+	"idle": [10.0, false], "wander": [35.0, false], "stretch": [120.0, false],
+	"think": [60.0, false], "explore": [40.0, true], "sit_ledge": [60.0, false], "dance": [20.0, false],
 	"watch_him": [45.0, true], "find_him": [60.0, true], "cheer": [120.0, false], "follow": [90.0, true],
 	# At her furniture (room.gd, docs/PET_LIFE_PLAN.md).
-	"sleep_bed": [600.0, true], "work": [120.0, true], "game": [150.0, true], "eat": [600.0, true],
-	"read": [180.0, true], "phone": [150.0, true], "meditate": [240.0, true], "workout": [300.0, true],
-	"drink": [240.0, true], "water": [900.0, true], "tidy": [300.0, true],
-	# Staying where she is: another way of being at the same place (lying back, then onto her side).
+	"meditate": [240.0, true], "workout": [300.0, true], "drink": [240.0, true], "tidy": [300.0, true],
+	# Staying where she is: another way of being at the same place.
 	"linger": [20.0, false],
 	# One of her interactions (play.json: on her own, with her things, at the glass).
 	"play": [50.0, false], "play_more": [240.0, false],
-	# Her things anywhere (phase 9): her phone on her feet, a book on the floor.
-	"phone_about": [200.0, true], "read_floor": [240.0, true],
 	# A little story (episodes.json, docs/PET_EPISODES_PLAN.md): a few beats, and how it ends.
 	"episode": [150.0, true],
+	# (Gone with their clips, his pass through the gallery 2026-11-06: sitting and
+	# lying on the floor, naps, eating, reading, work, games, phones, watering,
+	# sleeping in bed, looking around.)
 }
 var episodes := {}                         # episodes.json
 var episode_at := {}                       # episode -> when it last ran (pet.t)
@@ -392,17 +390,10 @@ func _score(a: String, on_widget: bool) -> float:
 	match a:
 		"idle": return 0.75
 		"wander": return (1.0 + bored * 0.5 - tired * 0.3) if allow["wander"] else 0.0       # he likes watching her walk
-		"look_around": return 0.35 + bored * 0.3 if _has("look_around_") else 0.0
-		"stretch": return (0.2 + tired * 0.4 + (1.0 if doing in ["nap", "lie", "sit_floor"] else 0.0)) \
+		"stretch": return (0.2 + tired * 0.4) \
 				if _has("stretch_") else 0.0
 		"think": return 0.3
 		"explore": return (0.35 + bored * 0.6) if allow["wander"] and _has("crouch_idle_") else 0.0
-		"sit_floor": return 0.25 + tired * 0.6 + sorrow * 0.3 if _has("floor_sit_") else 0.0
-		"lie": return 0.1 + tired * 0.7 + sorrow * 0.2 if _has("lie_idle_") else 0.0
-		"nap":
-			if not allow["nap"] or _bed() or pet._variant("Crouch_Idle") == "":
-				return 0.0                     # (no lying-down clips: no naps)
-			return 3.0 if float(n["energy"]) < 0.2 else maxf(0.0, tired - 0.5) * 0.8
 		"sit_ledge":
 			if not allow["sit_on_widgets"] or (not on_widget and _ledges().is_empty()):
 				return 0.0
@@ -418,21 +409,6 @@ func _score(a: String, on_widget: bool) -> float:
 			return (1.5 if float(n["affection"]) < 0.3 else lonely * 0.3) + (0.2 if near else 0.0)
 		"cheer": return joy * 0.25 if _has("cheer_") else 0.0
 		"follow": return (0.3 + lonely * 0.4) if near and allow["seek_cursor"] else 0.0
-		"sleep_bed":
-			if not (allow["nap"] and _bed()):
-				return 0.0
-			return 3.0 if float(n["energy"]) < 0.2 else maxf(0.0, tired - 0.4) * 1.2 + (1.2 if _night() and tired > 0.3 else 0.0)
-		"work":
-			if not (_room("desk") and _has("work_")):
-				return 0.0
-			return maxf(0.0, 0.8 - float(n.get("purpose", 0.6))) * 1.6 + (0.35 if _work_hours() else 0.05) - tired * 0.3
-		"game": return (0.15 + maxf(0.0, 0.7 - float(n["fun"])) * 1.2) if _room("desk") and _has("game_") else 0.0
-		"eat":
-			if not (_room("cushion") and _has("eat_")):
-				return 0.0
-			return maxf(0.0, 0.65 - float(n["hunger"])) * 3.5 + (0.35 if _meal_time() else 0.0)
-		"read": return (0.25 + bored * 0.3 + tired * 0.1) if _room("shelf") and not _with("book").is_empty() else 0.0
-		"phone": return (0.15 + lonely * 0.3 + bored * 0.2) if _room("desk") and not _with("phone").is_empty() else 0.0
 		"meditate": return (0.08 + sorrow * 0.4 + float(pet.moods.get("angry", 0.0))) \
 				if _room("mat") and _has("meditate_") else 0.0
 		"workout":
@@ -440,8 +416,6 @@ func _score(a: String, on_widget: bool) -> float:
 				return 0.0
 			return maxf(0.0, 0.75 - float(n.get("fitness", 0.6))) * 1.8 + joy * 0.1
 		"drink": return 0.2 + maxf(0.0, 0.6 - float(n["hunger"])) * 0.5 if _room("kitchen") and _has("drink_") else 0.0
-		"phone_about": return (0.1 + lonely * 0.2 + bored * 0.2) if _room("desk") and _has("stand_phone_") else 0.0
-		"read_floor": return (0.1 + bored * 0.2 + tired * 0.15) if _room("shelf") and _has("floor_front_read_") else 0.0
 		"play", "play_more":
 			if pet.play == null or pet.play.names().is_empty():
 				return 0.0
@@ -452,10 +426,6 @@ func _score(a: String, on_widget: bool) -> float:
 			return 0.55 + tired * 0.2 + (0.3 if pet.state == "rest" else 0.0)
 		"tidy": return (0.15 + 0.12 * pet.life.left.size() + bored * 0.2) if not pet.life.left.is_empty() else 0.0
 		"episode": return (0.45 + bored * 0.5 + joy * 0.1 - tired * 0.3) if not episodes.is_empty() and allow["wander"] else 0.0
-		"water":
-			if not (_room("plant") and _room("can") and _has("water_plant_")):
-				return 0.0
-			return minf(1.0, (pet.t - watered_at) / 7200.0) * 0.7
 	return 0.0
 
 
@@ -469,7 +439,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 				return [{"go": Vector2(clampf(pet.pos.x + randf_range(-1.0, 1.0), pet.floor_span.x + 0.2,
 						pet.floor_span.y - 0.2), 0.0)}, {"play": "Idle", "for": randf_range(2, 4)}]
 			return [{"go": _spot(randf_range(1.5, 4.5))}, {"play": "Idle", "for": randf_range(4, 8)}]
-		"look_around": return [{"play": "LookAround", "for": randf_range(5, 9)}]
 		"episode": return _episode()
 		"stretch": return [{"play": "Stretch", "for": randf_range(4, 6)}]
 		"think": return [{"play": "Idle_FoldArms", "for": randf_range(5, 10)}]
@@ -477,9 +446,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 			# Off somewhere further, then down on her heels to look at something on the floor.
 			return [{"go": _spot(randf_range(2.0, 5.0))}, {"play": "Crouching", "for": randf_range(5, 9)},
 					{"play": "LookAround", "for": 4.0}]
-		"sit_floor": return [{"go": _spot(randf_range(0.5, 2.5))}, {"play": "FloorSit", "state": "rest", "for": randf_range(15, 35)}]
-		"lie": return [{"go": _corner()}, {"play": "LieDown", "state": "rest", "for": randf_range(20, 45)}]
-		"nap": return [{"go": _corner()}, {"call": "_nap"}]
 		"sit_ledge":
 			if on_widget:
 				return [{"play": "Sitting_Idle", "state": "sit", "for": randf_range(15, 30)}]
@@ -501,16 +467,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 		"follow": return [{"follow": pet.t + randf_range(8, 14)}, {"play": "Idle", "front": true, "for": 3.0}]
 		# At her furniture. A spot's approach is where she walks to; "perch" puts her on it.
 		# A state (pet/states.json) as the play: her body finds the moves into it.
-		"sleep_bed":
-			# Sitting on the edge a moment, maybe lying about a bit, then asleep.
-			if pet.places.place_of(pet.pstate) == "Bed":
-				return [{"call": "_bed_sleep"}]
-			var b := [_to("bed_edge"), {"play": "Bed_SitEdge", "state": "rest", "for": randf_range(3, 7)}]
-			for s in ["Bed_LieSide", "Bed_LieBack"]:
-				if randf() < 0.4 and pet.places.can(s):
-					b.append({"play": s, "state": "rest", "for": randf_range(5, 10)})
-					break
-			return b + [{"call": "_bed_sleep"}]
 		"play", "play_more":
 			# One thing, or a little run of them (play_more), walking up to the glass for the glass ones.
 			var out := []
@@ -533,29 +489,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 		"linger":
 			var st: String = _stay_in().pick_random()
 			return [{"play": st, "state": "rest", "for": randf_range(12, 30)}]
-		"work": return [_to("desk"), {"play": "Desk_Sit", "state": "work", "for": randf_range(45, 90),
-				"gain": {"purpose": 0.3, "energy": -0.03, "fun": -0.03}}]
-		"game": return _fetch("controller") + [_to("desk"), {"play": "Desk_Sit", "state": "work",
-				"for": randf_range(30, 60), "gain": {"fun": 0.3, "energy": -0.02}}, {"done_with": "controller"}]
-		"eat":
-			var e: Array = []
-			if _room("kitchen") and _has("cook_"):
-				e += [_to("kitchen"), {"play": "Kitchen_Stand", "for": randf_range(6, 9)}]
-			return e + _fetch("bowl") + [_to("cushion"), {"play": "Cushion_Sit", "state": "rest",
-					"for": randf_range(20, 35), "gain": {"hunger": 0.6}}, {"done_with": "bowl"}]
-		"read": return _fetch("book") + _settle_with("book", randf_range(30, 60), {"fun": 0.15}) + [{"done_with": "book"}]
-		"phone": return _fetch("phone") + _settle_with("phone", randf_range(20, 40), {"fun": 0.1, "affection": 0.03}) \
-				+ [{"done_with": "phone"}]
-		"phone_about":
-			# Scrolling on her feet, wandering a little between looks.
-			return _fetch("phone") + [{"play": "Idle", "for": randf_range(8, 14), "gain": {"fun": 0.05}},
-					{"go": _spot(randf_range(0.8, 2.0))}, {"play": "Idle", "for": randf_range(8, 14)},
-					{"done_with": "phone"}]
-		"read_floor":
-			# Down on the floor wherever she is with a book: sitting, or on her stomach.
-			return _fetch("book") + [{"go": _spot(randf_range(0.5, 2.0))},
-					{"play": "FloorSit" if randf() < 0.5 else "LieDown", "state": "rest", "for": randf_range(25, 45),
-					"gain": {"fun": 0.12}}, {"done_with": "book"}]
 		"tidy":
 			var th: String = pet.life.left.keys().pick_random()
 			return _fetch(th) + _put_away(th)
@@ -578,11 +511,6 @@ func _plan(a: String, on_widget: bool) -> Array:
 			if randf() < 0.4:
 				d += _settle_with("mug", randf_range(15, 25), {}, true)
 			return d + [{"done_with": "mug"}]
-		"water":
-			watered_at = pet.t
-			return [_to("can"), {"play": "PickUp_Table", "state": "react", "perch": "can", "for": 1.4},
-					{"hold": "can"}, _to("plant"), {"play": "Water", "perch": "plant", "for": randf_range(6, 8)},
-					{"release": true}]
 	return []
 
 

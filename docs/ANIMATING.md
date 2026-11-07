@@ -28,6 +28,27 @@ Shiromoji if you leave it out). Blender opens with:
   the clip's name, and the two buttons that matter: **Send to Aries** and
   **Back to Kimodo's**.
 
+## In your own Blender (the add-on)
+
+`bin/anim-edit` builds a fresh scene for you. To load her clips into a file of
+your own instead (say, your copy of Shiromoji's original `.blend`), install the
+add-on once:
+
+1. **Edit → Preferences → Add-ons**, then the small **⌄** at the top right →
+   **Install from Disk…**
+2. Pick `ariadne2/pet/import/aries_anim.py` (in `Claude Projects`), and tick
+   **Aries clips** in the list.
+
+Then, in any file with one of her bodies in it:
+
+1. Click her skeleton (**Armature**, or `Armature_Base` in Shiromoji's file) in
+   the Outliner.
+2. In the 3D view's sidebar (**N**), the **Aries** tab: pick a **Clip**, click
+   **Load onto her**. The clip's sticks appear over her and she follows them;
+   you're in Pose Mode on the sticks, ready to fix.
+3. **Send to Aries** and **Back to Kimodo's** work as below; **Let her go**
+   removes the sticks and puts her back in her rest pose.
+
 ## Getting around
 
 | Do this | To |

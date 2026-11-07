@@ -265,7 +265,7 @@ class AdapterBase(Tmp, unittest.IsolatedAsyncioTestCase):
         (self.home / "Downloads").mkdir()
         self.recents = Recents(self.guard, xbel=self.root / "x", docs=self.root / "d", activity_db=self.root / "db")
         self.a = dol.DolphinAdapter(publish, guard=self.guard, recents=self.recents, trasher=trasher,
-                                    opener=opener, dbus=nodbus)
+                                    opener=opener, dbus=nodbus, pins=self.root / "pins.json")
         self.a.subscribe(lambda name, f: self.events.append((name, f)))
 
     def phases(self):
@@ -540,6 +540,128 @@ class StateAndEventTests(AdapterBase):
         self.assertIn("dolphin.read_state", cat)
 
 
+class PinTests(AdapterBase):
+    async def test_pins_sit_at_the_bottom_newest_first_above_and_survive_a_restart(self):
+        old = touch(self.home / "Documents/pinned.txt", age=10_000)
+        for i, name in enumerate(("a.txt", "b.txt", "c.txt")):
+            touch(self.home / "Pictures" / name, age=100 * (3 - i))
+        for name, when in (("a.txt", 100), ("b.txt", 200), ("c.txt", 300), ("pinned.txt", 50)):
+            self.recents.note(self.home / ("Documents" if name == "pinned.txt" else "Pictures") / name, B + when)
+        await self.a.press("pin", {"path": str(old)})
+        await self.a.refresh()
+        names = [(f["name"], f.get("pinned", False)) for f in self.a.state()["recent_files"]]
+        self.assertEqual(names, [("c.txt", False), ("b.txt", False), ("a.txt", False), ("pinned.txt", True)])
+        # a newer file still goes above the pin, never below it
+        touch(self.home / "Pictures/new.txt")
+        self.recents.note(self.home / "Pictures/new.txt", B + 900)
+        await self.a.refresh()
+        self.assertEqual(self.a.state()["recent_files"][-1]["name"], "pinned.txt")
+        self.assertEqual(self.a.state()["recent_files"][0]["name"], "new.txt")
+        # a second adapter reads the same pins back from disk
+        again = dol.DolphinAdapter(lambda m: asyncio.sleep(0), guard=self.guard, recents=self.recents,
+                                   dbus=self.dbus, watch=[], pins=self.root / "pins.json")
+        self.assertEqual(again.pins, [str(old)])
+
+    async def test_pin_again_unpins_and_folders_pin_too(self):
+        f = self.home / "Pictures"
+        f.mkdir()
+        self.recents.note(f, B)
+        out = await self.a.press("pin", {"path": str(f)})
+        self.assertIn("Pinned", out)
+        await self.a.refresh()
+        self.assertEqual([(x["name"], x.get("pinned")) for x in self.a.state()["recent_folders"]
+                          if x["name"] == "Pictures"], [("Pictures", True)])
+        self.assertIn("Unpinned", await self.a.press("pin", {"path": str(f)}))
+        self.assertEqual(self.a.pins, [])
+
+    async def test_a_pin_that_is_gone_is_not_listed_but_kept(self):
+        f = touch(self.home / "Documents/away.txt")
+        await self.a.press("pin", {"path": str(f)})
+        f.unlink()
+        await self.a.refresh()
+        self.assertEqual([x for x in self.a.state()["recent_files"] if x["name"] == "away.txt"], [])
+        self.assertEqual(self.a.pins, [str(f)])
+
+    async def test_pin_refuses_what_the_guard_refuses(self):
+        with self.assertRaises(AdapterError):
+            await self.a.press("pin", {"path": "/etc/passwd"})
+
+
+class DropTests(AdapterBase):
+    def uri(self, p):
+        from urllib.parse import quote
+        return "file://" + quote(str(p))
+
+    async def open_folder(self, folder):
+        self.a._state = {**self.a._state, "current": {"path": str(folder), "name": folder.name}}
+
+    async def test_drop_copies_files_and_folders_into_the_open_folder_and_lists_them(self):
+        src = touch(self.home / "Pictures/a cat.png", "cat")
+        tree = self.home / "Pictures/album"
+        touch(tree / "one.txt", "1")
+        into = self.home / "Documents"
+        into.mkdir()
+        await self.open_folder(into)
+        out = await self.a.press("drop", {"paths": [self.uri(src), self.uri(tree)]})
+        self.assertEqual((into / "a cat.png").read_text(), "cat")
+        self.assertEqual((into / "album/one.txt").read_text(), "1")
+        self.assertTrue(src.exists() and tree.exists())                   # copied, not moved
+        self.assertIn("2 items", out)
+        await self.a.refresh()
+        self.assertIn("a cat.png", [f["name"] for f in self.a.state()["recent_files"]])
+        self.assertIn("album", [f["name"] for f in self.a.state()["recent_folders"]])
+
+    async def test_drop_never_overwrites(self):
+        src = touch(self.home / "Pictures/x.txt", "new")
+        into = self.home / "Documents"
+        touch(into / "x.txt", "old")
+        touch(into / "x (2).txt", "older")
+        await self.open_folder(into)
+        await self.a.press("drop", {"paths": [self.uri(src)]})
+        self.assertEqual((into / "x.txt").read_text(), "old")
+        self.assertEqual((into / "x (2).txt").read_text(), "older")
+        self.assertEqual((into / "x (3).txt").read_text(), "new")
+
+    async def test_drop_onto_a_folder_chip_goes_there_without_dolphin_open(self):
+        src = touch(self.home / "Pictures/x.txt")
+        into = self.home / "Documents"
+        into.mkdir()
+        await self.a.press("drop", {"paths": [self.uri(src)], "folder": str(into)})
+        self.assertTrue((into / "x.txt").exists())
+
+    async def test_drop_without_a_folder_says_so(self):
+        src = touch(self.home / "Pictures/x.txt")
+        with self.assertRaises(AdapterError) as cm:
+            await self.a.press("drop", {"paths": [self.uri(src)]})
+        self.assertIn("no folder is open", str(cm.exception))
+
+    async def test_drop_refuses_what_is_not_a_local_file(self):
+        into = self.home / "Documents"
+        into.mkdir()
+        ok = touch(self.home / "Pictures/ok.txt")
+        await self.open_folder(into)
+        out = await self.a.press("drop", {"paths": [
+            "https://example.com/a.png", "file://otherbox/share/a.png", "relative/a.png", "# comment",
+            self.uri(ok)]})
+        self.assertEqual(sorted(p.name for p in into.iterdir()), ["ok.txt"])
+        self.assertIn("isn't a local file", out)
+        self.assertIn("another machine", out)
+        with self.assertRaises(AdapterError):
+            await self.a.press("drop", {"paths": ["https://example.com/a.png"]})
+
+    async def test_drop_will_not_copy_a_folder_into_itself_or_write_outside_the_guard(self):
+        tree = self.home / "Pictures/album"
+        touch(tree / "one.txt")
+        await self.open_folder(tree)
+        with self.assertRaises(AdapterError):
+            await self.a.press("drop", {"paths": [self.uri(tree)]})
+        await self.a.press("drop", {"paths": [self.uri(tree / "one.txt")]})      # beside itself: a (2) copy
+        self.assertTrue((tree / "one (2).txt").exists())
+        outside = {"paths": [self.uri(tree / "one.txt")], "folder": "/etc"}
+        with self.assertRaises(AdapterError):
+            await self.a.press("drop", outside)
+
+
 class DBusTests(unittest.IsolatedAsyncioTestCase):
     def fake(self, open_urls=(), windows=True):
         calls = []
@@ -605,11 +727,11 @@ class DBusTests(unittest.IsolatedAsyncioTestCase):
             async def pub(m):
                 sent.append(m)
             run, _ = self.fake(open_urls={f"file://{home}/Downloads"})
-            a = dol.DolphinAdapter(pub, guard=guard, recents=rec, dbus=run, watch=[])
+            a = dol.DolphinAdapter(pub, guard=guard, recents=rec, dbus=run, watch=[], pins=root / "pins.json")
             await a.refresh()
             self.assertEqual(a.state()["current"], {"path": str(home / "Downloads"), "name": "Downloads"})
             run2, _ = self.fake(windows=False)
-            b = dol.DolphinAdapter(pub, guard=guard, recents=rec, dbus=run2, watch=[])
+            b = dol.DolphinAdapter(pub, guard=guard, recents=rec, dbus=run2, watch=[], pins=root / "pins.json")
             await b.refresh()
             self.assertIsNone(b.state()["current"])
 

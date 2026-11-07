@@ -344,6 +344,10 @@ canvas { position: fixed; left: 0; top: 0; pointer-events: none; }
 .dp-chip:hover { border-color: rgba(255,140,150,.7); }
 .dp-chip.watch { border-color: rgba(255,179,71,.6); }
 .dp-chip b { margin-left: 6px; font: 600 10px "Fira Code", monospace; background: var(--amber); color: #160305; padding: 0 4px; }
+.dp-chip.pinned { border-color: rgba(0,229,255,.45); }
+.dp-chip.dp-target { border-color: var(--cyan); background: rgba(0,229,255,.14); }
+.w.dolphin.dp-over { outline: 1px dashed var(--cyan); outline-offset: -4px; }      /* files are being dragged over it */
+.dp-file.pinned .dp-when { color: var(--cyan); opacity: .8; }
 .dp-files { display: grid; gap: 3px; align-content: start; overflow: hidden; min-width: 0; }
 .dp-file { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; min-width: 0; }
 .dp-file:hover .dp-name { color: #fff; }

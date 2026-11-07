@@ -16,6 +16,7 @@ import time
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from . import dolphin_files as df
 
@@ -83,6 +84,37 @@ def copy_item(src: Path, dest: Path) -> None:
 
 def move_item(src: Path, dest: Path) -> None:
     shutil.move(str(src), str(dest))
+
+
+def dropped_paths(items) -> tuple[list[Path], list[str]]:
+    """What a drop carried (file:// URIs from text/uri-list, or plain absolute paths) as local paths,
+    and a plain-English note for each thing refused: a web link, another machine's file, a relative path."""
+    paths: list[Path] = []
+    refused: list[str] = []
+    for raw in items or []:
+        text = str(raw).strip()
+        if not text or text.startswith("#"):          # blank lines and comments are part of the format
+            continue
+        if text.startswith("/"):
+            local = text
+        elif text.lower().startswith("file:"):
+            u = urlparse(text)
+            if u.netloc not in ("", "localhost"):
+                refused.append(f"{text[:60]} is on another machine")
+                continue
+            local = unquote(u.path)
+        else:
+            refused.append(f"{text[:60]} isn't a local file")
+            continue
+        if "\0" in local:
+            refused.append("a path with a stray character")
+            continue
+        p = Path(os.path.normpath(local))
+        if p.parent == p:
+            refused.append("the whole disk can't be copied")
+            continue
+        paths.append(p)
+    return paths, refused
 
 
 # ---------------------------------------------------------------- archives

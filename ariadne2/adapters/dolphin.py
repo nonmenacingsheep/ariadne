@@ -10,6 +10,7 @@ most are verbs only the widget can press; rename, duplicate, compress, extract a
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -26,6 +27,13 @@ log = logging.getLogger("ariadne2.adapters.dolphin")
 
 PERIOD = 5.0
 RECENT = 8
+MAX_PINS = 50
+DROP_MAX = 200                       # items one drop copies; a drag from Dolphin is never more
+
+
+def pins_path() -> Path:
+    base = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+    return base / "ariadne2" / "dolphin_pins.json"
 FILE_MANAGER = ("org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
                 "org.freedesktop.FileManager1")
 
@@ -158,9 +166,14 @@ class DolphinAdapter(Adapter):
 
     def __init__(self, publish, guard=None, recents=None, trasher=None, opener=None, dbus=None,
                  watch=None, launcher=None, app_launcher=None, clipboard=None, app_dirs=None,
-                 mimeapps=None) -> None:
+                 mimeapps=None, pins=None) -> None:
         super().__init__(publish)
         self.guard = guard or Guard()
+        self._pins_path = Path(pins) if pins else pins_path()
+        try:
+            self.pins: list[str] = [str(x) for x in json.loads(self._pins_path.read_text())][:MAX_PINS]
+        except (OSError, ValueError, TypeError):
+            self.pins = []
         self.recents = recents or Recents(self.guard)
         self._trash = trasher or gio_trash
         self._open = opener or show_in_dolphin
@@ -183,7 +196,7 @@ class DolphinAdapter(Adapter):
                          "apps_for": "apps_for", "copy_path": "copy_path", "copy": "copy", "cut": "cut",
                          "paste": "paste", "rename": "rename", "duplicate": "duplicate",
                          "new_folder": "new_folder", "compress": "compress", "extract": "extract",
-                         "trash": "trash", "properties": "properties"}
+                         "trash": "trash", "properties": "properties", "pin": "pin", "drop": "drop"}
         path = {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
         self.verbs = [
             Verb("open", "Show a file or folder in Dolphin (a file is shown selected in its folder). Takes a "
@@ -238,6 +251,11 @@ class DolphinAdapter(Adapter):
             Verb("paste", "Paste what was copied or cut into a folder.", any_path, self._paste),
             Verb("new_folder", "Make a folder.", any_path, self._new_folder),
             Verb("properties", "Publish a path's properties.", any_path, self._properties),
+            Verb("pin", "Pin a file or folder to the bottom of the widget's lists, or unpin it.",
+                 any_path, self._pin),
+            Verb("drop", "Copy what was dropped on the widget into a folder.",
+                 {"type": "object", "properties": {"paths": {"type": "array"}, "folder": {"type": "string"}}},
+                 self._drop),
         ]
 
     def verb(self, name: str) -> Verb:
@@ -303,8 +321,27 @@ class DolphinAdapter(Adapter):
                 log.exception("dolphin refresh failed")
 
     def _scan(self) -> dict:
+        pinned = set(self.pins)
+        # The newest first, then his pins at the bottom, always. Pins are taken out of the recents
+        # (asked for extra, so they don't eat into the count) and put back after.
+        files = [f for f in self.recents.files(RECENT + len(pinned)) if f["path"] not in pinned][:RECENT]
+        folders = [f for f in self.recents.folders(RECENT + len(pinned)) if f["path"] not in pinned][:RECENT]
+        mine = [x for x in map(self._pinned_row, self.pins) if x]
         return {"snaps": {p: df.snapshot(p) for p in list(self._watch)},
-                "files": self.recents.files(RECENT), "folders": self.recents.folders(RECENT)}
+                "files": files + [r for is_dir, r in mine if not is_dir],
+                "folders": folders + [r for is_dir, r in mine if is_dir]}
+
+    def _pinned_row(self, raw: str) -> tuple[bool, dict] | None:
+        """(is a folder, list row) for a pin; None when it's gone (a drive unplugged) or not allowed now."""
+        try:
+            p = self.guard.resolve(raw)
+            mtime = os.lstat(p).st_mtime
+        except (PathRefused, OSError):
+            return None
+        row = {"path": str(p), "name": p.name or str(p), "when": int(mtime), "pinned": True}
+        if not p.is_dir():
+            row["kind"] = df.kind_of(p.name)
+        return p.is_dir(), row
 
     async def refresh(self) -> None:
         self._sync_watch()
@@ -496,6 +533,10 @@ class DolphinAdapter(Adapter):
         # context menu it opens in the default app.
         if control == "open" and isinstance(value, dict):
             control = "launch"
+        if control == "drop":
+            # A drop is announced like her own file jobs: each file slides through the widget's
+            # ticker, and a refusal shows on the widget instead of only in the log.
+            return await self.run("drop", self.press_args(control, value), announce=True)
         return await super().press(control, value)
 
     def press_args(self, control: str, value) -> dict:
@@ -521,6 +562,14 @@ class DolphinAdapter(Adapter):
             if not paths:
                 raise AdapterError(f"{control} needs a path")
             return {"paths": paths}
+        if control == "drop":
+            paths = d.get("paths")
+            if not isinstance(paths, list) or not paths:
+                raise AdapterError("drop needs the files that were dropped")
+            args = {"paths": [str(x) for x in paths][:DROP_MAX]}
+            if opt("folder"):
+                args["folder"] = opt("folder")
+            return args
         if control == "paste":
             return {"folder": opt("folder") or need("path")}
         if control == "new_folder":
@@ -635,6 +684,69 @@ class DolphinAdapter(Adapter):
         if not done:
             raise AdapterError("nothing was pasted: " + "; ".join(notes))
         head = f"{'Moved' if mode == 'cut' else 'Pasted'} {done[0].name if len(done) == 1 else str(len(done)) + ' items'} into {self._short(into)}."
+        return head + (" Not done: " + "; ".join(notes) + "." if notes else "")
+
+    async def _pin(self, path: str) -> str:
+        p = self._resolve(path)
+        key = str(p)
+        if key in self.pins:
+            self.pins.remove(key)
+            said = f"Unpinned {p.name}."
+        else:
+            self.pins = (self.pins + [key])[-MAX_PINS:]
+            said = f"Pinned {p.name}."
+        try:
+            self._pins_path.parent.mkdir(parents=True, exist_ok=True)
+            self._pins_path.write_text(json.dumps(self.pins))
+        except OSError as e:
+            log.warning("couldn't save the pins: %s", e)
+        self._poke()                                      # the lists move now, not at the next poll
+        return said
+
+    async def _drop(self, paths: list, folder: str | None = None) -> str:
+        """Files dropped on the widget are copied into a folder: the one dropped on, else the one
+        Dolphin has open. Never overwrites ('name (2)'), and only local files."""
+        if folder:
+            into = self._resolve(folder)
+            if not into.is_dir():
+                into = into.parent
+        else:
+            cur = (self._state.get("current") or {}).get("path")
+            if not cur:
+                raise AdapterError("no folder is open in Dolphin; open one, or drop onto a folder in the widget")
+            into = self._resolve(cur)
+        self._resolve(into / "x", write=True, must_exist=False)           # somewhere he lets her write
+        sources, notes = dm.dropped_paths(paths)
+        done = []
+        for src in sources:
+            src = Path(self.guard.local(str(src)))
+            await self.progress(src.name)
+            try:
+                if not os.path.lexists(src):
+                    raise AdapterError("it isn't there any more")
+                is_dir = src.is_dir() and not src.is_symlink()
+                if is_dir and dm.inside(into, src):
+                    raise AdapterError("a folder can't go inside itself")
+                dest = dm.free_copy(into, src.name, is_dir)
+                self._resolve(dest, write=True, must_exist=False)
+                await asyncio.to_thread(dm.copy_item, src, dest)
+            except AdapterError as e:
+                notes.append(f"{src.name}: {e}")
+                continue
+            except OSError as e:
+                notes.append(f"{src.name}: {e.strerror or e}")
+                continue
+            done.append(dest)
+        now = self.now()
+        for d in done:
+            self.recents.note(d, now)
+        if done:
+            self.recents.note(into, now)
+        self._look(into)
+        self._poke()
+        if not done:
+            raise AdapterError("nothing was copied: " + ("; ".join(notes) or "no files in that drop"))
+        head = f"Copied {done[0].name if len(done) == 1 else str(len(done)) + ' items'} into {self._short(into)}."
         return head + (" Not done: " + "; ".join(notes) + "." if notes else "")
 
     async def _rename(self, path: str, name: str) -> str:

@@ -48,7 +48,9 @@ const FileMenu = (() => {
       const ow = item("Open with ▸", () => press("apps_for", { path: f.path }), "sub");
       ow.dataset.sub = "apps"; box.append(ow);
     }
-    box.append(item("Show in Dolphin", () => { press("reveal", { path: f.path }); close(); }), sep());
+    box.append(item("Show in Dolphin", () => { press("reveal", { path: f.path }); close(); }));
+    if (f.pin) box.append(item(f.pinned ? "Unpin" : "Pin", () => { press("pin", { path: f.path }); close(); }));
+    box.append(sep());
     box.append(item("Copy", () => { press("copy", { path: f.path }); close(); }),
       item("Cut", () => { press("cut", { path: f.path }); close(); }));
     if (f.folder) box.append(item("Paste here", () => { press("paste", { folder: f.path }); close(); }),

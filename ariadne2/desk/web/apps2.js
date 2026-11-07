@@ -17,8 +17,20 @@ const Dolphin = (() => {
   function build(widget, s) {
     w = widget; send = s;
     w.bd.innerHTML = `<div class="dp-now"></div><div class="dp-cols"><div class="dp-folders"></div><div class="dp-files"></div></div><div class="dp-ticker"></div>`;
+    wireDrop();
   }
   const open = path => send({ t: "press", widget: "dolphin", control: "open", value: path });
+  const SHOWN = 6;
+  // The newest above, his pins always at the bottom (the core sends them last; this keeps
+  // them on screen when the list is cut to fit).
+  const fit = list => {
+    const pins = list.filter(x => x.pinned), rest = list.filter(x => !x.pinned);
+    return [...rest.slice(0, Math.max(0, SHOWN - pins.length)), ...pins].slice(0, SHOWN);
+  };
+  const menu = (e, x, kind, folder) => {
+    e.preventDefault();
+    FileMenu.open(e.clientX, e.clientY, { path: x.path, name: x.name, kind, folder, pinned: x.pinned === true, pin: true });
+  };
   function set(data) {
     st = data || {}; if (!w) return;
     const watched = st.watched || [], fresh = watched.reduce((n, x) => n + (x.new || 0), 0);
@@ -28,29 +40,61 @@ const Dolphin = (() => {
     const fol = w.bd.querySelector(".dp-folders"); fol.innerHTML = "";
     for (const x of watched) {
       const c = el("div", "dp-chip watch", x.name); if (x.new) c.append(el("b", null, String(x.new)));
-      c.title = x.path; c.onclick = () => open(x.path); fol.append(c);
+      c.title = x.path; c.dataset.path = x.path; c.onclick = () => open(x.path); fol.append(c);
     }
-    for (const x of (st.recent_folders || []).slice(0, 6)) {
-      const c = el("div", "dp-chip", x.name); c.title = x.path; c.onclick = () => open(x.path);
+    for (const x of fit(st.recent_folders || [])) {
+      const c = el("div", `dp-chip${x.pinned ? " pinned" : ""}`, x.name); c.title = x.path; c.dataset.path = x.path; c.onclick = () => open(x.path);
       c.prepend(FILE_ICON("folder"));
-      c.oncontextmenu = e => { e.preventDefault(); FileMenu.open(e.clientX, e.clientY, { path: x.path, name: x.name, kind: "folder", folder: true }); };
+      c.oncontextmenu = e => menu(e, x, "folder", true);
       fol.append(c);
     }
     const fil = w.bd.querySelector(".dp-files"); fil.innerHTML = "";
-    for (const x of (st.recent_files || []).slice(0, 6)) {
-      const row = el("div", "dp-file"); row.title = x.path;
-      row.append(FILE_ICON(x.kind), el("span", "dp-name", x.name), el("span", "dp-when", sinceText(x.when)));
+    for (const x of fit(st.recent_files || [])) {
+      const row = el("div", `dp-file${x.pinned ? " pinned" : ""}`); row.title = x.path;
+      row.append(FILE_ICON(x.kind), el("span", "dp-name", x.name), el("span", "dp-when", x.pinned ? "pin" : sinceText(x.when)));
       row.onclick = () => open(x.path);
-      row.oncontextmenu = e => { e.preventDefault(); FileMenu.open(e.clientX, e.clientY, { path: x.path, name: x.name, kind: x.kind, folder: false }); };
+      row.oncontextmenu = e => menu(e, x, x.kind, false);
       fil.append(row);
     }
   }
+  // Files dropped on the widget are copied into the folder it shows: the chip you drop on,
+  // else the one open in Dolphin. WebKitGTK hands over file:// URIs; the core does the copying.
+  const carries = e => [...(e.dataTransfer?.types || [])].some(t => t === "text/uri-list" || t === "Files");
+  const uris = e => {
+    const dt = e.dataTransfer;
+    const text = dt.getData("text/uri-list") || dt.getData("text/plain") || "";
+    return text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#") && (l.startsWith("file:") || l.startsWith("/")));
+  };
+  const chipAt = e => e.target.closest?.(".dp-chip[data-path]");
+  function wireDrop() {
+    const root = w.root, clear = () => { root.classList.remove("dp-over"); root.querySelectorAll(".dp-target").forEach(c => c.classList.remove("dp-target")); };
+    root.addEventListener("dragover", e => {
+      if (!carries(e)) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+      root.classList.add("dp-over");
+      const chip = chipAt(e);
+      root.querySelectorAll(".dp-target").forEach(c => c !== chip && c.classList.remove("dp-target"));
+      if (chip) chip.classList.add("dp-target");
+    });
+    root.addEventListener("dragleave", e => { if (!root.contains(e.relatedTarget)) clear(); });
+    root.addEventListener("drop", e => {
+      if (!carries(e)) return;
+      e.preventDefault(); const chip = chipAt(e), paths = uris(e); clear();
+      if (!paths.length) { note("drop · nothing there that can be copied"); return; }
+      if (!chip && !st.current) { note("drop · open a folder in Dolphin, or drop onto a folder here"); return; }
+      const value = { paths }; if (chip) value.folder = chip.dataset.path;
+      send({ t: "press", widget: "dolphin", control: "drop", value });
+    });
+  }
   // Each file she moves, sorts or bins slides through the ticker.
-  function progress(msg) {
-    if (!w || !msg.note) return;
-    ticker.unshift(`${msg.verb} · ${msg.note}`); ticker = ticker.slice(0, 3);
+  function note(text) {
+    ticker.unshift(text); ticker = ticker.slice(0, 3);
     const tk = w.bd.querySelector(".dp-ticker"); tk.innerHTML = "";
     ticker.forEach((x, i) => tk.append(el("div", `dp-tick${i ? "" : " new"}`, x)));
+  }
+  function progress(msg) {
+    if (!w || !msg.note) return;
+    note(`${msg.verb} · ${msg.note}`);
   }
   return { build, set, progress, touch: (c, on) => touchIn(w, c, on) };
 })();

@@ -45,6 +45,7 @@ FIND_MAX = 30
 FIND_SECONDS = 6.0
 FIND_VISIT = 400_000
 LIST_MAX = 60
+NOTED_MAX = 20                          # paths Recents remembers putting somewhere itself
 
 
 class PathRefused(Exception):
@@ -241,6 +242,13 @@ class Recents:
         self.db = Path(activity_db) if activity_db else share / "kactivitymanagerd/resources/database"
         self._xbel_cache: tuple = (None, [])
         self.raw: dict[str, str] = {}               # local path -> how KDE spelled it (for D-Bus URLs)
+        self.noted: dict[str, float] = {}           # what we put somewhere ourselves (a drop): KDE hasn't heard
+
+    def note(self, path, when: float) -> None:
+        """Count a path as used just now, so it shows in the widget before (or without) KDE logging it."""
+        self.noted[str(path)] = when
+        for old in sorted(self.noted, key=self.noted.get)[:-NOTED_MAX]:
+            del self.noted[old]
 
     def _xbel(self) -> list[tuple[str, float]]:
         try:
@@ -266,7 +274,7 @@ class Recents:
 
     def files(self, limit: int = 8) -> list[dict]:
         seen: dict[Path, float] = {}
-        for raw, when in self._xbel() + parse_recent_documents(self.docs):
+        for raw, when in self._xbel() + parse_recent_documents(self.docs) + list(self.noted.items()):
             p = self._usable(raw, False)
             if p is not None and when > seen.get(p, 0):
                 seen[p] = when
@@ -276,7 +284,8 @@ class Recents:
     def folders(self, limit: int = 8) -> list[dict]:
         seen: dict[Path, float] = {}
         for raw, when in dolphin_folders(self.db) + [(r, w) for r, w in self._xbel()
-                                                   if os.path.isdir(self.guard.local(r))]:
+                                                   if os.path.isdir(self.guard.local(r))] \
+                + list(self.noted.items()):
             p = self._usable(raw, True)
             if p is not None:
                 self.raw[str(p)] = raw

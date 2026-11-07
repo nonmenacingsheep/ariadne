@@ -245,6 +245,8 @@ def build_schema(personality_names: list[str] | None = None, model: str | None =
     # ---- avatar (the pet) ----
     s.append(_entry("avatar", "model", "Model", "choice", "aries",
                     "Which body she wears on the desktop.", options=_choices(bodies())))
+    s.append(_entry("avatar", "outfit", "Outfit", "choice", "",
+                    "What she wears: the outfits of the body chosen above.", options=_choices(outfits(model))))
     s.append(_entry("avatar", "room_depth", "Room depth", "number", 8,
                     "How far back her room goes behind the screen (3D bodies); she walks around in it.",
                     min=5, max=10, step=0.5, unit=" ft"))
@@ -252,8 +254,6 @@ def build_schema(personality_names: list[str] | None = None, model: str | None =
                     "Her 3D body is drawn over your widgets instead of behind them, so she never hides behind one."))
     s.append(_entry("avatar", "furniture", "Her furniture", "bool", False,
                     "A bed, desk, kitchen and workout mat in her room (3D bodies). Off: an empty room, all play."))
-    s.append(_entry("avatar", "outfit", "Outfit", "choice", "",
-                    "What she wears: the outfits of the body chosen above.", options=_choices(outfits(model))))
     s.append(_entry("avatar", "weapon", "Weapon", "bool", False,
                     "Her weapon in her hand (3D bodies that come with one, like Jane's dagger)."))
     s.append(_entry("avatar", "live2d_core", "Live2D support", "bool", False,

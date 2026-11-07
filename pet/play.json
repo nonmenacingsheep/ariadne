@@ -8,7 +8,8 @@
 		"glass: walks up to the glass first.",
 		"needs: night | day | music | quiet: when it can happen.",
 		"mark: [heart | fog | hand | dot, bone, when] something left on the glass where that bone is, that far into the clip.",
-		"widget: true (any) or a widget's name: she goes behind it on the glass first (hiding, peeking, reading)."
+		"widget: true (any) or a widget's name: she goes behind it on the glass first (hiding, peeking, reading).",
+		"for: seconds of it at most (a part of a long clip). hold: true: set off again while it plays (stroking on), it lasts that much longer, up to its clip."
 	],
 	"joy_jump": {
 		"kind": "you",
@@ -207,5 +208,37 @@
 		"weight": "lonely",
 		"glass": true,
 		"cool": 240
+	},
+	"pat": {
+		"kind": "you",
+		"clips": [
+			[
+				"idle_sad_1",
+				1.0
+			]
+		],
+		"face": "joy",
+		"emote": "heart",
+		"gain": {
+			"affection": 0.05
+		},
+		"cool": 2,
+		"for": 3.0,
+		"hold": true
+	},
+	"ask_pat": {
+		"kind": "glass",
+		"clips": [
+			[
+				"idle_sad_1",
+				1.0
+			]
+		],
+		"weight": "lonely",
+		"glass": true,
+		"face": "blush",
+		"emote": "heart",
+		"for": 6.0,
+		"cool": 300
 	}
 }

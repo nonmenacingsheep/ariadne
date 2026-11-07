@@ -79,6 +79,7 @@ func _needs_ok(e: Dictionary) -> bool:
 # --- doing one -----------------------------------------------------------------
 # from_brain: her own choice (her plan goes on after it); otherwise it's him
 # or his desktop, and whatever she was up to is dropped.
+var held_until := 0.0                      # a held reaction can last till its clip ends
 func run(name: String, from_brain := false) -> bool:
 	var e := entry(name)
 	if e.is_empty() or pet.t < float(cool_until.get(name, 0.0)) or not _has_clips(name):
@@ -86,7 +87,11 @@ func run(name: String, from_brain := false) -> bool:
 	if pet.state in ["held", "tumble", "getup", "fall", "knocked"] or pet.perched != "":
 		return false
 	if pet.state == "react" and current == name and pet.t < pet.state_until:
-		return false                           # still at it (patting goes on while he strokes)
+		# Still at it: a "hold" one (a pat) lasts while he keeps on, up to its clip.
+		if e.get("hold", false) and e.has("for"):
+			pet.state_until = minf(pet.t + float(e["for"]), held_until)
+			pet.variant_until = pet.state_until
+		return false
 	if pet.state == "sleep":
 		pet._stir()                            # woken by it: she comes to first, then it
 		get_tree().create_timer(2.0).timeout.connect(run.bind(name, from_brain))
@@ -100,10 +105,15 @@ func run(name: String, from_brain := false) -> bool:
 	if not from_brain:
 		pet.brain.drop()
 	var secs: float = pet.ap.get_animation(pick).length / PLAYBACK
+	held_until = pet.t + secs - 0.3
+	if e.has("for"):                           # a part of a long clip (a pat: her head bowed a moment)
+		secs = minf(secs, float(e["for"]))
 	current = name
 	pet._set_state("react", secs)
 	pet._play_via(pick, "Idle", 0.5)
 	pet.ap.speed_scale = PLAYBACK
+	if e.has("for"):
+		pet.variant_until = pet.t + secs        # then on into her idle, not the rest of the clip
 	if str(e.get("kind", "")) in ["you", "desk"] or e.get("glass", false):
 		pet._face_front(secs)
 	if e.has("face"):

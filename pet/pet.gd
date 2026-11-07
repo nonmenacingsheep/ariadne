@@ -465,7 +465,15 @@ func _dress() -> void:
 		var n := body.find_child(m, true, false)
 		if n is Node3D:
 			(n as Node3D).visible = m in o.get("show", [])
-	for m in outfits.get("hide", []):
+	# Hidden always (pieces the file kept hidden), or by this outfit (her
+	# underwear under the sweater); a piece another outfit hides shows again.
+	var hidden: Array = outfits.get("hide", []) + o.get("hide", [])
+	for k in all:
+		for m in all[k].get("hide", []):
+			var n := body.find_child(m, true, false)
+			if n is Node3D and not pieces.has(m):
+				(n as Node3D).visible = m not in hidden
+	for m in hidden:
 		var n := body.find_child(m, true, false)
 		if n is Node3D:
 			(n as Node3D).visible = false

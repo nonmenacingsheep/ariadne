@@ -13,7 +13,11 @@ it) and checked, and only then listed in Avatar > Model:
   extension if the file has one, else from its bones' names and hierarchy
   (Mixamo, VRoid, Booth/VRChat, Rigify DEF, MMD's Japanese names...).
 - .blend: exported to .glb headless by Blender (pet/import/avatar_export.py:
-  rest pose, modifiers applied, plain materials), then as a .glb.
+  rest pose, modifiers applied, plain materials, every outfit's pieces), then
+  as a .glb. Its outfits come off its collections (--outfits): alternatives
+  side by side (Sweater / Swimsuit, one hair style / another) each become an
+  outfit in Avatar > Outfit, with the file's own fit keys, what each covers
+  hidden in it, and the pieces the file hides kept hidden.
 
 Then Godot imports it headless and pet/import/check_body.gd loads it and
 reports its bones and height: a body without the bones her clips drive (or
@@ -504,7 +508,8 @@ def _export_blend(src: Path, out: Path) -> list[str]:
         raise ImportError_("a .blend needs Blender to convert it, and I can't find Blender "
                            "(set ARIADNE2_BLENDER to its path, or export a .glb or .vrm from it)")
     proc = _run(_gate() + [exe, "-b", str(src), "--python", str(PET / "import" / "avatar_export.py"),
-                           "--", str(out)], BLENDER_TIMEOUT)
+                           "--", str(out), "--all", "--outfits", str(out.with_suffix(".outfits.json"))],
+                BLENDER_TIMEOUT)
     missing = sorted({ln.split(" ", 1)[1] for ln in proc.stdout.splitlines() if ln.startswith("MISSING_TEXTURE ")})
     if not out.exists():
         tail = (proc.stdout + proc.stderr)[-600:]
@@ -615,6 +620,15 @@ def import_model(src: Path) -> tuple[str, str]:
         raise ImportError_(why)
     cfg = {"_doc": "A body added from the drop folder (ariadne2/core/body3d.py); outfits etc. as models/*.json.",
            "name": display, "imported_from": src.name}
+    worn = model.with_suffix(".outfits.json")         # a .blend's outfits, off its collections (avatar_export.py)
+    if worn.exists():
+        try:
+            cfg.update(json.loads(worn.read_text()))
+        except (OSError, ValueError):
+            pass
+        worn.unlink()
+    if cfg.get("outfits"):
+        notes.append(f"{len(cfg['outfits'])} outfits ({', '.join(cfg['outfits'])})")
     (home / f"{slug}.json").write_text(json.dumps(cfg, ensure_ascii=False, indent="\t") + "\n")
     bones = int(got.get("mapped", 0))
     said = f"Added {display} as a 3D body ({bones} bones matched to her moves"

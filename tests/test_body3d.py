@@ -167,6 +167,17 @@ class FileTests(unittest.TestCase):
             self.assertEqual(B._slug_for("Mika v2", "Mika.zip"), "mika")      # a new copy replaces it
             from ariadne2.core import settings
             self.assertIn(("3d:mika", "Mika v2 (3D, walks about)"), settings.bodies())
+            # A .blend's outfits (avatar_export.py --outfits) are its Outfit choices.
+            (tmp / "mika" / "mika.json").write_text(json.dumps({"name": "Mika v2", "default": "Sweater",
+                                                                 "outfits": {"Sweater": {}, "Swimsuit": {}}}))
+            with mock.patch.object(settings, "PET_MODELS", tmp.parent / "nowhere"):
+                pass
+            with mock.patch.object(settings, "PET_MODELS", tmp.parent), mock.patch.object(B, "DROPIN", tmp):
+                (tmp.parent / "dropin").mkdir(exist_ok=True)
+                (tmp.parent / "dropin" / "mika").mkdir(exist_ok=True)
+                (tmp.parent / "dropin" / "mika" / "mika.json").write_text((tmp / "mika" / "mika.json").read_text())
+                self.assertEqual(settings.outfits("3d:mika"),
+                                 [("", "Usual (Sweater)"), ("Sweater", "Sweater"), ("Swimsuit", "Swimsuit")])
 
 
 class DispatchTests(unittest.TestCase):

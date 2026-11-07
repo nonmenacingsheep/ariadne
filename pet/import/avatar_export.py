@@ -1,6 +1,6 @@
 """Export a VRChat-style Booth avatar .blend as a GLB for the 3D body (pet/).
 
-blender -b <avatar>.blend --python pet/import/avatar_export.py -- pet/models/<name>.glb [--all] [--cover Body=Pants+Top] [skip collection ...]
+blender -b <avatar>.blend --python pet/import/avatar_export.py -- pet/models/<name>.glb [--all] [--cover Body=Pants+Top] [--outfits <name>.json] [skip collection ...]
 
 These come rigged with the humanoid bone names (Hips, Spine, Chest,
 UpperArm_L...), VRChat mouth shapes and blink, and MMD expressions, so the
@@ -24,7 +24,17 @@ work is making the file game-ready, the way jane_export.py does for an MMD rig:
   as Body_Under, for the outfit to hide: shrink keys alone left her hips
   peeking through wide pants when she sat or bent. A face goes if every ray
   out of it, across the half it faces, hits the clothes; skin under a gap
-  (a shoulder cut-out, the leg openings) sees out and stays.
+  (a shoulder cut-out, the leg openings) sees out and stays;
+- with --outfits <file> (drop-ins, ariadne2/core/body3d.py), its outfits are
+  read off the collections and written as pet/models/<name>.json's: a
+  collection whose child collections are alternatives (Sweater, Swimsuit; a
+  hair style and another), not category folders (Cloth, Footwear, Hair), is
+  a choice, and each alternative an outfit; the one showing in the file is
+  the default (the biggest, if several show). Pieces hidden in the file stay
+  hidden. A fit key named after an outfit (Body_2's "Sweater") is on in it.
+  A loose piece an outfit covers entirely (her underwear under the sweater)
+  is hidden in it, and the body's skin the default outfit covers is split
+  off (as --cover) and shown only in the others.
 The .blend itself is never saved.
 """
 import os
@@ -36,11 +46,32 @@ args = sys.argv[sys.argv.index("--") + 1:]
 out = args[0]
 every = "--all" in args
 cover = args[args.index("--cover") + 1] if "--cover" in args else ""
-skip = {a for a in args[1:] if a not in ("--all", "--cover", cover)}
+outfits_out = args[args.index("--outfits") + 1] if "--outfits" in args else ""
+skip = {a for a in args[1:] if a not in ("--all", "--cover", cover, "--outfits", outfits_out)}
 FACE_KEYS = ("vrc.v_aa", "vrc.Blink", "まばたき")
 HELPERS = ("DataTransfer",)
 
 arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+
+# How the file shows things, before everything is unhidden for the export (--outfits).
+import re
+CATEGORY = {"cloth", "clothes", "clothing", "outfit", "outfits", "costume", "costumes", "footwear", "shoes",
+            "headwear", "hats", "accessory", "accessories", "acc", "hair", "body", "base", "armature", "props",
+            "other", "others", "misc", "extra", "extras", "option", "options", "mesh", "meshes"}
+shown_in_file = {o.name: o.visible_get() for o in bpy.data.objects if o.type == "MESH"}
+own_hidden = {o.name: bool(o.hide_render or o.hide_get() or o.hide_viewport)
+              for o in bpy.data.objects if o.type == "MESH"}
+coll_parent = {}
+for c in [bpy.context.scene.collection, *bpy.data.collections]:
+    for ch in c.children:
+        coll_parent[ch.name] = c
+def meshes_in(c):
+    return [o.name for o in c.all_objects if o.type == "MESH" and not any(h in o.name for h in ("DataTransfer",))]
+groups = []      # [[alternative collection, ...], ...]
+for c in [bpy.context.scene.collection, *bpy.data.collections]:
+    alts = [ch for ch in c.children if meshes_in(ch) and re.sub(r"[^a-z]", "", ch.name.lower()) not in CATEGORY]
+    if len(alts) >= 2:
+        groups.append(alts)
 keep = []
 for o in bpy.data.objects:
     if o.type != "MESH":
@@ -118,57 +149,164 @@ for o in keep:
             print("dropped", o.name, m.name)
             o.modifiers.remove(m)
 
-# Skin under clothes, split off (--cover).
-if cover:
-    from mathutils import Vector
-    from mathutils.bvhtree import BVHTree
-    body_name, cloth = cover.split("=")
-    body = bpy.data.objects[body_name]
+# Skin under clothes (--cover, and --outfits' default outfit).
+import math
+from mathutils.bvhtree import BVHTree
+
+def _rays(n):
+    """Across the hemisphere a point faces: its normal, then rings at 35 and 70 degrees."""
+    t = n.orthogonal().normalized()
+    b = n.cross(t)
+    out = [n]
+    for tilt in (math.radians(35), math.radians(70)):
+        for k in range(8):
+            a = k * math.tau / 8
+            out.append((n * math.cos(tilt) + (t * math.cos(a) + b * math.sin(a)) * math.sin(tilt)).normalized())
+    return out
+
+def cloth_tree(cloth):
     dg = bpy.context.evaluated_depsgraph_get()
     verts, polys = [], []
-    for name in cloth.split("+"):
-        ob = bpy.data.objects[name].evaluated_get(dg)
-        me = ob.to_mesh()
+    for c in cloth:
+        ev = c.evaluated_get(dg)
+        me = ev.to_mesh()
         base = len(verts)
-        verts += [ob.matrix_world @ v.co for v in me.vertices]
+        verts += [ev.matrix_world @ v.co for v in me.vertices]
         polys += [[base + i for i in p.vertices] for p in me.polygons]
-        ob.to_mesh_clear()
-    tree = BVHTree.FromPolygons(verts, polys)
-    mw = body.matrix_world
+        ev.to_mesh_clear()
+    return BVHTree.FromPolygons(verts, polys) if polys else None
+
+def hidden_by(ob, cloth):
+    """Per vertex of ob: True if every ray out of it hits the cloth (objects, or a cloth_tree)."""
+    tree = cloth if isinstance(cloth, BVHTree) or cloth is None else cloth_tree(cloth)
+    if tree is None:
+        return [False] * len(ob.data.vertices)
+    mw = ob.matrix_world
     nm = mw.to_3x3().inverted().transposed()
-    # Rays across the hemisphere a point faces: its normal, then rings at 35 and 70 degrees.
-    import math
-    def rays(n):
-        t = n.orthogonal().normalized()
-        b = n.cross(t)
-        out = [n]
-        for tilt in (math.radians(35), math.radians(70)):
-            for k in range(8):
-                a = k * math.tau / 8
-                out.append((n * math.cos(tilt) + (t * math.cos(a) + b * math.sin(a)) * math.sin(tilt)).normalized())
-        return out
-    hid = []
-    for v in body.data.vertices:
+    out = []
+    for v in ob.data.vertices:
         p = mw @ v.co
         n = (nm @ v.normal).normalized()
-        hid.append(all(tree.ray_cast(p + n * 0.001, d, 0.3)[0] is not None for d in rays(n)))
+        out.append(all(tree.ray_cast(p + n * 0.001, d, 0.3)[0] is not None for d in _rays(n)))
+    return out
+
+def under_frac(ob, tree, within=0.03):
+    """How much of ob (by vertex) has the cloth just outside it, along its outward
+    normal: under it (underwear under a sweater), not on it (a pin in the hair)."""
+    if tree is None or not ob.data.vertices:
+        return 0.0
+    mw = ob.matrix_world
+    nm = mw.to_3x3().inverted().transposed()
+    hit = 0
+    for v in ob.data.vertices:
+        n = (nm @ v.normal).normalized()
+        hit += tree.ray_cast(mw @ v.co + n * 0.001, n, within)[0] is not None
+    return hit / len(ob.data.vertices)
+
+def split_under(body, cloth):
+    """Splits off the body's faces the cloth hides, as <body>_Under; returns it (or None)."""
+    hid = hidden_by(body, cloth)
     under = [f.index for f in body.data.polygons if all(hid[i] for i in f.vertices)]
-    print("COVER", body_name, len(under), "of", len(body.data.polygons), "faces hidden by", cloth)
-    if under:
-        bpy.ops.object.select_all(action="DESELECT")
-        bpy.context.view_layer.objects.active = body
-        body.select_set(True)
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="DESELECT")
-        bpy.ops.object.mode_set(mode="OBJECT")
-        for i in under:
-            body.data.polygons[i].select = True
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.separate(type="SELECTED")
-        bpy.ops.object.mode_set(mode="OBJECT")
-        piece = next(o for o in bpy.context.selected_objects if o is not body)
-        piece.name = body_name + "_Under"
-        keep.append(piece)
+    print("COVER", body.name, len(under), "of", len(body.data.polygons), "faces hidden by", [c.name for c in cloth])
+    if not under:
+        return None
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = body
+    body.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for i in under:
+        body.data.polygons[i].select = True
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.separate(type="SELECTED")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    piece = next(o for o in bpy.context.selected_objects if o is not body)
+    piece.name = body.name + "_Under"
+    keep.append(piece)
+    return piece
+
+if cover:
+    body_name, cloth = cover.split("=")
+    split_under(bpy.data.objects[body_name], [bpy.data.objects[n] for n in cloth.split("+")])
+
+# Outfits off the collections (--outfits).
+UNDER_GARMENT = 0.5      # how much of a loose piece an outfit's garments lie over for it to come off
+if outfits_out:
+    import json
+    node = lambda n: re.sub(r'[.:@/"%]', "_", n)          # as Godot names the mesh's node
+    pretty = lambda n: re.sub(r"[_\-]+", " ", n).strip()
+    kept = {o.name for o in keep}
+    grouped = {m for g in groups for c in g for m in meshes_in(c)}
+    loose = [o for o in keep if o.name not in grouped and o.type == "MESH" and "_Under" not in o.name]
+    always_hidden = sorted(node(o.name) for o in loose if not shown_in_file.get(o.name, True) or own_hidden.get(o.name))
+    shown_loose = [o for o in loose if node(o.name) not in always_hidden]
+    body = max(shown_loose, key=lambda o: len(o.data.polygons), default=None)    # the skin: the biggest loose piece
+    worn = lambda c: [m for m in meshes_in(c) if m in kept and not own_hidden.get(m)]
+    groups = [[c for c in g if worn(c)] for g in groups]
+    groups = [g for g in groups if len(g) >= 2]          # (an alternative the file keeps hidden inside isn't one)
+    # Each choice's default: what shows in the file; if several do (Shiromoji's
+    # sweater and swimsuit both, in hers), the one covering most of her skin.
+    picks = []
+    for g in groups:
+        on = [c for c in g if any(shown_in_file.get(m) for m in meshes_in(c))] or g[:1]
+        if len(on) > 1 and body is not None:
+            on.sort(key=lambda c: -sum(hidden_by(body, [bpy.data.objects[m] for m in worn(c)])))
+        picks.append(on[0])
+    combos = []
+    if groups:
+        first = pretty(picks[0].name) if len(groups) == 1 else "As made"
+        combos.append((first, picks))
+        for gi, g in enumerate(groups):
+            for c in g:
+                if c is not picks[gi]:
+                    combos.append((pretty(c.name), picks[:gi] + [c] + picks[gi + 1:]))
+    else:
+        first = ""
+    doc = {"default": first, "outfits": {}, "shapes": {}, "hide": always_hidden}
+    # What each outfit has on: its choices' pieces and every loose piece showing but the skin.
+    on_of = lambda chosen: [bpy.data.objects[m] for c in chosen for m in worn(c)] + [lp for lp in shown_loose if lp is not body]
+    under = split_under(body, on_of(combos[0][1])) if combos and body is not None else None
+    check = [lp for lp in shown_loose if lp is not body] + ([under] if under else [])
+    has_face = lambda ob: bool(ob.data.shape_keys) and any(k in ob.data.shape_keys.key_blocks for k in FACE_KEYS)
+    for name, chosen in combos:
+        everything = cloth_tree(on_of(chosen))
+        garments = cloth_tree([bpy.data.objects[m] for c in chosen for m in worn(c)])
+        o = {"show": sorted(node(m) for c in chosen for m in worn(c)), "shapes": {}, "hide": []}
+        # Hidden in it: the skin split off under the default, where all it has on
+        # covers it; and a loose piece its own garments mostly cover (her
+        # underwear under the sweater and pants), never her face.
+        for lp in check:
+            if lp is under:
+                hid = hidden_by(lp, everything)
+                frac = sum(hid) / max(len(hid), 1)
+            else:
+                frac = under_frac(lp, garments)
+            print("COVERED", name, lp.name, round(frac, 3))
+            if frac >= (0.9 if lp is under else UNDER_GARMENT) and not has_face(lp):
+                o["hide"].append(node(lp.name))
+        # Fit keys named after what it wears ("Sweater", "!_Shrink_Chest_Sweater").
+        words = {re.sub(r"[^a-z]", "", w.lower()) for c in chosen for w in [c.name, *meshes_in(c)]}
+        words = {w for w in words if len(w) >= 4}
+        for lp in shown_loose:
+            if lp.data.shape_keys:
+                for key in lp.data.shape_keys.key_blocks[1:]:
+                    flat = re.sub(r"[^a-z]", "", key.name.lower())
+                    if any(w in flat for w in words):
+                        o["shapes"][f"{node(lp.name)}/{key.name}"] = 1.0
+                        doc["shapes"][f"{node(lp.name)}/{key.name}"] = 0.0
+        doc["outfits"][name] = o
+    # Hidden always: whatever the file hides that no outfit shows (a loose piece,
+    # or an alternative it keeps hidden, like Kuromoji's flower earrings).
+    shows = {m for o in doc["outfits"].values() for m in o["show"]}
+    doc["hide"] = sorted(node(o.name) for o in keep if o.type == "MESH" and node(o.name) not in shows
+                         and "_Under" not in o.name and (not shown_in_file.get(o.name, True) or own_hidden.get(o.name)))
+    always_hidden = doc["hide"]
+    if len(doc["outfits"]) < 2:
+        doc = {"hide": always_hidden}                    # one way to dress: nothing to choose
+    with open(outfits_out, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent="\t")
+    print("OUTFITS", list(doc.get("outfits", {})), "hidden:", always_hidden)
 
 # Materials: a Principled BSDF on the main texture.
 def main_image(mat):

@@ -70,6 +70,8 @@ are committed (`pet/assets/anims/`), so nobody else has to run them.
   `core/body3d.py` converts it, maps its humanoid bones, imports it with
   Godot headless and checks it with `pet/import/check_body.gd`. It lands in
   `pet/models/dropin/<slug>/` (gitignored) and appears in Avatar > Model.
+  A `.blend`'s outfits are read off its collections (`avatar_export.py
+  --outfits`) into the body's `<slug>.json`; a `.glb` or `.vrm` has one look.
   Live2D downloads go in the same folder. Don't hand-build what the drop
   folder does.
 - The author's other bodies (Jane, Kuromoji, Shiromoji) are fan or

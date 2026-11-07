@@ -72,7 +72,8 @@ folder, so a `.blend` keeps its textures), or right-click it in her Files
 widget > **Use as her body**. It's converted and checked by itself (a `.blend`
 through Blender, run headless, which needs Blender installed; set
 `ARIADNE2_BLENDER` if it isn't found), and in a minute or two it's in the
-Avatar widget > Model. It needs a humanoid skeleton (hips, spine, head, arms,
+Avatar widget > Model (a `.blend` brings its outfits too, from the way its
+collections are laid out, for Avatar > Outfit). It needs a humanoid skeleton (hips, spine, head, arms,
 legs): her moves are mapped onto its bones by their names (VRM, Mixamo, VRoid,
 VRChat/Booth, Rigify, MMD), and she tells you in the chat if one can't be.
 

@@ -58,6 +58,7 @@ const EMOTION_FACE := {
 # face lacks, so her looks and voice emotions get their own faces here.
 const MMD_FACE := {
 	"blink": {"Eye_Closed": 1.0},
+	"pout": {"CheekPuff": 0.9, "Eyebrow_Angry": 0.45, "Mouth_Sad": 0.4, "Eye_Sharp": 0.3},
 	"joy": {"Eye_Joyful": 1.0, "Mouth_Smile": 0.8, "Eyebrow_Up": 0.3},
 	"sorrow": {"Eyebrow_Sad": 1.0, "Eye_Inner_Up": 0.5, "Mouth_Sad": 0.8},
 	"angry": {"Eyebrow_Angry": 0.7, "Eyebrow_Furious": 1.0, "Eyebrow_Close": 0.6, "Eye_Sharp": 1.0, "Eye_Inner_Down": 0.6,
@@ -92,6 +93,7 @@ const MMD_FACE := {
 # wide, 口角上げ / 口角下げ corners up / down.
 const BOOTH_FACE := {
 	"blink": {"まばたき": 1.0},
+	"pout": {"怒り": 0.5, "∧": 0.9, "じと目": 0.35},          # patted too long: a pout, not anger
 	"joy": {"笑い": 0.8, "にっこり": 0.8, "にこり": 0.6},
 	"sorrow": {"困る": 1.0, "口角下げ": 0.7},
 	"angry": {"怒り": 1.0, "ｷﾘｯ": 0.6, "口角下げ": 0.7, "瞳小": 0.3},
@@ -114,7 +116,8 @@ const BOOTH_FACE := {
 	"a": {"vrc.v_aa": 1.0}, "i": {"vrc.v_ih": 1.0}, "u": {"vrc.v_ou": 1.0}, "e": {"vrc.v_e": 1.0}, "o": {"vrc.v_oh": 1.0},
 }
 const MMD_LOOK := {"stars": "stars", "hearts": "hearts", "blush": "blush", "smirk": "smirk", "tears": "tears",
-		"gloom": "gloom", "sleepy": "sleepy", "thoughtful": "thoughtful", "eyeroll": "bored", "dizzy": "dizzy"}
+		"gloom": "gloom", "sleepy": "sleepy", "thoughtful": "thoughtful", "eyeroll": "bored", "dizzy": "dizzy",
+		"pout": "pout"}
 const MMD_EMOTION := {"affectionate": "hearts", "flirtatious": "smirk", "embarrassed": "blush", "shy": "blush",
 		"sarcastic": "smirk", "ironic": "smirk", "bored": "bored", "tired": "sleepy", "contemplative": "thoughtful",
 		"anxious": "sweat", "nervous": "sweat", "confused": "dizzy", "euphoric": "stars", "excited": "stars",
@@ -123,7 +126,7 @@ const MOUTH_KEYS := ["blink", "a", "i", "u", "e", "o", "squint", "flung", "wince
 const LOOK_FACE := {
 	"smile": "joy", "stars": "joy", "hearts": "joy", "blush": "fun", "soft": "fun", "smirk": "fun",
 	"angry": "angry", "tears": "sorrow", "gloom": "sorrow", "sleepy": "sorrow", "thoughtful": "sorrow",
-	"eyeroll": "angry", "wide": "surprised", "dizzy": "surprised", "blood": "sorrow",
+	"eyeroll": "angry", "wide": "surprised", "dizzy": "surprised", "blood": "sorrow", "pout": "angry",
 }
 const BODY_FILE := "/.local/share/ariadne2/pet/body.json"
 
@@ -3925,7 +3928,8 @@ func _gesture(g: String) -> void:
 	if g.begins_with("click:"):
 		_clicked(g.substr(6))
 		return
-	for i in 240:
+	var frames := int(OS.get_environment("PET_GESTURE_FRAMES")) if OS.get_environment("PET_GESTURE_FRAMES") != "" else 240
+	for i in frames:
 		var a := i * 0.35
 		match g:
 			"pat": cursor = head + Vector2(sin(a) * r * 0.3, -r * 0.35 + cos(a * 2.0) * 4.0)

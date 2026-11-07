@@ -246,3 +246,5 @@ crouch_lookup_1
 getup_front_3
 getup_front_4
 get_up_1
+pat_swat_2
+pat_swat_3

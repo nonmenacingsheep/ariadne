@@ -9,7 +9,8 @@
 		"needs: night | day | music | quiet: when it can happen.",
 		"mark: [heart | fog | hand | dot, bone, when] something left on the glass where that bone is, that far into the clip.",
 		"widget: true (any) or a widget's name: she goes behind it on the glass first (hiding, peeking, reading).",
-		"for: seconds of it at most (a part of a long clip). hold: true: set off again while it plays (stroking on), it lasts that much longer, up to its clip."
+		"for: seconds of it at most (a part of a long clip). hold: true: set off again while it plays (stroking on), it lasts that much longer, up to its clip.",
+		"then: [look, fraction]: the face changes to that one that far in. too_long: [seconds, another]: a hold one kept up that long becomes that one. whole: true: nothing of his cuts in till it's done."
 	],
 	"joy_jump": {
 		"kind": "you",
@@ -224,7 +225,11 @@
 		},
 		"cool": 2,
 		"for": 3.0,
-		"hold": true
+		"hold": true,
+		"too_long": [
+			7.0,
+			"pat_swat"
+		]
 	},
 	"ask_pat": {
 		"kind": "glass",
@@ -240,5 +245,24 @@
 		"emote": "heart",
 		"for": 6.0,
 		"cool": 300
+	},
+	"pat_swat": {
+		"kind": "you",
+		"clips": [
+			[
+				"pat_swat_",
+				1.0
+			]
+		],
+		"face": "pout",
+		"then": [
+			"joy",
+			0.55
+		],
+		"gain": {
+			"affection": 0.02
+		},
+		"cool": 20,
+		"whole": true
 	}
 }

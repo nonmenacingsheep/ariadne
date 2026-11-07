@@ -80,14 +80,23 @@ func _needs_ok(e: Dictionary) -> bool:
 # from_brain: her own choice (her plan goes on after it); otherwise it's him
 # or his desktop, and whatever she was up to is dropped.
 var held_until := 0.0                      # a held reaction can last till its clip ends
+var began := 0.0                           # when the one playing started
 func run(name: String, from_brain := false) -> bool:
 	var e := entry(name)
 	if e.is_empty() or pet.t < float(cool_until.get(name, 0.0)) or not _has_clips(name):
 		return false
 	if pet.state in ["held", "tumble", "getup", "fall", "knocked"] or pet.perched != "":
 		return false
+	if pet.state == "react" and current != "" and current != name and pet.t < pet.state_until \
+			and entry(current).get("whole", false):
+		return false                           # (a "whole" one plays out: she's batting his pointer away)
 	if pet.state == "react" and current == name and pet.t < pet.state_until:
-		# Still at it: a "hold" one (a pat) lasts while he keeps on, up to its clip.
+		# Still at it: a "hold" one (a pat) lasts while he keeps on, up to its
+		# clip; "too_long" [seconds, another]: kept up past that, that one instead
+		# (patted on and on, she bats his pointer away).
+		if e.has("too_long") and pet.t - began > float(e["too_long"][0]):
+			current = ""
+			return run(str(e["too_long"][1]))
 		if e.get("hold", false) and e.has("for"):
 			pet.state_until = minf(pet.t + float(e["for"]), held_until)
 			pet.variant_until = pet.state_until
@@ -106,6 +115,7 @@ func run(name: String, from_brain := false) -> bool:
 		pet.brain.drop()
 	var secs: float = pet.ap.get_animation(pick).length / PLAYBACK
 	held_until = pet.t + secs - 0.3
+	began = pet.t
 	if e.has("for"):                           # a part of a long clip (a pat: her head bowed a moment)
 		secs = minf(secs, float(e["for"]))
 	current = name
@@ -118,7 +128,16 @@ func run(name: String, from_brain := false) -> bool:
 		pet._face_front(secs)
 	if e.has("face"):
 		var f := str(e["face"])
-		pet._feel(f if pet.moods.has(f) else pet._look_key(f), 0.8, minf(secs, 3.0))
+		var key: String = f if pet.moods.has(f) else pet._look_key(f)
+		# "then": [look, fraction]: a change of face that far in (a pout melting into a smile)
+		var at := float(e["then"][1]) if e.has("then") else 1.0
+		pet._feel(key, 0.8, minf(secs * at, 3.0) if at < 1.0 else minf(secs, 3.0))
+		if e.has("then"):
+			var nxt := str(e["then"][0])
+			var nkey: String = nxt if pet.moods.has(nxt) else pet._look_key(nxt)
+			get_tree().create_timer(secs * at).timeout.connect(func():
+				if current == name:
+					pet._feel(nkey, 0.8, secs * (1.0 - at)))
 	if e.has("emote"):
 		show_emote(str(e["emote"]))
 	for k in e.get("gain", {}):

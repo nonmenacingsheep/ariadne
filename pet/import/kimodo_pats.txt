@@ -1,0 +1,7 @@
+# Head pats (play.json "pat", "pat_swat"; pet/import/kimodo_keyed.py).
+# Patted too long with her head bowed (idle_sad_1), she reaches up and bats
+# at his pointer over her head, pouting, then straightens up smiling. Each
+# starts from the bowed pose a few seconds into the pat and ends standing.
+pat_swat_1|4|A woman standing with her head bowed reaches one hand up over the top of her head and swats at something there, pouting, then lowers her hand and straightens up with a smile.|idle_sad_1:120|idle_calm_1:0
+pat_swat_2|4|A woman standing with her head lowered suddenly lifts her right hand above her head and bats something away twice, then drops her arm and stands up straight.|idle_sad_1:120|idle_calm_1:0
+pat_swat_3|4|A woman standing with her head bowed flicks one hand up over her head to brush something off, shaking her head a little, then straightens up.|idle_sad_1:120|idle_calm_1:0

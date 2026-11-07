@@ -18,7 +18,10 @@ out, bvhs = args[0], args[1:]
 bpy.ops.wm.read_factory_settings(use_empty=True)
 rig = None
 for path in bvhs:
-    bpy.ops.import_anim.bvh(filepath=path, global_scale=0.01, axis_forward="-Z", axis_up="Y",
+    # (his edits, anim_studio.py's, are written as Blender writes BVH: Z up)
+    edited = os.path.basename(os.path.dirname(path)) == "edited"
+    bpy.ops.import_anim.bvh(filepath=path, global_scale=0.01, axis_forward="Y" if edited else "-Z",
+                            axis_up="Z" if edited else "Y",
                             rotate_mode="NATIVE", update_scene_fps=True, update_scene_duration=True)
     new = bpy.context.active_object
     action = new.animation_data.action

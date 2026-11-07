@@ -1,0 +1,20 @@
+#!/bin/bash
+# Open one of her clips in Blender, on her body, to fix or change it.
+#   bin/anim-edit <clip> [body]     e.g. bin/anim-edit yawn_1    (body: shiromoji by default)
+#   bin/anim-edit --list            the clips there are
+# docs/ANIMATING.md is the how-to; pet/import/anim_studio.py does the work.
+cd "$(dirname "$0")/.." || exit 1
+K=${KIMODO_DIR:-/var/mnt/games/AI/Kimodo}
+if [ -z "$1" ] || [ "$1" = "--list" ]; then
+  removed=$(grep -v '^#' pet/clips_removed.txt 2>/dev/null | sed '/^$/d')
+  ls "$K/clips/aries" "$K/clips/loops" "$K/clips/edited" 2>/dev/null | grep '\.bvh$' | grep -v '_try\.bvh$' \
+    | sed 's/\.bvh$//' | sort -u | grep -vxF -f <(echo "$removed") | column
+  [ -z "$1" ] && echo && echo "usage: bin/anim-edit <clip> [body]"
+  exit 0
+fi
+BLENDER=${ARIADNE2_BLENDER:-}
+for b in $(ls -d /var/mnt/games/DevTools/blender-*/blender 2>/dev/null | sort -r) "$PWD/tools/blender/blender" "$(command -v blender)"; do
+  [ -z "$BLENDER" ] && [ -x "$b" ] && BLENDER=$b
+done
+[ -n "$BLENDER" ] || { echo "can't find Blender (set ARIADNE2_BLENDER)"; exit 1; }
+exec "$BLENDER" --python pet/import/anim_studio.py -- "$@"

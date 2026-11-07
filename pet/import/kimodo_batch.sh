@@ -53,8 +53,12 @@ done
 # (not a take still being made or re-rolled: <name>_try.bvh, nor one he took
 # out: pet/clips_removed.txt, whose takes stay on disk as poses to pin new ones to)
 REMOVED=$(grep -v '^#' "$PET/clips_removed.txt" 2>/dev/null | sed '/^$/d' | sed 's/.*/\/&\.bvh$/' | paste -sd'|')
-$GATE blender -b --python "$HERE/bvh_to_glb.py" -- "$PET/assets/anims/kimodo/kimodo.glb" \
-  $(ls "$OUT"/*.bvh "$LOOPS"/*.bvh | grep -v '_try\.bvh$' | grep -Ev "${REMOVED:-^$}")
+# His edits (pet/import/anim_studio.py, clips/edited/<name>.bvh) take the place of
+# Kimodo's take of the same name.
+EDITED=$K/clips/edited
+TAKES=$( { ls "$OUT"/*.bvh "$LOOPS"/*.bvh | grep -v '_try\.bvh$' | while read -r f; do
+           [ -e "$EDITED/$(basename "$f")" ] || echo "$f"; done; ls "$EDITED"/*.bvh 2>/dev/null; } | grep -Ev "${REMOVED:-^$}")
+$GATE blender -b --python "$HERE/bvh_to_glb.py" -- "$PET/assets/anims/kimodo/kimodo.glb" $TAKES
 # (kimodo.glb.import, committed, holds the retarget settings)
 rm -f "$PET"/.godot/imported/kimodo.glb-*
 $GATE ${ARIADNE2_GODOT:-/var/mnt/games/DevTools/godot-4.7.2/Godot_v4.7.2-stable_linux.x86_64} --headless --path "$PET" --import >/dev/null 2>&1

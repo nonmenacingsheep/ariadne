@@ -136,6 +136,7 @@ start_all() {
         $GATE "$GODOT" --path pet --display-driver x11
         code=$?
         if [ $code -eq 42 ]; then while [ -e "$GAME_FLAG" ]; do sleep 1; done
+        elif [ -e "$RUN/ariadne2-reload" ]; then rm -f "$RUN/ariadne2-reload"     # new clips (anim_send.sh)
         elif [ $code -ne 44 ]; then break; fi
       done ) >/dev/null 2>&1 &
     pet=$!

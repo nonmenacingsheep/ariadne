@@ -2,6 +2,7 @@ import unittest
 
 from ariadne2.adapters import Adapter, AdapterError, Verb
 from ariadne2.core import models
+from ariadne2.core import loop
 from ariadne2.core.loop import MAX_TOOL_ROUNDS, Conversation
 
 
@@ -339,7 +340,18 @@ class RecordTests(unittest.TestCase):
         self.assertNotIn("$ ", gist)
         # a long output is cut, and the whole record keeps to its cap
         long = outcome({"content": text.replace("Eneba", "E" * 400)})
-        self.assertLess(len(long), 250)
+        self.assertLess(len(long), loop.GIST + 50)
+
+    def test_only_the_latest_record_keeps_whole_results(self):
+        big = "x" * 700
+        hist = [{"role": "user", "content": "a"},
+                {"role": "assistant", "content": loop.record("one", [f"settings list → {big}"])},
+                {"role": "user", "content": "b"},
+                {"role": "assistant", "content": loop.record("two", [f"settings get → {big}"])},
+                {"role": "user", "content": "c"}]
+        sent = loop.as_sent(hist)
+        self.assertLess(len(sent[2]["content"]), loop.OLD_GIST + 200)       # the older reply's, cut back
+        self.assertIn(big, sent[4]["content"])                              # the latest, whole
         self.assertTrue(long.endswith('…"'))
 
     def test_outcome_says_no_output_only_when_there_was_none(self):

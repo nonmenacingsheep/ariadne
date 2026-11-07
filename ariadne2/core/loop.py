@@ -80,7 +80,14 @@ def brief(name: str, args) -> str:
 _FRAME = ("[", "=== ", "$ ", "(in ", "stdout:", "stderr:", "path\tsize\t")
 _HEADER = re.compile(r"\d+ (?:match|installed)\b.*:$|\d+ result\(s\)\. ")
 _EXIT = re.compile(r"^\(in .*, exit code (-?\d+)\)$")
-GIST = 200
+# How much of each result the record keeps. Her latest reply's record goes to
+# her whole (GIST): with only the first 200 characters, a settings list or a
+# search was cut off and on the next turn she had to look again ("let me check
+# the outfits" a minute after reading them). Older records shrink to OLD_GIST
+# a piece, so the history doesn't swell (as_sent).
+GIST = 900
+OLD_GIST = 200
+RECORD_CAP = 3000
 
 
 def outcome(result: dict) -> str:
@@ -120,12 +127,16 @@ def as_sent(history: list[dict]) -> list[dict]:
     own message it read as something she had typed, and she'd tell him she'd
     written the record herself and never ran a thing."""
     out, note = [], ""
-    for msg in history:
+    last = max((i for i, m in enumerate(history) if m["role"] == "assistant" and isinstance(m["content"], str)
+                and RECORD.search(m["content"])), default=-1)
+    for i, msg in enumerate(history):
         content = msg["content"]
         if msg["role"] == "assistant" and isinstance(content, str):
             found = RECORD.findall(content)
             if found:
                 note = found[-1].strip()[len("⟦ran: "):-1]
+                if i != last:
+                    note = _older(note)
                 content = RECORD.sub("", content).strip() or "(no words, only actions)"
         elif msg["role"] == "user" and note:
             head = f"⟦app record of your previous reply, what it really ran: {note}⟧"
@@ -138,13 +149,21 @@ def as_sent(history: list[dict]) -> list[dict]:
     return out
 
 
+def _older(note: str) -> str:
+    """An older reply's record, each action's result cut back to OLD_GIST."""
+    parts = []
+    for piece in note.split("; "):
+        parts.append(piece if len(piece) <= OLD_GIST + 60 else piece[:OLD_GIST + 59] + "…")
+    return "; ".join(parts)
+
+
 def record(reply: str, did: list[str]) -> str:
     text = RECORD.sub("", reply or "").strip()
     if not did:
         return text or "(no answer)"
     note = "; ".join(did)
-    if len(note) > 1500:
-        note = note[:1499] + "…"
+    if len(note) > RECORD_CAP:
+        note = note[:RECORD_CAP - 1] + "…"
     return (text + "\n" if text else "") + f"⟦ran: {note}⟧"
 
 class Conversation:

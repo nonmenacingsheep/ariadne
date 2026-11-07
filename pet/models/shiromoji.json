@@ -22,17 +22,13 @@
 				"Swimsuit_Vine"
 			],
 			"firm": false,
-			"shapes": {
-				"Body_2/Bikini_1": 1.0
-			}
+			"shapes": {}
 		},
 		"Underwear": {
 			"show": [
 				"Underwear"
 			],
-			"shapes": {
-				"Body_2/Bikini_1": 1.0
-			},
+			"shapes": {},
 			"firm": false
 		}
 	},
@@ -43,7 +39,6 @@
 	},
 	"shapes": {
 		"Body_2/Sweater": 0.0,
-		"Body_2/Bikini_1": 0.0,
 		"Body_2/Heel": 1.0
 	}
 }

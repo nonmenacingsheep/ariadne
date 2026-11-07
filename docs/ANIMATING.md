@@ -20,9 +20,9 @@ bin/anim-edit yawn_1
 The second word is the clip; a third picks the body (`bin/anim-edit yawn_1 jane`;
 Shiromoji if you leave it out). Blender opens with:
 
-- **her body**, in her usual outfit, and over it **thin sticks**: those are her
-  bones. You move the sticks; her body follows. (Only the sticks can be
-  clicked, so you can't move her body by accident.)
+- **her body**, in her usual outfit, with the clip on her, and **her bones**
+  drawn over her: those are what you click and turn. (Only her bones can be
+  clicked, so you can't grab the mesh by accident.)
 - **the timeline** along the bottom: the clip, 30 frames to a second.
 - **the Aries tab** in the sidebar on the right (press **N** if it's hidden):
   the clip's name, and the two buttons that matter: **Send to Aries** and
@@ -44,10 +44,13 @@ Then, in any file with one of her bodies in it:
 1. Click her skeleton (**Armature**, or `Armature_Base` in Shiromoji's file) in
    the Outliner.
 2. In the 3D view's sidebar (**N**), the **Aries** tab: pick a **Clip**, click
-   **Load onto her**. The clip's sticks appear over her and she follows them;
-   you're in Pose Mode on the sticks, ready to fix.
+   **Load onto her**. The clip is put onto her (a second or so), her bones
+   are drawn over her, and you're in Pose Mode, ready to fix.
 3. **Send to Aries** and **Back to Kimodo's** work as below; **Let her go**
-   removes the sticks and leaves her as she was.
+   takes the clip off her and gives her own animation back.
+
+If you installed the add-on before, install it again the same way to update it
+(and restart Blender).
 
 ## Getting around
 
@@ -67,17 +70,19 @@ Then, in any file with one of her bodies in it:
 1. **Find the moment.** Press **Space** and watch. When her hand or arm goes
    into her, press **Space** again and step with the arrow keys to the frame
    where it's deepest.
-2. **Pick the bone.** Click the stick for the part that should move. For an
+2. **Pick the bone.** Click the bone for the part that should move. For an
    arm in her chest that's usually the upper arm. Its name shows in the
-   sidebar's **Item** tab. Her arm bones are `LeftShoulder`, `LeftArm` (upper
-   arm), `LeftForeArm` and `LeftHand`, and the same with `Right`. Her **left**
-   is on **your right** in the front view.
+   sidebar's **Item** tab: on Shiromoji and Kuromoji her arm bones are
+   `Shoulder_L`, `UpperArm_L`, `LowerArm_L` and `Hand_L` (and `_R`). Her
+   **left** is on **your right** in the front view. Her body bones (spine,
+   arms, legs, hands, fingers, head) go back to Aries; hair, tail and breast
+   bones don't (the clips have none), so leave those be.
 3. **Turn it.** Press **R**, move the mouse, and click to keep it (right-click
    cancels). To turn it about just one axis, press **R** then **X**, **Y** or
    **Z**. You can also type the angle: **R Z 10 Enter** turns it 10 degrees.
    Small moves are best: 5 to 15 degrees usually clears clipping.
 4. **That's a key.** Auto-keying is on, so the turn is saved: a diamond appears
-   in the timeline. Your keys go on a **Fixes layer** on top of Kimodo's take:
+   in the timeline. Your keys go on a **Fixes layer** on top of the clip:
    **one key turns that bone by that much for the whole clip**, which is
    usually exactly what a clipping fix wants. Press **Space** and watch the
    whole clip through.
@@ -99,8 +104,9 @@ starts from your version.
   Your versions go to `clips/edited/<clip>.bvh`, and packing
   (`pet/import/kimodo_batch.sh --pack`) uses one of those instead of Kimodo's
   take of the same name. Deleting it (Back to Kimodo's) brings the original back.
-- Her body in Blender follows the sticks by the same maths Godot uses to put
-  the clips on her, so what you see is what she does. One thing differs: on
+- The clip is put onto her body by the same maths Godot uses to put the clips
+  on her, and Send to Aries runs it backwards (her pose, every frame, onto
+  Kimodo's skeleton), so what you see is what she does. One thing differs: on
   her desktop, the clips that only use her top half (yawns, waves, thinking)
   take her legs from one calm idle, so she doesn't shuffle her feet between
   them. Don't worry if her legs look different in Blender for those.

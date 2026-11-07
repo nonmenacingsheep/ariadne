@@ -16,9 +16,23 @@ import os
 import sys
 
 import bpy
+from mathutils import Quaternion
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import aries_anim  # noqa: E402
+# The repo's aries_anim, even with an older copy installed as an add-on (Blender
+# loads enabled add-ons first, and an import would hand back that one).
+import importlib.util  # noqa: E402
+_mine = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aries_anim.py")
+_old = sys.modules.get("aries_anim")
+if _old is not None and os.path.abspath(getattr(_old, "__file__", "")) != _mine:
+    try:
+        _old.unregister()
+    except Exception:
+        pass
+    del sys.modules["aries_anim"]
+_spec = importlib.util.spec_from_file_location("aries_anim", _mine)
+aries_anim = importlib.util.module_from_spec(_spec)
+sys.modules["aries_anim"] = aries_anim
+_spec.loader.exec_module(aries_anim)
 
 PET = aries_anim.PET
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -62,59 +76,55 @@ def build():
     dst = load_body(BODY)
     follow = aries_anim.load_onto(dst, CLIP)
     src = follow.src
-    # In this scene only the sticks can be clicked: no moving her by accident.
-    dst.hide_set(True)
+    # In this scene only her bones can be clicked (drawn over her): her meshes
+    # and Kimodo's sticks can't be grabbed by accident.
     for o in bpy.data.objects:
-        o.hide_select = o != src
+        o.hide_select = o != dst
     return src, dst, follow
 
 
 src, dst, follow = build()
 
 if TEST:
-    # Round trip: written and read back unedited, nothing may move.
+    # Round trip: her clip written back onto SOMA unedited, no joint may move.
     os.makedirs(TEST, exist_ok=True)
-    f0, f1 = bpy.context.scene.frame_start, bpy.context.scene.frame_end
-    for o in bpy.context.view_layer.objects:
-        o.select_set(o == src)
-    bpy.context.view_layer.objects.active = src
-    src.scale = (1, 1, 1)
+    sc0 = bpy.context.scene
+    f0, f1 = sc0.frame_start, sc0.frame_end
     out = f"{TEST}/{CLIP}.bvh"
-    src.scale = (follow.scale,) * 3
-    aries_anim.write_take(out)
-    bpy.ops.import_anim.bvh(filepath=out, global_scale=0.01, axis_forward="Y", axis_up="Z", rotate_mode="NATIVE")
-    back = bpy.context.active_object
+
+    def read_back():
+        aries_anim.write_take(out)
+        bpy.ops.import_anim.bvh(filepath=out, global_scale=0.01, axis_forward="Y", axis_up="Z", rotate_mode="NATIVE")
+        return bpy.context.active_object
+
+    back = read_back()
     src.scale = (1, 1, 1)
     worst = 0.0
     for f in range(f0, f1 + 1, 5):
-        bpy.context.scene.frame_set(f)
+        sc0.frame_set(f)
         for pb in src.pose.bones:
             a = (src.matrix_world @ pb.matrix).translation
             b = (back.matrix_world @ back.pose.bones[pb.name].matrix).translation
             worst = max(worst, (a - b).length)
     print("ROUNDTRIP worst joint drift %.6f m over frames %d-%d" % (worst, f0, f1))
     bpy.data.objects.remove(back, do_unlink=True)
-    bpy.context.view_layer.objects.active = src
-    src.select_set(True)
-    # A fix on the Fixes layer comes through: his left arm 25 degrees out, one key.
-    arm = src.pose.bones["LeftArm"]
-    sc0 = bpy.context.scene
+    src.scale = (follow.scale,) * 3
+    # A fix on her own Fixes layer comes through: her left upper arm 25 degrees out, one key.
+    her = {s: t for t, s in follow.pairs.items()}
+    arm, hand = dst.pose.bones[her["LeftArm"]], dst.pose.bones[her["LeftHand"]]
     sc0.frame_set(f0)
-    before = (src.matrix_world @ src.pose.bones["LeftHand"].matrix).translation.copy()
-    arm.rotation_euler.rotate_axis("Z", 0.436)
-    arm.keyframe_insert("rotation_euler", frame=f0)
+    before = (dst.matrix_world @ hand.matrix).translation.copy()
+    arm.rotation_quaternion = arm.rotation_quaternion @ Quaternion((0, 0, 1), 0.436)
+    arm.keyframe_insert("rotation_quaternion", frame=f0)
     sc0.frame_set(f0 + 1)
     sc0.frame_set(f0)
-    moved = ((src.matrix_world @ src.pose.bones["LeftHand"].matrix).translation - before).length
-    src.scale = (follow.scale,) * 3
-    aries_anim.write_take(out)
+    moved = ((dst.matrix_world @ hand.matrix).translation - before).length
+    back = read_back()
     src.scale = (1, 1, 1)
-    bpy.ops.import_anim.bvh(filepath=out, global_scale=0.01, axis_forward="Y", axis_up="Z", rotate_mode="NATIVE")
-    back = bpy.context.active_object
     sc0.frame_set((f0 + f1) // 2)
     a = (src.matrix_world @ src.pose.bones["LeftHand"].matrix).translation
     b = (back.matrix_world @ back.pose.bones["LeftHand"].matrix).translation
-    print("FIX hand moved %.3f m by the key; written and read back, mid-clip off by %.6f m" % (moved, (a - b).length))
+    print("FIX her hand moved %.3f m by the key; mid-clip, SOMA's hand written back moved %.3f m" % (moved, (a - b).length))
     bpy.data.objects.remove(back, do_unlink=True)
     src.scale = (follow.scale,) * 3
     # Three frames of her, for a look.

@@ -528,7 +528,7 @@ const JIGGLE := [
 	["Hair_Bang_2_1_L", "Hair_Bang_2_2_L", 1.4, 0.5, 0.15, 0.01], ["Hair_Bang_2_1_R", "Hair_Bang_2_2_R", 1.4, 0.5, 0.15, 0.01],
 	["Hair_Top_1", "Hair_Top_2", 1.2, 0.45, 0.2, 0.015],
 	["Kemomimi_L", "Kemomimi_L", 0.8, 0.22, 0.04, 0.01], ["Kemomimi_R", "Kemomimi_R", 0.8, 0.22, 0.04, 0.01],
-	["Tail_1", "Tail_4", 0.6, 0.3, 0.35, 0.02], ["Tail_1", "Tail_3", 0.6, 0.3, 0.35, 0.02],
+	["Tail_1", "Tail_4", 0.6, 0.18, 0.35, 0.02], ["Tail_1", "Tail_3", 0.6, 0.18, 0.35, 0.02],     # (light drag: it lags and overshoots)
 	["Earrings_1_L", "Earrings_2_L", 1.0, 0.3, 0.5, 0.008], ["Earrings_1_R", "Earrings_2_R", 1.0, 0.3, 0.5, 0.008],
 	["Necklace_1", "Necklace_2", 0.9, 0.4, 0.6, 0.01],
 	["Breast_L", "Breast_L", 3.6, 0.4, 0.15, 0.03], ["Breast_R", "Breast_R", 3.6, 0.4, 0.15, 0.03],
@@ -565,6 +565,11 @@ const TAIL_K_SWING := 55.0
 const TAIL_C_SWING := 4.0
 const SWING_FALL := [1.0, 0.75, 0.55, 0.4, 0.3, 0.2, 0.15, 0.1]
 var tail_up_v := 0.0
+var tail_goal := 0.0                       # where the tail is heading, eased (0 down, 1 up)
+# Now and then a slow, lazy swish, like a cat's tail swaying on its own: a
+# bout of a few seconds every so often, travelling down the tail.
+var sway_at := 6.0
+var sway_len := 0.0
 var wrap_k := 0.0                          # 1 wrapped round to her side (sitting, lying)
 var tail_swing := Vector2.ZERO             # (sideways, down) radians, from her body's motion
 var tail_swing_v := Vector2.ZERO
@@ -766,7 +771,10 @@ func _tail_frame() -> void:
 	# A second spring under the springy bones: underdamped, so it overshoots.
 	# Up it springs and bounces, down it flops; and her body's own motion
 	# (setting off, stopping, turning, a jump) throws it, and it rebounds.
-	tail_up_v += ((0.0 if relaxed else 1.0) - tail_up) * TAIL_K_UP * dt - tail_up_v * TAIL_C_UP * dt
+	# The goal itself eases (a clip ending and the next starting flipped it
+	# between down and up at once, and the tail jerked); the spring follows it.
+	tail_goal = move_toward(tail_goal, 0.0 if relaxed else 1.0, dt / 1.5)
+	tail_up_v += (tail_goal - tail_up) * TAIL_K_UP * dt - tail_up_v * TAIL_C_UP * dt
 	tail_up = clampf(tail_up + tail_up_v * dt, -0.1, 1.3)
 	var moved := body.global_position - tail_body_was
 	tail_body_was = body.global_position
@@ -794,6 +802,7 @@ func _tail_frame() -> void:
 		var up: float = float(shape[mini(i, shape.size() - 1)]) + 0.07 * sin(t * 0.9 * pace - i * 0.9)   # up and back, tip curling over
 		var curl: float = lerpf(down, -up, tail_up) + tail_swing.y * SWING_FALL[mini(i, 7)]
 		var side := (amp if i == 0 else 0.05 + 0.05 * happy) * sin(t * speed * pace - i * 0.6)
+		side += _sway() * sin(t * 1.4 - i * 0.8) * (0.6 + 0.4 * i / maxf(1.0, tail_bones.size() - 1.0))
 		if i < 3:
 			# strong enough to beat her pelvis's own twist, which carries the root toward the stepping leg
 			side = lerpf(side, WAG_SIDE * walk_wag * (0.8 + 0.3 * happy) * [1.0, 0.6, 0.35][i], walk_mix)
@@ -803,6 +812,17 @@ func _tail_frame() -> void:
 		side += wrap_k * (1.0 - clampf(tail_up, 0.0, 1.0)) * float(SWING_FALL[mini(i, 7)]) * 0.9
 		var q := Quaternion(Vector3.RIGHT, -curl) * Quaternion(Vector3.FORWARD, side)
 		skel.set_bone_pose_rotation(tail_bones[i], tail_rest[i] * q)
+
+
+# The lazy swish's strength now (0 between bouts), radians.
+func _sway() -> float:
+	if t > sway_at + sway_len:
+		sway_at = t + randf_range(8.0, 20.0)
+		sway_len = randf_range(3.0, 6.0)
+	var u := (t - sway_at) / maxf(sway_len, 0.1)
+	if u < 0.0 or u > 1.0 or state in ["sleep", "held", "tumble", "fall"]:
+		return 0.0
+	return 0.35 * sin(PI * u)
 
 
 # Her ears flick: often when she's happy (now one, now both), once in a while
@@ -1284,7 +1304,52 @@ func _load_clips() -> void:
 						clip_lib.add_animation(name, anim)
 						_lying_heads(name, anim)
 			src.free()
+		_one_stance()
 	ap.add_animation_library("", clip_lib)
+
+
+# Standing clips that are only about her upper body (a yawn, a stretch, a
+# wave, thinking) were each made with their own feet: from one to the next
+# she shuffled her stance all the time. They take their hips and legs from
+# one idle instead (STANCE_FROM, her weight shifting gently), so between them
+# her feet stay put and only her top half changes. Clips whose legs are the
+# point (a hop, a bounce, a dance, a stumble, sitting, lying) keep their own.
+const STANCE_FROM := "idle_calm_1"
+const STANCE_CLIPS := ["idle_calm_2", "idle_calm_3", "idle_bored_", "idle_happy_2", "idle_sad_", "idle_tired_",
+		"yawn_", "stretch_", "think_", "fold_arms_", "shy_", "talk_", "wave_", "drink_", "interact_",
+		"play_knock_", "solo_salute_", "solo_idea_", "solo_nails_", "solo_shiver_", "watch_up_", "hand_look_",
+		"freeze_poke_", "head_pick_", "sneeze_small_", "Yes"]
+const STANCE_BONES := ["Hips", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "LeftToes",
+		"RightUpperLeg", "RightLowerLeg", "RightFoot", "RightToes"]
+func _one_stance() -> void:
+	if not clip_lib.has_animation(STANCE_FROM):
+		return
+	var base := clip_lib.get_animation(STANCE_FROM)
+	var from := {}                             # bone -> [type, track] in the idle
+	for tr in base.get_track_count():
+		var bone := String(base.track_get_path(tr).get_concatenated_subnames())
+		if bone in STANCE_BONES:
+			from[[bone, base.track_get_type(tr)]] = tr
+	for n in clip_lib.get_animation_list():
+		if n == STANCE_FROM or not STANCE_CLIPS.any(func(p): return n == p or (String(p).ends_with("_") and String(n).begins_with(p))):
+			continue
+		var a := clip_lib.get_animation(n)
+		for tr in range(a.get_track_count() - 1, -1, -1):
+			if String(a.track_get_path(tr).get_concatenated_subnames()) in STANCE_BONES:
+				a.remove_track(tr)
+		for key in from:
+			var src: int = from[key]
+			var tr := a.add_track(base.track_get_type(src))
+			a.track_set_path(tr, base.track_get_path(src))
+			var step := 1.0 / 30.0
+			var at := 0.0
+			while at <= a.length + 0.001:
+				var bt := fmod(at, base.length)
+				match base.track_get_type(src):
+					Animation.TYPE_POSITION_3D: a.position_track_insert_key(tr, at, base.position_track_interpolate(src, bt))
+					Animation.TYPE_ROTATION_3D: a.rotation_track_insert_key(tr, at, base.rotation_track_interpolate(src, bt))
+					Animation.TYPE_SCALE_3D: a.scale_track_insert_key(tr, at, base.scale_track_interpolate(src, bt))
+				at += step
 
 
 # The clips' source skeletons have no eyes, but the retarget gives every clip
@@ -2143,7 +2208,7 @@ func _read_settings() -> void:
 		if room:
 			room.arrange()
 	if av.has("size") and absf(float(av["size"]) - PPM) > 0.5:
-		PPM = clampf(float(av["size"]), 200, 840)
+		PPM = clampf(float(av["size"]), 200, 1680)
 		screen = Vector2.ZERO                 # forces the camera to re-fit
 	# Hidden while she wears another body (a Live2D model: ariadne2/pet2d).
 	var want_path := _model_path(str(av.get("model", "aries")))

@@ -14,6 +14,11 @@ const Spotify = (() => {
   };
   const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
   let w = null, st = {}, timer = null, artUrl = "", volTimer = null, dragging = false, scrubbing = false, scrubS = 0, listKey = "", trackKey = "";
+  // His volume, kept a moment after he sets it: Spotify's own updates carry
+  // the old one until it catches up, and they knocked the slider (and the next
+  // scroll step, which counted from it) back and forth.
+  let volMine = null, volUntil = 0, wheelAcc = 0;
+  const VOL_HOLD = 1500, VOL_STEP = 2, NOTCH = 50;   // ms his value wins; per notch; pixels of smooth scroll to a notch
 
   function build(widget, send) {
     w = widget; listKey = ""; trackKey = ""; artUrl = "";
@@ -59,6 +64,7 @@ const Spotify = (() => {
     const vol = q(".sp-vol"), vt = q(".sp-vtrack");
     const setVol = v => {
       st.volume = Math.max(0, Math.min(100, Math.round(v))); paintVol();
+      volMine = st.volume; volUntil = Date.now() + VOL_HOLD;
       clearTimeout(volTimer); volTimer = setTimeout(() => send({ t: "press", widget: "spotify", control: "volume", value: st.volume }), 160);
     };
     const fromX = x => { const r = vt.getBoundingClientRect(); return (x - r.left) / r.width * 100; };
@@ -69,7 +75,19 @@ const Spotify = (() => {
       const up = () => { dragging = false; vt.removeEventListener("pointermove", move); vt.removeEventListener("pointerup", up); };
       vt.addEventListener("pointermove", move); vt.addEventListener("pointerup", up);
     });
-    vol.addEventListener("wheel", e => { e.preventDefault(); setVol((st.volume || 0) + (e.deltaY < 0 ? 4 : -4)); }, { passive: false });
+    // A notch is 2. A smooth-scrolling mouse or touchpad sends many small
+    // deltas (pixels): they add up to a notch, instead of each one a step.
+    vol.addEventListener("wheel", e => {
+      e.preventDefault();
+      let steps = 0;
+      if (e.deltaMode === 0) {
+        wheelAcc += e.deltaY;
+        while (Math.abs(wheelAcc) >= NOTCH) { steps += wheelAcc < 0 ? 1 : -1; wheelAcc -= Math.sign(wheelAcc) * NOTCH; }
+      } else {
+        steps = e.deltaY < 0 ? 1 : -1;
+      }
+      if (steps) setVol((st.volume || 0) + steps * VOL_STEP);
+    }, { passive: false });
     // One wheel notch moves the list one song, not a page.
     q(".sp-list").addEventListener("wheel", e => {
       e.preventDefault();
@@ -85,7 +103,11 @@ const Spotify = (() => {
     q(".sp-art img").addEventListener("error", e => { e.target.style.visibility = "hidden"; });
   }
 
-  function set(data) { st = data || {}; render(); }
+  function set(data) {
+    st = data || {};
+    if (volMine !== null && (dragging || Date.now() < volUntil)) st.volume = volMine;   // (his, till Spotify has it)
+    render();
+  }
 
   function render() {
     if (!w) return;

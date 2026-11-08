@@ -401,6 +401,24 @@ class RecordTests(unittest.TestCase):
                          "⟦app record of your previous reply, what it really ran: settings set → Her body is now on.⟧")
         self.assertEqual(hist[1]["content"], "I'm back.\n⟦ran: settings set → Her body is now on.⟧")   # history untouched
 
+    def test_every_step_of_a_shell_command_shows_in_its_record(self):
+        # A symlink third in a line of looks was cut off at 60 characters; later
+        # she told him she'd run nothing that made it.
+        from ariadne2.core.loop import brief
+        got = brief("shell", {"command": "ls ~/.local/share/Steam/steamapps/workshop/content/; "
+                                         "ls ~/x 2>&1 | head -2; ln -s /var/mnt/media/a ~/b && echo linked"})
+        self.assertIn("ln -s /var/mnt/media/a ~/b", got)
+        self.assertNotIn("head -2", got)                   # (not what it's piped through)
+
+    def test_a_long_record_shortens_results_not_the_list(self):
+        # Cut at the end, a long fix lost its last steps, the ones that changed things.
+        from ariadne2.core import loop
+        did = [f'shell "step {i}" → exit 0, 1 line: "{"x" * 800}"' for i in range(11)]
+        note = loop.record("Fixed it.", did)
+        self.assertLessEqual(len(note), loop.RECORD_CAP + 40)
+        for i in range(11):
+            self.assertIn(f'shell "step {i}"', note)
+
     def test_a_record_cut_off_in_the_transcript_still_moves_to_his_message(self):
         # A transcript row chopped mid-record (no closing bracket), brought back by
         # a restart: left in her words, she said her own launches weren't hers.

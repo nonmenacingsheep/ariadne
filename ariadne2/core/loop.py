@@ -69,10 +69,26 @@ def brief(name: str, args) -> str:
     key = next((a[k] for k in ("query", "command", "what", "url", "path", "app", "game", "name", "pattern",
                                "task", "text", "op") if isinstance(a.get(k), str) and a.get(k).strip()), "")
     key = " ".join(str(key).split())
-    if len(key) > 60:
+    if name == "shell" and key:
+        key = _steps(str(a.get("command") or key))
+    elif len(key) > 60:
         key = key[:59] + "…"
     head = f"{name} {action}" if isinstance(action, str) else name
     return f'{head} "{key}"' if key else head
+
+
+def _steps(command: str) -> str:
+    """A shell command for the record, every step of it briefly: 'ls …· ls …·
+    ln -s /var/mnt/…'. Cut at 60 characters, a symlink third in a line of
+    looks never showed, and she later said she'd run nothing that made it."""
+    steps = []
+    for part in re.split(r"\s*(?:;|&&|\|\||\n)\s*", command):
+        part = " ".join(part.split("|")[0].split())      # (not what it's piped through)
+        if not part or re.fullmatch(r"(echo -*|sleep [\d.]+|true|:)", part):
+            continue
+        steps.append(part if len(part) <= 48 else part[:47] + "…")
+    out = " · ".join(steps) or " ".join(command.split())[:60]
+    return out if len(out) <= 180 else out[:179] + "…"
 
 
 # Lines that frame a result rather than say anything: the quote wrapper, the
@@ -158,13 +174,34 @@ def _older(note: str) -> str:
     return "; ".join(parts)
 
 
+def fit_actions(did: list[str], cap: int) -> str:
+    """The record's actions joined, within `cap`: if they're too long, each
+    one's result is shortened, never the list. Cut at the end, a long fix
+    lost its last steps (the ones that changed things), and she told him she
+    hadn't done what she had."""
+    note = "; ".join(did)
+    if len(note) <= cap or not did:
+        return note
+    room = max(60, cap // len(did) - 2)
+    out = []
+    for item in did:
+        if len(item) > room:
+            head, sep, rest = item.partition(" → ")
+            if not sep:
+                head, sep, rest = item.partition(" (failed: ")
+            head = head if len(head) <= room * 2 // 3 else head[:room * 2 // 3 - 1] + "…"
+            keep = max(0, room - len(head) - len(sep) - 1)
+            item = head + sep + (rest[:keep] + "…" if sep else "")
+        out.append(item)
+    note = "; ".join(out)
+    return note if len(note) <= cap else note[:cap - 1] + "…"
+
+
 def record(reply: str, did: list[str]) -> str:
     text = RECORD.sub("", reply or "").strip()
     if not did:
         return text or "(no answer)"
-    note = "; ".join(did)
-    if len(note) > RECORD_CAP:
-        note = note[:RECORD_CAP - 1] + "…"
+    note = fit_actions(did, RECORD_CAP)
     return (text + "\n" if text else "") + f"⟦ran: {note}⟧"
 
 class Conversation:

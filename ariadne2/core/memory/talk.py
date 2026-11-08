@@ -37,7 +37,10 @@ def _fit(text: str) -> str:
     words = words[:MAX_LINE // 2]                # her words keep up to half; the record the rest
     room = MAX_LINE - len(words) - 1
     if len(rec) > room:
-        rec = rec[:room - 2].rstrip("⟧") + "…⟧"
+        # every action kept, each one's result shortened (loop.fit_actions)
+        from ..loop import fit_actions
+        body = rec[len("⟦ran: "):].removesuffix("⟧")
+        rec = "⟦ran: " + fit_actions(body.split("; "), room - len("⟦ran: ⟧")) + "⟧"
     return (words + " " + rec) if words else rec
 SHOW = 220                                  # characters of a recalled line
 

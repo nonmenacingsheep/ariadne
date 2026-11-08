@@ -46,7 +46,6 @@ from .beats import BeatListener  # noqa: E402
 log = logging.getLogger("ariadne2.pet2d")
 
 GAZE_PLUGIN = "ariadne2-pet2d-gaze"
-GAZE_UDP = 47121                      # the pointer, relayed to her 3D body
 TITLE = "ariadne2-pet-l2d"            # KWin's script matches the "ariadne2-pet" prefix
 PORT = 47120
 WEB = Path(__file__).with_name("web")
@@ -396,13 +395,10 @@ class PetApp(Gtk.Application):
 
     def _gaze(self) -> None:
         try:
-            from ..desk import kwin
-            self._udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             node = Gio.DBusNodeInfo.new_for_xml(self.GAZE_XML)
             self.get_dbus_connection().register_object("/io/ariadne2/pet2d", node.interfaces[0],
                                                        self._gaze_call, None, None)
-            if not kwin._load(Path(__file__).with_name("kwin_gaze.js"), GAZE_PLUGIN):
-                log.info("no KWin: she follows the pointer only over her")
+            # (the desk loads kwin_gaze.js and passes the pointer on to here)
         except Exception as e:                     # no session bus, no KWin: over her only
             log.info("no pointer feed (%s); she follows it only over her", e)
 
@@ -412,10 +408,6 @@ class PetApp(Gtk.Application):
                 self._fed = True
                 log.info("the pointer feed from KWin is on")
             self.win.cursor = params.unpack()
-            try:                                   # and to her 3D body (pet/pet.gd listens on GAZE_UDP)
-                self._udp.sendto(b"%d %d" % self.win.cursor, ("127.0.0.1", GAZE_UDP))
-            except (OSError, AttributeError):
-                pass
         invocation.return_value(None)
 
 

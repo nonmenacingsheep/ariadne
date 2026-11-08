@@ -3,7 +3,9 @@
 // Under Wayland a window only hears the pointer while it's over it, and her
 // window takes input only in the box around her body, so she couldn't follow
 // it anywhere else. KWin knows; this reads it 20 times a second and, when it
-// moved, sends it to the body (ariadne2/pet2d) relative to her window.
+// moved, sends it relative to her window to the desk (ariadne2/desk, which
+// always runs and loads this), and the desk passes it on to whichever body
+// she wears: the 3D one (pet/pet.gd) or the Live2D one (ariadne2/pet2d).
 
 var PET = "ariadne2-pet";                // her Live2D window or her 3D one (both cover the same area)
 var last = "";
@@ -24,6 +26,6 @@ timer.timeout.connect(function () {
     var x = Math.round(p.x - g.x), y = Math.round(p.y - g.y), key = x + "," + y;
     if (key === last) return;
     last = key;
-    callDBus("io.ariadne2.pet2d", "/io/ariadne2/pet2d", "io.ariadne2.Gaze", "Cursor", x, y);
+    callDBus("io.ariadne2.desk", "/io/ariadne2/desk", "io.ariadne2.Layer", "Cursor", x, y);
 });
 timer.start();

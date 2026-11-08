@@ -29,6 +29,9 @@ IFACE_XML = """
   <method name='Front'>
     <arg type='b' name='full' direction='in'/><arg type='i' name='pid' direction='in'/>
   </method>
+  <method name='Cursor'>
+    <arg type='i' name='x' direction='in'/><arg type='i' name='y' direction='in'/>
+  </method>
   <method name='Area'>
     <arg type='i' name='x' direction='in'/><arg type='i' name='y' direction='in'/>
     <arg type='i' name='w' direction='in'/><arg type='i' name='h' direction='in'/>
@@ -96,6 +99,19 @@ def load_layer_script() -> bool:
     path = cache / "kwin_layer.js"
     path.write_text(js, "utf-8")
     return _load(path, PLUGIN)
+
+
+GAZE_PLUGIN = "ariadne2-gaze"
+GAZE_SCRIPT = Path(__file__).resolve().parents[1] / "pet2d" / "kwin_gaze.js"
+
+
+def load_gaze_script() -> bool:
+    """The pointer, read from KWin anywhere on the screen and sent here (Cursor),
+    for whichever body she wears. It lived in the Live2D window, which now only
+    runs for a Live2D body: with a 3D one chosen nothing fed her the pointer,
+    and petting, following and noticing it stopped."""
+    unload("ariadne2-pet2d-gaze")              # (the Live2D window's old copy)
+    return _load(GAZE_SCRIPT, GAZE_PLUGIN)
 
 
 def run_once(js: str, plugin: str = "ariadne2-once") -> bool:

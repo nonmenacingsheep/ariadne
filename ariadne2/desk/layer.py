@@ -25,6 +25,8 @@ from ..core import settings as core_settings  # noqa: E402
 from . import game, kwin, layout, theme  # noqa: E402
 from .link import CoreLink  # noqa: E402
 
+GAZE_UDP = 47121                    # her 3D body hears the pointer here (pet/pet.gd GAZE_UDP)
+
 log = logging.getLogger(__name__)
 PAGE = Path(os.environ.get("ARIADNE2_PAGE", Path(__file__).with_name("web") / "desk.html"))
 
@@ -65,7 +67,7 @@ class Layer(Gtk.Window):
         game.flag_path().unlink(missing_ok=True)       # a crash mid-game mustn't keep her body away
         self.link = CoreLink(self._on_message, self._on_status)
         self.connect("realize", lambda *_: self._update_input())
-        self.connect("map", lambda *_: kwin.load_layer_script())
+        self.connect("map", lambda *_: (kwin.load_layer_script(), kwin.load_gaze_script()))
 
     def _make_view(self) -> None:
         ucm = WebKit.UserContentManager()
@@ -256,7 +258,7 @@ class DeskApp(Gtk.Application):
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.layer: Layer | None = None
         self.connect("activate", self._activate)
-        self.connect("shutdown", lambda *_: kwin.unload())
+        self.connect("shutdown", lambda *_: (kwin.unload(), kwin.unload(kwin.GAZE_PLUGIN)))
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
@@ -272,10 +274,31 @@ class DeskApp(Gtk.Application):
             self.layer.link.send(protocol.press("core", "talk"))
         elif method == "Area" and self.layer:
             self.layer.set_area(tuple(params.unpack()))
+        elif method == "Cursor":
+            self._relay_cursor(*params.unpack())
         elif method == "Front" and self.layer:
             full, pid = params.unpack()
             self.layer.front(bool(full), int(pid))
         invocation.return_value(None)
+
+    _udp = None
+
+    def _relay_cursor(self, x: int, y: int) -> None:
+        """The pointer (kwin_gaze.js) to her bodies: the 3D one listens on a local
+        UDP port (pet.gd GAZE_UDP), the Live2D one on its D-Bus object, if it's up."""
+        import socket
+        if self._udp is None:
+            self._udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            log.info("the pointer feed from KWin is on")
+        try:
+            self._udp.sendto(b"%d %d" % (x, y), ("127.0.0.1", GAZE_UDP))
+        except OSError:
+            pass
+        conn = self.get_dbus_connection()
+        if conn is not None:
+            conn.call("io.ariadne2.pet2d", "/io/ariadne2/pet2d", "io.ariadne2.Gaze", "Cursor",
+                      GLib.Variant("(ii)", (x, y)), None, Gio.DBusCallFlags.NO_AUTO_START, 200, None,
+                      None, None)                  # (fire and forget: it's often not running)
 
     def _activate(self, _app) -> None:
         if self.layer is None:

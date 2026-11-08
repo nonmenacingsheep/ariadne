@@ -58,7 +58,8 @@ class SentenceSplitter:
 # turn (they're big), so without this a later turn saw "I looked at your screen"
 # with nothing behind it, decided she'd made it up, and said so: disowning real
 # work. The record is written here, never by her, in brackets she won't type.
-RECORD = re.compile(r"\s*⟦[^⟧]*⟧")
+# (also one cut off at the end, unclosed: older transcript rows were chopped mid-record)
+RECORD = re.compile(r"\s*⟦[^⟧]*(?:⟧|$)")
 
 
 def brief(name: str, args) -> str:
@@ -134,7 +135,7 @@ def as_sent(history: list[dict]) -> list[dict]:
         if msg["role"] == "assistant" and isinstance(content, str):
             found = RECORD.findall(content)
             if found:
-                note = found[-1].strip()[len("⟦ran: "):-1]
+                note = found[-1].strip()[len("⟦ran: "):].removesuffix("⟧")
                 if i != last:
                     note = _older(note)
                 content = RECORD.sub("", content).strip() or "(no words, only actions)"

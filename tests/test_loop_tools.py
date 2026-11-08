@@ -401,6 +401,18 @@ class RecordTests(unittest.TestCase):
                          "⟦app record of your previous reply, what it really ran: settings set → Her body is now on.⟧")
         self.assertEqual(hist[1]["content"], "I'm back.\n⟦ran: settings set → Her body is now on.⟧")   # history untouched
 
+    def test_a_record_cut_off_in_the_transcript_still_moves_to_his_message(self):
+        # A transcript row chopped mid-record (no closing bracket), brought back by
+        # a restart: left in her words, she said her own launches weren't hers.
+        from ariadne2.core.loop import as_sent
+        hist = [{"role": "user", "content": "I just started my PC."},
+                {"role": "assistant", "content": "Opening your apps. ⟦ran: tasks open \"Opera\" → Opened Opera GX.; shell \"nohup"},
+                {"role": "user", "content": "opening works now"}]
+        sent = as_sent(hist)
+        self.assertEqual(sent[1]["content"], "Opening your apps.")
+        self.assertTrue(sent[2]["content"].startswith(
+            '⟦app record of your previous reply, what it really ran: tasks open "Opera" → Opened Opera GX.; shell "nohup⟧'))
+
 
 class Resume(unittest.TestCase):
     def test_a_restart_picks_up_the_last_exchanges(self):

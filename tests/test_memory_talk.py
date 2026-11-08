@@ -27,6 +27,18 @@ class TalkTests(unittest.TestCase):
         self.assertEqual(rows[0]["ts"], T0)
         self.assertEqual([r["role"] for r in Talk(self.path, embed=None).rows()], ["user", "assistant"])
 
+    def test_a_long_reply_keeps_its_record_closed(self):
+        # Cut plainly at MAX_LINE, a long record lost its closing bracket, and a
+        # restart then left it inside her own words (loop.as_sent).
+        from ariadne2.core.memory import talk
+        reply = "Opening your apps. " * 20 + "⟦ran: " + "; ".join(f"shell \"step {i}\" → exit 0" for i in range(300)) + "⟧"
+        self.t.turn("I just started my PC.", reply, T0)
+        text = json.loads(self.path.read_text().splitlines()[-1])["text"]
+        self.assertLessEqual(len(text), talk.MAX_LINE)
+        self.assertTrue(text.startswith("Opening your apps."))
+        self.assertTrue(text.endswith("…⟧"))
+        self.assertEqual(text.count("⟦"), text.count("⟧"))
+
     def test_empty_and_bad_role_not_written(self):
         self.assertFalse(self.t.append("user", "  "))
         self.assertFalse(self.t.append("system", "hi"))

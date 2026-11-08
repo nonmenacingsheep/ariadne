@@ -22,6 +22,23 @@ from .embed import AUTO, Vectors, data_dir, overlap, scores, words
 FLOOR = 0.45
 WORD_FLOOR, WORD_MIN_SHARED = 0.6, 2        # the fallback: stricter, since words are cruder
 MAX_LINE = 2000                             # a turn longer than this is cut for the record
+
+
+def _fit(text: str) -> str:
+    """Cut to MAX_LINE, keeping a reply's ⟦ran: …⟧ record closed: chopped mid-way
+    its end was gone, and a restart (loop.resume) left it in her own words,
+    where she read her own actions as not hers ("that message wasn't mine")."""
+    if len(text) <= MAX_LINE:
+        return text
+    at = text.rfind("⟦ran: ")
+    if at < 0:
+        return text[:MAX_LINE]
+    words, rec = text[:at].rstrip(), text[at:]
+    words = words[:MAX_LINE // 2]                # her words keep up to half; the record the rest
+    room = MAX_LINE - len(words) - 1
+    if len(rec) > room:
+        rec = rec[:room - 2].rstrip("⟧") + "…⟧"
+    return (words + " " + rec) if words else rec
 SHOW = 220                                  # characters of a recalled line
 
 
@@ -78,7 +95,7 @@ class Talk:
         text = " ".join(str(text or "").split())
         if role not in ("user", "assistant") or not text:
             return False
-        text = redact_secrets(text[:MAX_LINE])[0]
+        text = redact_secrets(_fit(text))[0]
         row = {"ts": float(ts or time.time()), "role": role, "text": text}
         with self._lock:
             self.rows()

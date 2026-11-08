@@ -21,6 +21,7 @@ var sides: Array = []          # [Breast_1, Breast_2, turn [angle, rate], squash
 var arms: Array = []           # [bone, its child (-1: the hand, out past its joint), radius]
 var firm := false              # jacket on: it holds them in (no filling out)
 var size := 1.0                # her build against Jane's (leg length): the zone and arms scale with it
+var finger: Array = []         # poke mode: [ray origin, ray direction (world), how far pressed, m], else []
 var most_in := 0.0             # a test run's deepest press this frame, metres
 var most_bounce := 0.0         # and the furthest either breast has bounced, metres
 var last_tilt := Vector3.ZERO  # (a test run's readout: how far gravity is toward her head, into her chest, and in all)
@@ -42,6 +43,9 @@ const TURN_Z := 0.9            # damping: barely any overshoot
 const FLAT := 0.3              # how much a full press flattens it
 const FILL := 0.2              # of that, how much it fills out across (jacket off)
 const ARM := 0.5               # how much of an arm's way into the zone it moves them aside
+const FINGER := 0.012          # a fingertip's radius (poke mode), metres
+const FINGER_REACH := 0.06     # how near the pointer's line must pass a breast to be poking it
+const FINGER_KICK := 0.35      # m/s of jiggle a poke lands with
 
 
 func setup(sk: Skeleton3D) -> void:
@@ -55,7 +59,7 @@ func setup(sk: Skeleton3D) -> void:
 			b2 = b1
 		if b1 >= 0 and b2 >= 0:
 			sides.append([b1, b2, [Vector3.ZERO, Vector3.ZERO], [0.0, 0.0], Vector3.UP,
-					[Vector3.ZERO, Vector3.ZERO, Vector3.INF, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, 0.0]])
+					[Vector3.ZERO, Vector3.ZERO, Vector3.INF, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, 0.0], false])
 	# Forearms and hands: crossing her arms, hugging herself. (Not the upper arms:
 	# hanging at her sides they sat in the zone the whole time on a slight build.)
 	for a in [["LowerArm", "Hand", 0.045], ["Hand", "", 0.045]]:
@@ -91,11 +95,29 @@ func _process_modification_with_delta(delta: float) -> void:
 		if s[0] == s[1]:                        # one bone: along its own length
 			j2 = j1 + (xf.basis * sk.get_bone_global_pose(s[0]).basis.y).normalized() * TIP
 		var tip := j2 + (j2 - j1).normalized() * TIP
-		# The deepest any arm is into her soft zone, and which way it pushes.
+		# Poked (poke mode): his fingertip, where the pointer's line passes this
+		# breast, pressed in as far as the poke has gone, is one more thing that
+		# presses, like her forearms; it lands with a little jiggle.
+		var presses := segs
+		var poked := false
+		if finger.size() == 3:
+			var o: Vector3 = finger[0]
+			var d: Vector3 = finger[1]
+			var mid := (j2 + tip) * 0.5
+			var q := o + d * maxf(0.0, (mid - o).dot(d))
+			if mid.distance_to(q) < FINGER_REACH * size:
+				poked = true
+				var fp := q + d * float(finger[2]) * 0.5
+				presses = segs + [[fp - d * 0.03, fp, FINGER]]
+				if not s[6]:
+					var chest := (xf.basis * sk.get_bone_global_pose(sk.get_bone_parent(s[0])).basis).orthonormalized()
+					s[5][1] = (s[5][1] as Vector3) + chest.inverse() * d * FINGER_KICK
+		s[6] = poked
+		# The deepest any arm (or his finger) is into her soft zone, and which way it pushes.
 		var push := Vector3.ZERO
 		var depth := 0.0
 		for p in [j2, (j2 + tip) * 0.5, tip]:
-			for g in segs:
+			for g in presses:
 				var q := Geometry3D.get_closest_point_to_segment(p, g[0], g[1])
 				var into: float = (ZONE + float(g[2])) * size - p.distance_to(q)
 				if into > depth:

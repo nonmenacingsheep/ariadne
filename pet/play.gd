@@ -202,7 +202,7 @@ func _chest() -> Vector2:
 	return _scr(_bone("Spine").lerp(_bone("Neck"), 0.4))
 
 
-# Which part of her is under a screen point: top (of her head), face, hand, belly, feet, or "".
+# Which part of her is under a screen point: top (of her head), face, hand, chest, belly, feet, or "".
 func part_at(p: Vector2) -> String:
 	if pet.cam == null or pet.skel == null:
 		return ""
@@ -219,6 +219,14 @@ func part_at(p: Vector2) -> String:
 		var b := _bone(ft)
 		if p.distance_to(_scr(b)) < _px(b, 0.12):
 			return "feet"
+	if pet.squish:                              # each breast, round its middle
+		var sk: Skeleton3D = pet.skel
+		for s in pet.squish.sides:
+			var b: Vector3 = sk.global_transform * sk.get_bone_global_pose(s[1]).origin
+			var out: Vector3 = (sk.global_basis * sk.get_bone_global_pose(s[1]).basis.y).normalized()
+			var mid := b + out * 0.03
+			if p.distance_to(_scr(mid)) < _px(mid, 0.06 * float(pet.squish.size)):
+				return "chest"
 	var a := _scr(_bone("Hips"))
 	var c := _scr(_bone("Neck"))
 	var on := Geometry2D.get_closest_point_to_segment(p, a, c)
@@ -233,6 +241,7 @@ func clicked(part: String) -> bool:
 		"top": return run("bonk")
 		"face": return run("cheek")
 		"hand": return run("highfive")
+		"chest": return run("chest_poke")
 		"belly": return run("tickle")
 		"feet": return run("feet")
 	return false

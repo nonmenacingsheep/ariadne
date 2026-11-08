@@ -275,6 +275,7 @@ var asked_at := -1e9                       # when he last asked her something (c
 var saluted := true                        # her first step for it has been taken (with a salute, now and then)
 var squish                                 # squish.gd: her arms pressing her breasts aside
 var poke_z := 0.0                          # depth of the point he's pressing
+var poke_px := Vector2.ZERO                # where his pointer is while poking (squish.gd's finger)
 # What a left click on her does, picked from her right-click menu: "play" (tap,
 # hug, pick up and throw), "poke" (press on her) or "pin" (pick up, let go,
 # she stays hanging there).
@@ -2343,6 +2344,9 @@ func _process(delta: float) -> void:
 	_carry_frame(delta)
 	_head()
 	_held_frame(delta)
+	if squish:                                 # his fingertip on her chest, while he pokes
+		squish.finger = [cam.project_ray_origin(poke_px), cam.project_ray_normal(poke_px), poke.press] \
+				if poking and poke and poke.bone >= 0 and cam else []
 	play.emote_frame()
 	_face_frame(delta)
 	_place_body()
@@ -3071,9 +3075,13 @@ func _poke_input(event: InputEvent) -> void:
 			return
 		poking = true
 		poke_z = at.z
+		poke_px = event.position
 		poke.start(grab_bone, at)
 		_feel("surprised", 0.3, 0.7)
+		if play.part_at(event.position) == "chest":
+			play.run("chest_poke")
 	elif event is InputEventMouseMotion and poking and poke:
+		poke_px = event.position
 		var hit = Plane(Vector3.BACK, poke_z).intersects_ray(cam.project_ray_origin(event.position), cam.project_ray_normal(event.position))
 		if hit != null:
 			poke.target = hit
@@ -3891,6 +3899,9 @@ func _mode_test(m: String, bone: String) -> void:
 			at = p + Vector2(minf(i, 40) * 4.0, -minf(i, 40) * 6.0)
 		move.call(at)
 		await get_tree().process_frame
+		if i % 10 == 0 and squish:
+			print("POKED %d part %s finger %s chest press %.3f m bounce %.3f m state %s" % [i, play.part_at(at), not squish.finger.is_empty(), squish.most_in, squish.most_bounce, state])
+			squish.most_bounce = 0.0
 		if i % 10 == 0:
 			var now := _bone_xf(b).origin
 			print("MODE %s %d %s moved %.3f m state %s" % [m, i, bone, now.distance_to(start), state])

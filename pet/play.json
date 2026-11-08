@@ -264,5 +264,21 @@
 		},
 		"cool": 20,
 		"whole": true
+	},
+	"chest_poke": {
+		"kind": "you",
+		"clips": [
+			[
+				"shy_1",
+				1.0
+			]
+		],
+		"face": "blush",
+		"then": [
+			"pout",
+			0.6
+		],
+		"cool": 6,
+		"for": 3.0
 	}
 }

@@ -101,6 +101,17 @@ def host_prefix() -> list[str]:
     return []
 
 
+def host_detached() -> list[str]:
+    """host_prefix for anything that starts something that must outlive it (an
+    app, the clipboard's keeper). host-spawn runs the command on a terminal of
+    its own, and when it exits that terminal's hang-up took down whatever the
+    command had started: "Opened Discord", and Discord was gone (her memory had
+    it as "tasks open doesn't work"). setsid -w gives it a session of its own
+    and still hands back the command's exit code."""
+    prefix = host_prefix()
+    return [*prefix, "setsid", "-w"] if prefix else []
+
+
 async def xdg_launch(path: Path) -> None:
     """Open with the default app. A folder is Dolphin's own job."""
     if path.is_dir():
@@ -110,7 +121,7 @@ async def xdg_launch(path: Path) -> None:
     if tool is None:
         raise AdapterError("there's no xdg-open or gio here to open files with")
     try:
-        code = await _quiet_exec(*prefix, *tool, str(path), timeout=5)
+        code = await _quiet_exec(*host_detached(), *tool, str(path), timeout=5)
     except OSError as e:
         raise AdapterError(f"couldn't open it: {e.strerror}")
     if code not in (0, None):
@@ -123,7 +134,7 @@ async def gio_launch(desktop: Path, path: Path) -> None:
     if not (prefix or shutil.which("gio")):
         raise AdapterError("gio isn't installed, so I can't pick the app")
     try:
-        code = await _quiet_exec(*prefix, "gio", "launch", str(desktop), str(path), timeout=5)
+        code = await _quiet_exec(*host_detached(), "gio", "launch", str(desktop), str(path), timeout=5)
     except OSError as e:
         raise AdapterError(f"couldn't start that app: {e.strerror}")
     if code not in (0, None):
@@ -139,7 +150,7 @@ async def system_clipboard(text: str) -> None:
             continue
         try:
             proc = await asyncio.create_subprocess_exec(
-                *prefix, *tool, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL,
+                *host_detached(), *tool, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL, start_new_session=True)
         except OSError:
             continue

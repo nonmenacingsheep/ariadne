@@ -72,11 +72,15 @@ def blank_state() -> dict:
 
 
 async def _xdg_open(url: str) -> None:
-    if not shutil.which("xdg-open"):
+    # (from a toolbox, the host's xdg-open in a session of its own: started
+    # through host-spawn bare, a Steam it had to start died with host-spawn)
+    from .dolphin import host_detached
+    detached = host_detached()
+    if not (detached or shutil.which("xdg-open")):
         raise AdapterError("xdg-open isn't installed, so I can't hand this to Steam")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "xdg-open", url, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+            *detached, "xdg-open", url, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL, start_new_session=True)
     except OSError as e:
         raise AdapterError(f"couldn't reach Steam: {e.strerror}")

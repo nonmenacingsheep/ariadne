@@ -43,11 +43,20 @@ class LaunchTests(unittest.IsolatedAsyncioTestCase):
         async def fake_exec(*argv, **kw):
             calls.append(argv); return Proc()
         with mock.patch.object(launch, "host_prefix", return_value=["host-spawn"]), \
+             mock.patch.object(launch, "host_detached", return_value=["host-spawn", "setsid", "-w"]), \
              mock.patch.object(launch, "find", return_value=[self.apps["com.spotify.Client.desktop"]]), \
              mock.patch("asyncio.create_subprocess_exec", fake_exec):
             out = await launch.open_app("spotify")
         self.assertEqual(out, "Opened Spotify.")
-        self.assertEqual(calls[0], ("host-spawn", "gtk-launch", "com.spotify.Client"))
+        # (in a session of its own: host-spawn's hang-up took bare launches down with it)
+        self.assertEqual(calls[0], ("host-spawn", "setsid", "-w", "gtk-launch", "com.spotify.Client"))
+
+    def test_host_launches_outlive_host_spawn(self):
+        from ariadne2.adapters import dolphin
+        with mock.patch.object(dolphin, "host_prefix", return_value=["host-spawn"]):
+            self.assertEqual(dolphin.host_detached(), ["host-spawn", "setsid", "-w"])
+        with mock.patch.object(dolphin, "host_prefix", return_value=[]):
+            self.assertEqual(dolphin.host_detached(), [])        # (not in a toolbox: as it is)
 
     async def test_nothing_found_says_so(self):
         with mock.patch.object(launch, "find", return_value=[]):

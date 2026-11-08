@@ -26,7 +26,7 @@ import urllib.parse
 import urllib.request
 
 from ..core import models
-from .dolphin import host_prefix
+from .dolphin import host_detached
 from .spotify_web import SpotifyWeb
 
 log = logging.getLogger("ariadne2.spotify_login")
@@ -102,7 +102,7 @@ def _post_form(fields: dict) -> dict:
 
 def _open_browser(url: str) -> None:
     try:
-        subprocess.Popen([*host_prefix(), "xdg-open", url], start_new_session=True,
+        subprocess.Popen([*host_detached(), "xdg-open", url], start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass

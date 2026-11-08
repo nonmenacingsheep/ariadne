@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .base import AdapterError
-from .dolphin import host_prefix
+from .dolphin import host_detached, host_prefix
 from .dolphin_menu import desktop_dirs
 
 
@@ -107,7 +107,7 @@ def _host_path(p: Path) -> str:
 async def start(app: Launcher) -> None:
     prefix = host_prefix()
     if prefix or shutil.which("gtk-launch"):
-        argv = [*prefix, "gtk-launch", app.id.removesuffix(".desktop")]
+        argv = [*host_detached(), "gtk-launch", app.id.removesuffix(".desktop")]
     elif shutil.which("gio"):
         argv = ["gio", "launch", _host_path(app.path)]
     else:

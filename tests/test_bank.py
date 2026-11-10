@@ -39,7 +39,8 @@ def opener_for(body, seen=None, status=200):
 
 
 def history():
-    """Three months of Netflix, fortnightly pay, a stopped gym, and noise."""
+    """Three months of Netflix and power, fortnightly pay, a stopped gym, a new
+    Crunchyroll, round-ups to savings, PayPal in varying sums, and noise."""
     tx, n = [], 0
     def add(d, amt, desc):
         nonlocal n
@@ -51,6 +52,13 @@ def history():
         add(dt.date(2026, 8, 21) + dt.timedelta(days=14 * k), 1850.00, "ACME CORP PAYROLL PPD ID: 99")
     for m in (5, 6, 7):
         add(dt.date(2026, m, 3), -40.00, "IRONGYM MONTHLY")          # stopped after July
+    for m, amt in ((8, 88.10), (9, 92.40), (10, 79.95)):
+        add(dt.date(2026, m, 20), -amt, "CITY ELECTRIC AUTOPAY")
+    add(dt.date(2026, 11, 1), -9.99, "Crunchyroll")
+    for k, amt in enumerate((100, 80, 200, 136, 160, 127, 50)):
+        add(dt.date(2026, 9, 19) + dt.timedelta(days=7 * k), -amt, "Paypal *Jdoe **** 2211 Main St")
+    for k in range(8):
+        add(dt.date(2026, 9, 15) + dt.timedelta(days=7 * k), -1.00, "Withdrawal Transfer To SXX10 - Change It")
     add(dt.date(2026, 10, 29), -63.12, "SHELL OIL 12345")
     add(dt.date(2026, 11, 2), -8.75, "STARBUCKS #2231")
     return tx
@@ -110,6 +118,21 @@ class Sums(unittest.TestCase):
         self.assertNotIn("irongym", by)                               # stopped in July
         self.assertFalse(any("shell" in k or "starbucks" in k for k in by))   # one-offs aren't bills
 
+    def test_subscriptions_and_bills_apart_and_not_his_own_moves(self):
+        by = {r["key"]: r for r in B.recurring(history(), TODAY)}
+        self.assertEqual(by["netflix"]["kind"], "subscription")
+        self.assertEqual(by["city electric autopay"]["kind"], "bill")
+        self.assertEqual(by["crunchyroll"]["next"], "2026-12-01")       # a service seen once lately
+        self.assertFalse(any("paypal" in k for k in by))                 # varying sums: spending, not a bill
+        self.assertFalse(any("transfer" in k or "change" in k for k in by))   # round-ups to his savings
+
+    def test_names_fit_to_show(self):
+        self.assertEqual(B.nice("Discord* Nitromo ***X 444 DE Haro Street"), "Discord Nitromo")
+        self.assertEqual(B.nice("Ach Withdrawal Company: Rocket Money Entry: Premium"), "Rocket Money")
+        self.assertEqual(B.nice("Payment to Youtube Premium"), "Youtube Premium")
+        self.assertEqual([B.kind(n) for n in ("Everyday Checking (1234)", "Savings (5678)", "Visa Signature")],
+                         ["checking", "savings", "credit"])
+
     def test_safe_to_spend_is_cash_less_bills_before_payday(self):
         items = [{"name": "Rent", "amount": -1200, "next": "2026-11-12", "every": "monthly"},
                  {"name": "Pay", "amount": 1850, "next": "2026-11-13", "every": "biweekly"},
@@ -142,7 +165,11 @@ class Adapter(unittest.TestCase):
                      "accounts": [{"id": "a1", "name": "Checking", "conn_id": "c1", "currency": "USD",
                                    "balance": "1520.40", "balance-date": int(NOW), "transactions": history()},
                                   {"id": "a2", "name": "Visa", "conn_id": "c1", "currency": "USD",
-                                   "balance": "-210.00", "balance-date": int(NOW), "transactions": []}]}
+                                   "balance": "-210.00", "balance-date": int(NOW), "transactions": []},
+                                  {"id": "a3", "name": "Savings", "conn_id": "c1", "currency": "USD",
+                                   "balance": "500.00", "balance-date": int(NOW), "transactions": [
+                                       {"id": "s1", "posted": ts(dt.date(2026, 11, 8)), "amount": "-40.00",
+                                        "description": "Online banking Withdrawal Transfer to Pam"}]}]}
         self.a.opener = opener_for(self.body)
 
     def run_(self, coro):
@@ -152,13 +179,19 @@ class Adapter(unittest.TestCase):
         self.run_(self.a.sync())
         st = self.a.state()
         self.assertTrue(st["connected"])
-        self.assertEqual(st["cash"], 1520.40)
+        self.assertEqual(st["cash"], 2020.40)                           # checking and savings
+        self.assertEqual(st["start"], 1520.40)                          # but the bills come out of checking
+        self.assertEqual(st["main"], "a1")
         self.assertEqual(st["payday"], "2026-11-13")
-        names = [u["name"] for u in st["upcoming"]]
-        self.assertTrue(any("NETFLIX" in n for n in names) and any("PAYROLL" in n for n in names))
+        self.assertTrue(any("NETFLIX" in u["name"] for u in st["subs"]))
+        self.assertTrue(any("PAYROLL" in u["name"] for u in st["bills"]))
+        self.assertGreater(st["subs_month"], 25)                        # Netflix and Crunchyroll
+        spent = {(s["name"], s["account"]) for s in st["spent"]}
+        self.assertIn(("Transfer to Pam", "savings"), spent)            # gone through, from savings
+        self.assertFalse(any("Change It" in n for n, _ in spent))
         self.assertTrue(any(e[0] == "bank.synced" for e in self.events))
         txt = self.run_(self.a._summary())
-        self.assertIn("Checking (Big Bank): $1,520.40", txt)
+        self.assertIn("Checking [checking] (Big Bank): $1,520.40", txt)
         self.assertIn("Next payday: 2026-11-13", txt)
 
     def test_a_bill_within_three_days_is_announced_once(self):

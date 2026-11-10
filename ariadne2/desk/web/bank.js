@@ -1,7 +1,8 @@
 "use strict";
-// The Money widget (adapters/bank.py): cash on hand and what's safe to spend
-// before payday up top, his accounts under it, then the next bills and
-// paydays with the balance after each: one that takes it below zero is red.
+// The Money widget (adapters/bank.py): each account up top (checking, savings,
+// cards) and what's left in checking after the bills, then three sections:
+// subscriptions and bills coming up, each with checking's balance after it
+// (red below zero), and the expenses that have already gone through.
 // Read-only, like the bank side: the only button fetches fresh numbers.
 const Bank = (() => {
   let w = null, send = null;
@@ -34,24 +35,38 @@ const Bank = (() => {
       return;
     }
     const top = el("div", "bk-top");
-    const cash = el("div", "bk-big"); cash.append(el("span", "bk-l", "CASH"), el("span", "bk-v", money(d.cash)));
-    const safe = el("div", "bk-big" + (d.safe < 0 ? " bad" : "")); safe.append(el("span", "bk-l", d.payday ? `SAFE TILL ${day(d.payday).toUpperCase()}` : "AFTER BILLS"), el("span", "bk-v", money(d.safe)));
-    top.append(cash, safe);
-    box.append(top);
-    const accts = el("div", "bk-accts");
     for (const a of d.accounts) {
-      const r = el("div", "bk-acct"); r.append(el("span", "bk-an", a.name), el("span", "bk-av" + (a.balance < 0 ? " neg" : ""), money(a.balance)));
-      accts.append(r);
+      const t = el("div", "bk-big k-" + a.kind + (a.balance < 0 ? " bad" : ""));
+      t.title = a.name + (a.bank ? ` (${a.bank})` : "");
+      t.append(el("span", "bk-l", a.kind.toUpperCase() + (a.id === d.main ? " · BILLS" : "")), el("span", "bk-v", money(a.available ?? a.balance)));
+      top.append(t);
     }
-    box.append(accts);
+    const safe = el("div", "bk-big k-safe" + (d.safe < 0 ? " bad" : ""));
+    safe.title = "checking, less the subscriptions and bills due " + (d.payday ? "before payday" : "in the next 30 days");
+    safe.append(el("span", "bk-l", d.payday ? `SAFE TILL ${day(d.payday).toUpperCase()}` : "AFTER 30 DAYS"), el("span", "bk-v", money(d.safe)));
+    top.append(safe);
+    box.append(top);
     const list = el("div", "bk-list");
-    for (const u of d.upcoming || []) {
+    const section = (title, sum, rows, row, none) => {
+      const h = el("div", "bk-h"); h.append(el("span", "", title), el("span", "bk-hs", sum || ""));
+      list.append(h);
+      for (const u of rows) list.append(row(u));
+      if (!rows.length) list.append(el("div", "bk-off", none));
+    };
+    const ahead = u => {
       const r = el("div", "bk-row" + (u.income ? " in" : "") + (u.after < 0 ? " bad" : ""));
       r.append(el("span", "bk-d", day(u.date)), el("span", "bk-n", u.name), el("span", "bk-a", (u.income ? "+" : "") + money(u.amount)),
                el("span", "bk-after", money(u.after)));
-      list.append(r);
-    }
-    if (!(d.upcoming || []).length) list.append(el("div", "bk-off", "No bills or paydays found in the next 30 days yet."));
+      return r;
+    };
+    section("SUBSCRIPTIONS", d.subs_month ? `${money(d.subs_month)}/mo` : "", d.subs || [], ahead, "None found in your history yet.");
+    if ((d.bills || []).length) section("BILLS & PAYDAYS", "", d.bills, ahead, "");
+    section("EXPENSES · LAST 7 DAYS", d.spent_week ? money(-d.spent_week) : "", d.spent || [], s => {
+      const r = el("div", "bk-row went");
+      r.append(el("span", "bk-d", day(s.date)), el("span", "bk-n", s.name + (s.pending ? " (pending)" : "")), el("span", "bk-a", money(s.amount)),
+               el("span", "bk-acct k-" + s.account, s.account === "checking" ? "CHK" : s.account === "savings" ? "SAV" : s.account.slice(0, 4).toUpperCase()));
+      return r;
+    }, "Nothing has gone out this week.");
     box.append(list);
     const foot = el("div", "bk-foot");
     foot.append(el("span", "", `synced ${ago(d.synced)}` + (d.note ? ` · ${d.note}` : "")));

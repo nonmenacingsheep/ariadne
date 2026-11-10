@@ -47,6 +47,24 @@ HTTP_TIMEOUT = 30
 # with a 403 (error 1010) that looks just like a used token.
 AGENT = "ariadne2 (+https://github.com/nonmenacingsheep/ariadne)"
 DEBT = re.compile(r"credit|card|visa|mastercard|amex|discover|loan|mortgage|line of credit", re.I)
+KINDS = (("savings", re.compile(r"saving|money market|\bshare\b(?! draft)", re.I)),
+         ("checking", re.compile(r"checking|chequing|share draft|spending", re.I)),
+         ("credit", re.compile(r"credit|card|visa|mastercard|amex|discover", re.I)),
+         ("loan", re.compile(r"loan|mortgage", re.I)))
+# A subscription (a service, by name) vs a bill (rent, power, phone): the widget
+# lists them apart. Anything else charging the same small amount monthly counts
+# as a subscription too.
+SUBS = re.compile(r"netflix|hulu|disney|spotify|youtube|crunchyroll|webtoon|discord|nitro|microsoft|xbox|"
+                  r"playstation|nintendo|apple\.com|icloud|instagra|patreon|twitch|prime video|amazon prime|"
+                  r"audible|kindle|anthropic|claude|openai|chatgpt|midjourney|github|adobe|dropbox|rocket money|"
+                  r"lifetime|a\+e|paramount|peacock|hbo|funimation|pandora|tidal|duolingo|vpn|proton|google one",
+                  re.I)
+BILLS = re.compile(r"\brent\b|electric|power|energy|water|sewer|utilit|insurance|geico|progressive|state farm|"
+                   r"verizon|at&t|t-mobile|tmobile|mint mobile|comcast|xfinity|spectrum|internet|loan|mortgage|"
+                   r"tuition|daycare|child ?care", re.I)
+# Money moved between his own accounts (round-ups, overdraft cover, to savings):
+# neither spending nor a bill.
+INTERNAL = re.compile(r"\btransfer (to|from) (s(xx)?\d|savings|checking|share)|change it", re.I)
 
 
 class BankError(Exception):
@@ -152,6 +170,27 @@ def payee(desc: str) -> str:
     return " ".join(words[:3])
 
 
+_LEAD = re.compile(r"^(ach withdrawal company:|online banking (withdrawal|deposit)|payment to|"
+                   r"pos (purchase|debit)|debit card purchase|recurring payment)\s*", re.I)
+
+
+def nice(desc: str) -> str:
+    """A description fit to show: 'Discord* Nitromo ***X 444 DE Haro Street' -> 'Discord Nitromo'."""
+    s = re.split(r"\s\*{2,}|\s\d+\s|\s\d{3,}|\s{2,}|\s(?:entry|indn|des|id):", (desc or "").strip(), flags=re.I)[0]
+    s = _LEAD.sub("", s).replace("*", " ")                          # (above: the card digits and address after)
+    s = re.sub(r"\s+", " ", re.sub(r"\b(\d+|X+\d*)\b", " ", s)).strip(" -:")
+    return (s if len(s) >= 3 else payee(desc).title() or (desc or "")[:32])[:32]
+
+
+def kind(name: str) -> str:
+    """An account's kind from its name: savings, checking, credit, loan, or account."""
+    return next((k for k, rx in KINDS if rx.search(name or "")), "account")
+
+
+def _per_month(it: dict) -> float:
+    return abs(it["amount"]) * {"weekly": 52 / 12, "biweekly": 26 / 12}.get(it.get("every"), 1.0)
+
+
 def _months(d: dt.date, n: int, day: int) -> dt.date:
     """d moved n months on, on `day` (or the month's last day)."""
     m = d.month - 1 + n
@@ -170,7 +209,7 @@ def recurring(txns: list[dict], today: dt.date) -> list[dict]:
     next date well past, is dropped)."""
     groups: dict[tuple, list] = {}
     for t in txns:
-        if t.get("pending") or not t.get("posted"):
+        if t.get("pending") or not t.get("posted") or INTERNAL.search(t.get("description", "")):
             continue
         k = payee(t.get("description", ""))
         amt = _num(t.get("amount"))
@@ -196,6 +235,11 @@ def recurring(txns: list[dict], today: dt.date) -> list[dict]:
         if sum(abs(g - med) <= tol for g in gaps) < max(1, round(len(gaps) * 0.6)):
             continue                                # not steady enough to call it a rhythm
         recent = [abs(a) for _, a, _ in rows[-3:]]
+        desc = rows[-1][2]
+        named = SUBS.search(desc) or BILLS.search(desc)
+        spread = [abs(a) for _, a, _ in rows[-4:]]
+        if not income and not named and max(spread) > 1.5 * min(spread):
+            continue                                # a regular place he spends varying sums: not a bill
         amount = statistics.median(recent)
         nxt, day = days[-1], days[-1].day
         while nxt <= today - dt.timedelta(days=1):
@@ -203,11 +247,23 @@ def recurring(txns: list[dict], today: dt.date) -> list[dict]:
         late = (nxt - _step(days[-1], every, day)).days
         if late > tol + 7:                          # several periods missed: it stopped
             continue
-        name = re.sub(r"\s+", " ", rows[-1][2]).strip()[:40] or k.title()
-        out.append({"key": k, "name": name, "amount": round(amount if income else -amount, 2),
+        sub = not income and not BILLS.search(desc) and (
+            bool(SUBS.search(desc)) or (every == "monthly" and amount < 60 and max(recent) - min(recent) < 0.5))
+        out.append({"key": k, "name": nice(desc), "amount": round(amount if income else -amount, 2),
+                    "kind": "income" if income else "subscription" if sub else "bill",
                     "every": every, "next": nxt.isoformat(), "last": days[-1].isoformat(), "seen": len(days),
                     "variable": (max(recent) - min(recent)) > 0.15 * max(recent), "income": income,
                     "source": "found"})
+    # A service seen once lately (new, or billed unevenly): monthly from that charge.
+    have = {r["key"] for r in out}
+    for (k, income), rows in groups.items():
+        d, amt, desc = max(rows)
+        if income or k in have or not SUBS.search(desc) or (today - d).days > 35 or abs(amt) > 100:
+            continue
+        nxt = _months(d, 1, d.day)
+        out.append({"key": k, "name": nice(desc), "amount": round(amt, 2), "kind": "subscription",
+                    "every": "monthly", "next": nxt.isoformat(), "last": d.isoformat(), "seen": len(rows),
+                    "variable": False, "income": False, "source": "found"})
     return sorted(out, key=lambda r: r["next"])
 
 
@@ -228,7 +284,8 @@ def occurrences(items: list[dict], today: dt.date, days: int) -> list[dict]:
             d = _step(d, every, day)
         while today <= d <= end:
             out.append({"date": d.isoformat(), "name": it["name"], "amount": float(it["amount"]),
-                        "income": float(it["amount"]) > 0, "source": it.get("source", "his")})
+                        "income": float(it["amount"]) > 0, "source": it.get("source", "his"),
+                        "kind": it.get("kind") or ("income" if float(it["amount"]) > 0 else "bill")})
             if every == "once":
                 break
             d = _step(d, every, day)
@@ -297,7 +354,7 @@ class BankAdapter(Adapter):
         self.verbs = [
             Verb("summary", "His money now: accounts and balances, cash on hand, the next payday, what's safe "
                  "to spend before it, and the bills due in the next two weeks.", {}, self._summary),
-            Verb("upcoming", "Bills and paydays coming up (found in his history, and his own), with the "
+            Verb("upcoming", "Subscriptions, bills and paydays coming up (found in his history, and his own), with the "
                  "balance after each.", {"properties": {"days": days}}, self._upcoming),
             Verb("transactions", "His recent transactions, newest first; search narrows by description.",
                  {"properties": {"search": {"type": "string"}, "days": {"type": "integer",
@@ -367,7 +424,31 @@ class BankAdapter(Adapter):
         return found + [{**b, "source": "his"} for b in mine.get("bills", [])]
 
     def _accounts(self) -> list[dict]:
-        return self._read("accounts.json", [])
+        return [{**a, "kind": kind(a.get("name", ""))} for a in self._read("accounts.json", [])]
+
+    def _main(self, accounts: list[dict]) -> dict | None:
+        """The account his bills come out of: his checking, else the busiest one."""
+        if not accounts:
+            return None
+        chk = [a for a in accounts if a["kind"] == "checking"]
+        if chk:
+            return chk[0]
+        busy = {aid: len(rows) for aid, rows in self._read("txns.json", {}).items()}
+        return max(accounts, key=lambda a: busy.get(a["id"], 0))
+
+    def _start(self, accounts: list[dict]) -> float:
+        """What the bills are walked from: his checking's available balance, not his savings too."""
+        main = self._main(accounts)
+        return round(main["available"], 2) if main else cash(accounts)
+
+    def _spent(self, days: int) -> list[dict]:
+        """What went out, newest first: posted or pending, not moves between his own accounts."""
+        cut = self.clock() - days * 86400
+        kinds = {a["id"]: a["kind"] for a in self._accounts()}
+        return [{"date": _day(t.get("posted") or t.get("transacted_at")).isoformat(), "name": nice(t["description"]),
+                 "amount": t["amount"], "account": kinds.get(t["account"], "account"), "pending": t["pending"]}
+                for t in self._txns() if t["amount"] < 0 and not INTERNAL.search(t["description"])
+                and (t.get("posted") or t.get("transacted_at") or 0) >= cut]
 
     # ---- syncing ----
     async def start(self) -> None:
@@ -454,13 +535,19 @@ class BankAdapter(Adapter):
         accounts = self._accounts()
         meta = self._read("sync.json", {})
         connected = bool(self._access())
-        have = cash(accounts)
-        occ = occurrences(self._items(), self._today(), 30)
-        f = forecast(have, occ)
-        return {"connected": connected, "accounts": accounts, "cash": have, "safe": f["safe"],
+        items = self._items()
+        main = self._main(accounts)
+        f = forecast(self._start(accounts), occurrences(items, self._today(), 30))
+        rows = [{"date": r["date"], "name": r["name"], "amount": r["amount"], "after": r["after"],
+                 "income": r["income"], "kind": r["kind"]} for r in f["rows"]]
+        spent = self._spent(7)
+        return {"connected": connected, "accounts": accounts, "main": main["id"] if main else None,
+                "cash": cash(accounts), "start": f["start"], "safe": f["safe"],
                 "payday": f["payday"], "low": f["low"], "low_on": f["low_on"],
-                "upcoming": [{"date": r["date"], "name": r["name"], "amount": r["amount"], "after": r["after"],
-                              "income": r["income"]} for r in f["rows"][:12]],
+                "subs": [r for r in rows if r["kind"] == "subscription"][:14],
+                "subs_month": round(sum(_per_month(i) for i in items if i.get("kind") == "subscription"), 2),
+                "bills": [r for r in rows if r["kind"] != "subscription"][:14],
+                "spent": spent[:25], "spent_week": round(-sum(s["amount"] for s in spent), 2),
                 "synced": meta.get("last"), "note": meta.get("note", "")}
 
     # ---- verbs ----
@@ -472,15 +559,17 @@ class BankAdapter(Adapter):
     async def _summary(self) -> str:
         self._need()
         st = self.state()
-        lines = [f"{a['name']}{' (' + a['bank'] + ')' if a['bank'] else ''}: {_money(a['balance'])}"
+        lines = [f"{a['name']} [{a['kind']}]{' (' + a['bank'] + ')' if a['bank'] else ''}: {_money(a['balance'])}"
                  + (f", {_money(a['available'])} available" if abs(a["available"] - a["balance"]) > 0.005 else "")
                  for a in st["accounts"]]
-        lines.append(f"Cash on hand: {_money(st['cash'])}.")
+        lines.append(f"Cash on hand: {_money(st['cash'])}; the bills come out of the one with {_money(st['start'])}.")
+        if st["subs_month"]:
+            lines.append(f"Subscriptions: {_money(st['subs_month'])} a month.")
         if st["payday"]:
             lines.append(f"Next payday: {st['payday']}; safe to spend before it: {_money(st['safe'])}.")
         else:
             lines.append(f"No payday found in the next 30 days; after the bills due, {_money(st['safe'])} is left.")
-        soon = [u for u in st["upcoming"] if not u["income"]][:8]
+        soon = sorted((u for u in st["subs"] + st["bills"] if not u["income"]), key=lambda u: u["date"])[:8]
         if soon:
             lines.append("Due soon: " + "; ".join(f"{u['date']} {u['name']} {_money(abs(u['amount']))}" for u in soon) + ".")
         if st["low"] < 0:
@@ -494,10 +583,10 @@ class BankAdapter(Adapter):
     async def _upcoming(self, days: int = 30) -> str:
         self._need()
         days = max(1, min(int(days or 30), 120))
-        f = forecast(cash(self._accounts()), occurrences(self._items(), self._today(), days))
+        f = forecast(self._start(self._accounts()), occurrences(self._items(), self._today(), days))
         if not f["rows"]:
             return f"Nothing found coming up in the next {days} days."
-        return "\n".join(f"{r['date']}  {r['name']}  {_money(r['amount'])}  (then {_money(r['after'])})"
+        return "\n".join(f"{r['date']}  {r['name']} [{r['kind']}]  {_money(r['amount'])}  (then {_money(r['after'])})"
                          for r in f["rows"])
 
     async def _transactions(self, search: str = "", days: int = 30) -> str:
@@ -515,7 +604,8 @@ class BankAdapter(Adapter):
         self._need()
         days = max(1, min(int(days or 30), 365))
         cut = self.clock() - days * 86400
-        rows = [t for t in self._txns() if (t.get("posted") or 0) >= cut and not t["pending"]]
+        rows = [t for t in self._txns() if (t.get("posted") or 0) >= cut and not t["pending"]
+                and not INTERNAL.search(t["description"])]
         out = sum(-t["amount"] for t in rows if t["amount"] < 0)
         inn = sum(t["amount"] for t in rows if t["amount"] > 0)
         by: dict[str, float] = {}
@@ -535,7 +625,8 @@ class BankAdapter(Adapter):
                 dt.date.fromisoformat(on)
             except ValueError:
                 raise AdapterError("on wants a date as YYYY-MM-DD")
-        f = forecast(cash(self._accounts()), occurrences(self._items(), self._today(), days), float(spend or 0), on)
+        f = forecast(self._start(self._accounts()), occurrences(self._items(), self._today(), days),
+                     float(spend or 0), on)
         head = (f"Starting from {_money(f['start'])}: lowest {_money(f['low'])}"
                 + (f" on {f['low_on']}" if f["low_on"] else "") + f", {_money(f['end'])} after {days} days.")
         if spend:
@@ -555,7 +646,8 @@ class BankAdapter(Adapter):
         mine = self._read("mine.json", {"bills": [], "not_bills": []})
         mine["bills"] = [b for b in mine.get("bills", []) if b["name"].lower() != name.strip().lower()]
         mine["bills"].append({"name": name.strip()[:60], "amount": abs(float(amount)) * (1 if income else -1),
-                              "next": next, "every": every})
+                              "next": next, "every": every,
+                              "kind": "income" if income else "subscription" if SUBS.search(name) else "bill"})
         self._write("mine.json", mine)
         await self.publish_state()
         return f"Added {name.strip()}: {_money(abs(float(amount)))} {'in' if income else 'out'}, {every}, next {next}."

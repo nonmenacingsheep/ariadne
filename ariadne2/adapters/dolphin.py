@@ -107,9 +107,12 @@ def host_detached() -> list[str]:
     its own, and when it exits that terminal's hang-up took down whatever the
     command had started: "Opened Discord", and Discord was gone (her memory had
     it as "tasks open doesn't work"). setsid -w gives it a session of its own
-    and still hands back the command's exit code."""
+    and still hands back the command's exit code. Its output goes nowhere, not
+    to that terminal: once the terminal was gone, Discord's next log line hit
+    a dead write (EIO) and it put up a crash box that wouldn't go away. (Its
+    stdin stays: the clipboard's keeper reads from it.)"""
     prefix = host_prefix()
-    return [*prefix, "setsid", "-w"] if prefix else []
+    return [*prefix, "setsid", "-w", "sh", "-c", 'exec "$@" >/dev/null 2>&1', "sh"] if prefix else []
 
 
 async def xdg_launch(path: Path) -> None:

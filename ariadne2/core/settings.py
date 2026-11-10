@@ -133,6 +133,10 @@ API_KEYS = {   # setting key: (file, environment variable, label, help)
                      "Optional, for DeepSeek models."),
     "cartesia_key": ("cartesia_key", "CARTESIA_API_KEY", "Cartesia API key",
                      "Her voice, from play.cartesia.ai."),
+    # Pasted: a SimpleFIN setup token, claimed at once for the read-only Access
+    # URL, which is what the file keeps (adapters/bank.py); Remove disconnects.
+    "simplefin_token": ("simplefin_access", "ARIADNE2_SIMPLEFIN", "Bank (SimpleFIN)",
+                        "A setup token from bridge.simplefin.org (read-only). Claimed once."),
 }
 KEY_CHARS = re.compile(r"^[A-Za-z0-9_\-.:+/=]{8,300}$")
 
@@ -503,6 +507,12 @@ class Settings:
             value = value.strip()
             if value and not KEY_CHARS.match(value):
                 raise SettingsError(f"{spec['label']} doesn't look like an API key")
+            if key == "simplefin_token" and value:
+                from ..adapters import bank           # the setup token is spent here; the link is kept
+                try:
+                    value = bank.claim(value)
+                except bank.BankError as e:
+                    raise SettingsError(str(e))
             status = save_api_key(key, value)
             self._apply(section, key, status)        # never the key itself
             self._notify(section, key, status)

@@ -52,7 +52,7 @@ are committed (`pet/assets/anims/`), so nobody else has to run them.
   flows, settings), plus the drop folder for new bodies (`body_models.py`;
   Live2D in `pet2d/importer.py`, 3D in `body3d.py`).
 - `ariadne2/adapters`: her hands in each app (Spotify, Steam, browser,
-  Dolphin, Claude, system, tasks).
+  Dolphin, Claude, system, tasks, bank).
 - `ariadne2/desk`: the widget layer (a WebKit page placed by KWin).
 - `ariadne2/pet2d`: the Live2D body.
 - `pet/`: the Godot 3D body. `pet.gd` is the body itself, `brain.gd` her

@@ -192,6 +192,17 @@ async def run(args: argparse.Namespace) -> None:
     settings.status_providers[("avatar", "live2d_core")] = body_models.core_status
     settings.hooks[("avatar", "live2d_core")] = lambda _v: asyncio.ensure_future(body_models.get_core())
     settings.hooks[("general", "check_now")] = lambda _v: asyncio.ensure_future(updater.check())
+
+    async def bank_connected(status) -> None:
+        # Just connected (the token claimed): the first numbers now, not at tomorrow's sync.
+        if status and "bank" in adapters:
+            try:
+                await adapters["bank"].sync()
+            except Exception as e:
+                log.warning("first bank sync: %s", e)
+        elif "bank" in adapters:
+            await adapters["bank"].publish_state()
+    settings.hooks[("models", "simplefin_token")] = lambda v: asyncio.ensure_future(bank_connected(v))
     # Spotify's Web API login, from Settings > Models (adapters/spotify_login.py).
     from ..adapters import spotify_login
     spotify_note = {"text": ""}

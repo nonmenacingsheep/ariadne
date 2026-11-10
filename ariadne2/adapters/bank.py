@@ -43,6 +43,9 @@ FIRST = 90 * 86400              # the first: as far back as SimpleFIN goes per r
 MIN_REFRESH = 3600              # his "refresh" at most hourly: the Bridge disables over-eager tokens
 SOON_DAYS = 3                   # a bill this close is announced (bill_soon)
 HTTP_TIMEOUT = 30
+# Bridge sits behind Cloudflare, which turns Python's own User-Agent away
+# with a 403 (error 1010) that looks just like a used token.
+AGENT = "ariadne2 (+https://github.com/nonmenacingsheep/ariadne)"
 DEBT = re.compile(r"credit|card|visa|mastercard|amex|discover|loan|mortgage|line of credit", re.I)
 
 
@@ -52,6 +55,14 @@ class BankError(Exception):
 
 # ---- SimpleFIN --------------------------------------------------------------------
 
+def _blocked(e: urllib.error.HTTPError) -> bool:
+    """Cloudflare's own refusal, not SimpleFIN's: the request never reached it."""
+    try:
+        return b"error code: 10" in (e.read(64) or b"")
+    except Exception:
+        return False
+
+
 def claim(token: str, opener=urllib.request.urlopen) -> str:
     """A setup token (base64 of a one-time claim URL) -> the Access URL."""
     try:
@@ -60,11 +71,13 @@ def claim(token: str, opener=urllib.request.urlopen) -> str:
         raise BankError("that doesn't look like a SimpleFIN setup token")
     if not url.startswith("https://"):
         raise BankError("that doesn't look like a SimpleFIN setup token")
-    req = urllib.request.Request(url, data=b"", method="POST", headers={"Content-Length": "0"})
+    req = urllib.request.Request(url, data=b"", method="POST", headers={"Content-Length": "0", "User-Agent": AGENT})
     try:
         with opener(req, timeout=HTTP_TIMEOUT) as r:
             access = r.read().decode("utf-8", "replace").strip()
     except urllib.error.HTTPError as e:
+        if _blocked(e):
+            raise BankError("SimpleFIN's firewall turned the request away (the token wasn't used; try again later)")
         if e.code == 403:
             raise BankError("SimpleFIN says that setup token was already used or doesn't exist. If you didn't "
                             "use it yourself, someone else may have: disable it at bridge.simplefin.org.")
@@ -89,7 +102,7 @@ def fetch(access: str, start: float | None = None, end: float | None = None,
     if end is not None:
         params.append(("end-date", str(int(end))))
     url = urllib.parse.urlunsplit(("https", host, p.path.rstrip("/") + "/accounts", urllib.parse.urlencode(params), ""))
-    req = urllib.request.Request(url)
+    req = urllib.request.Request(url, headers={"User-Agent": AGENT})
     if p.username:
         cred = f"{urllib.parse.unquote(p.username)}:{urllib.parse.unquote(p.password or '')}"
         req.add_header("Authorization", "Basic " + base64.b64encode(cred.encode()).decode())
@@ -97,6 +110,8 @@ def fetch(access: str, start: float | None = None, end: float | None = None,
         with opener(req, timeout=HTTP_TIMEOUT) as r:
             return json.loads(r.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
+        if _blocked(e):
+            raise BankError("SimpleFIN's firewall turned the request away; trying again later")
         if e.code == 403:
             raise BankError("SimpleFIN turned the saved access down (revoked, or the token was disabled). "
                             "Connect the bank again in Settings.")

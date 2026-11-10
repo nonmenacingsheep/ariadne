@@ -64,6 +64,15 @@ class SimpleFIN(unittest.TestCase):
         self.assertEqual(got, "https://u:p@bridge.simplefin.org/simplefin")
         self.assertEqual(seen[0].get_method(), "POST")
         self.assertEqual(seen[0].full_url, "https://bridge.simplefin.org/simplefin/claim/abc")
+        self.assertNotIn("Python", seen[0].get_header("User-agent"))   # Cloudflare turns that away
+
+    def test_a_firewall_refusal_is_not_called_a_used_token(self):
+        token = base64.b64encode(b"https://bridge.simplefin.org/simplefin/claim/abc").decode()
+        def opener(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, 403, "x", {}, io.BytesIO(b"error code: 1010\n"))
+        with self.assertRaises(B.BankError) as cm:
+            B.claim(token, opener)
+        self.assertIn("wasn't used", str(cm.exception))
 
     def test_a_used_token_says_it_may_be_compromised(self):
         token = base64.b64encode(b"https://bridge.simplefin.org/simplefin/claim/abc").decode()
@@ -81,6 +90,7 @@ class SimpleFIN(unittest.TestCase):
         self.assertIn("version=2", req.full_url)
         self.assertIn("start-date=100", req.full_url)
         self.assertNotIn("user", req.full_url)                       # credentials not in the URL sent
+        self.assertNotIn("Python", req.get_header("User-agent"))
         self.assertEqual(req.get_header("Authorization"), "Basic " + base64.b64encode(b"user:pa@ss").decode())
         with self.assertRaises(B.BankError) as cm:
             B.fetch("https://u:p@x.org/simplefin", opener=opener_for(b"", status=403))

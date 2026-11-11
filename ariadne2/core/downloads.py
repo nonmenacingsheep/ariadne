@@ -128,7 +128,8 @@ def browser_downloads(profiles) -> dict[str, dict]:
 def _job_of(pid: str, proc: str = "/proc") -> str | None:
     """The ARIADNE2_JOB token a process inherited from one of her commands, if any."""
     try:
-        env = open(f"{proc}/{pid}/environ", "rb").read()
+        with open(f"{proc}/{pid}/environ", "rb") as fh:
+            env = fh.read()
     except OSError:
         return None
     i = env.find(b"ARIADNE2_JOB=")

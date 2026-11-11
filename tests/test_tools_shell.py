@@ -130,7 +130,8 @@ class Background(ToolsCase):
         self.assertLess(time.time() - t, 3)           # not waited for
         self.assertIn("Started in the background, detached", out)
         self.assertIn("Do not start it again", out)
-        pid = int(out.split("pid ")[1].split(")")[0])
+        pid = int(out.split("pid ")[1].split(",")[0])
+        self.assertIn("when=job_done job=", out)         # how to be woken when it ends, not a guess
         os.kill(pid, 0)                               # still alive
         self.assertNotEqual(os.getsid(pid), os.getsid(0))   # its own session
 
@@ -154,6 +155,22 @@ class Background(ToolsCase):
         self.assertLess(time.time() - t, 5)           # a pipe would have held it for the timeout
         self.assertIn("Still running", out)
         self.assertIn("sleep 29.777", out)
+
+    def test_a_setsid_launch_is_still_found_by_its_job_tag(self):
+        out = shell.run("(setsid nohup sleep 27.313 >/dev/null 2>&1 &)", False, None, HIS)
+        self.addCleanup(subprocess.run, ["pkill", "-f", "sleep 27.313"])
+        self.assertIn("sleep 27.313", out)            # a session of its own, but it carries the tag
+        job = out.split("job_done job=")[1].split(".")[0]
+        from ariadne2.core.later import _procs
+        self.assertTrue(any(tag == job for _, _, tag in _procs()))
+
+    def test_a_guessed_sleep_is_turned_back_with_the_way_to_wait(self):
+        for cmd in ("(setsid nohup x >l 2>&1 &); sleep 12; tail l", "sleep 8; pgrep -af rvc", "x & sleep 5 && cat l"):
+            with self.assertRaises(shell.ToolError) as cm:
+                shell.run(cmd, False, None, HIS)
+            self.assertIn("later wait", str(cm.exception))
+        for cmd in ("sleep 1; echo ok", "until true; do sleep 5; done; echo ok"):
+            self.assertIn("ok", shell.run(cmd, False, None, HIS))
 
 
 if __name__ == "__main__":

@@ -131,10 +131,12 @@ def _job_env(command: str) -> dict:
     return dict(os.environ, **{JOB_ENV: token})
 
 
-def start_background(command: str, workdir: Path) -> tuple[int, str]:
-    """Detached in its own session, stdin closed, output in a log it ends with [exit N]."""
+def start_background(command: str, workdir: Path) -> tuple[int, str, str]:
+    """Detached in its own session, stdin closed, output in a log it ends with [exit N].
+    Returns its pid, the log, and its job tag."""
     jobs_dir().mkdir(parents=True, exist_ok=True)
     log = jobs_dir() / (time.strftime("%m%d-%H%M%S") + f"-{os.getpid()}-{time.monotonic_ns() % 10**6}.log")
+    env = _job_env(command)
     with open(log, "w") as fh:
         fh.write(f"$ {command}\n(in {workdir})\n\n")
         fh.flush()
@@ -143,27 +145,33 @@ def start_background(command: str, workdir: Path) -> tuple[int, str]:
             # $? is the command's, not the echo's (1.x always logged [exit 0]).
             ["bash", "-c", 'bash -o pipefail -c "$1"; rc=$?; echo; echo "[exit $rc]"', "_", command],
             cwd=str(workdir), stdout=fh, stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL, start_new_session=True, env=_job_env(command))
+            stdin=subprocess.DEVNULL, start_new_session=True, env=env)
     _jobs[proc.pid] = proc
     for pid in [p for p, j in _jobs.items() if j.poll() is not None and p != proc.pid]:
         del _jobs[pid]
-    return proc.pid, str(log)
+    return proc.pid, str(log), env[JOB_ENV]
 
 
-def _still_running(pgid: int) -> list[str]:
-    """What the command started that is still alive a moment on."""
+def _still_running(job: str) -> list[str]:
+    """What the command started that is still alive a moment on: every process
+    carrying its job tag, so one detached with setsid or nohup is found too."""
+    from ..later import _procs
     time.sleep(SETTLE_S)
-    try:
-        out = subprocess.run(["ps", "-eo", "pid=,pgid=,sid=,args="], capture_output=True,
-                             text=True, timeout=5).stdout
-    except Exception:
-        return []
-    alive = []
-    for line in out.splitlines():
-        bits = line.split(None, 3)
-        if len(bits) == 4 and (bits[1] == str(pgid) or bits[2] == str(pgid)) and bits[0] != str(pgid):
-            alive.append(f"{bits[0]} {bits[3][:100]}")
-    return alive
+    return [f"{pid} {cmd[:100]}" for pid, cmd, tag in _procs() if tag == job]
+
+
+# `cmd & sleep 8; check`: a guess at how long something takes, wrong both ways
+# (too short: it isn't up yet; too long: he waits). A sleep inside a loop that
+# tests something is a real wait and is left alone.
+_GUESS_SLEEP = re.compile(r"(?:^|[;&(]|&&)\s*sleep\s+(\d+(?:\.\d+)?)\s*(?:s\b)?\s*(?:;|&&|$)")
+_LOOP = re.compile(r"\b(?:while|until|for)\b")
+
+
+def _guessed_wait(command: str) -> float | None:
+    if _LOOP.search(command):
+        return None
+    secs = [float(m.group(1)) for m in _GUESS_SLEEP.finditer(command)]
+    return max(secs) if secs and max(secs) >= 3 else None
 
 
 def _label(command: str) -> str:
@@ -190,13 +198,20 @@ def run(command: str, background: bool, cwd: str | None, his_words: str | None) 
                         "to be sent in his own words this turn. Tell him what you'd send and "
                         "let him say so.")
 
+    guess = None if background else _guessed_wait(command)     # (in the background nothing waits on it)
+    if guess:
+        raise ToolError(
+            f"Not run: `sleep {guess:g}` is a guess at how long something takes. Run the command without "
+            f"the sleep (anything it leaves running gets a job tag), then wait for what you actually need: "
+            f"later wait (this turn, up to 2 min) or later set (a check-in), with when=process_up, "
+            f"port_open, log_says, file_ready or job_done.")
     workdir = resolve(cwd) if cwd else (common.current_project() or common.HOME)
     if not workdir.is_dir():
         workdir = common.HOME
     audit("shell", {"command": command, "cwd": str(workdir)}, "run")
 
     if background or (LONG_JOB.search(command) and not command.rstrip().endswith("&")):
-        pid, log = start_background(command, workdir)
+        pid, log, job = start_background(command, workdir)
         time.sleep(min(1.0, SETTLE_S))
         alive = _jobs[pid].poll() is None
         tail = ""
@@ -206,19 +221,21 @@ def run(command: str, background: bool, cwd: str | None, his_words: str | None) 
                     Path(log).read_text("utf-8", "replace")[-1500:], "the command's output")
             except OSError:
                 pass
-        return (f"$ {redact.redact(command)}\nStarted in the background, detached (pid {pid}); not waited for. "
-                f"Its output goes to {log}, ending with '[exit N]' when it finishes. Tell him it's "
-                f"running; read the end of that log with read_file when he asks, or in a minute to "
-                f"see how it went. Do not start it again.{tail}")
+        return (f"$ {redact.redact(command)}\nStarted in the background, detached (pid {pid}, job {job}); not "
+                f"waited for. Its output goes to {log}, ending with '[exit N]' when it finishes. Tell him "
+                f"it's running. Don't guess how long it takes: later set when=job_done job={job} wakes you "
+                f"the moment it ends (log_says on that log, for a milestone before then). Do not start it "
+                f"again.{tail}")
 
     limit = DEFAULT_TIMEOUT
     with tempfile.TemporaryFile("w+", errors="replace") as fout, \
             tempfile.TemporaryFile("w+", errors="replace") as ferr:
+        env = _job_env(command)
         try:
             child = subprocess.Popen(["bash", "-o", "pipefail", "-c", command], stdout=fout,
                                      stderr=ferr, text=True, cwd=str(workdir),
                                      stdin=subprocess.DEVNULL, start_new_session=True,
-                                     env=_job_env(command))
+                                     env=env)
             try:
                 code = child.wait(timeout=limit)
             except subprocess.TimeoutExpired:
@@ -232,14 +249,16 @@ def run(command: str, background: bool, cwd: str | None, his_words: str | None) 
         fout.seek(0)
         ferr.seek(0)
         out_text, err_text = fout.read().strip(), ferr.read().strip()
-    left = _still_running(child.pid) if _LAUNCH.search(command) else None
+    job = env[JOB_ENV]
+    left = _still_running(job) if _LAUNCH.search(command) else None
 
     parts = [f"$ {redact.redact(command)}", f"(in {short(workdir)}, exit code {code})"]
     if left is not None:
-        parts.append(("Still running a moment later: " + "; ".join(left)) if left else
-                     "Nothing it started is still running — whatever was launched has exited "
-                     "(anything started with setsid isn't tracked here). Read its log before "
-                     "saying it's up.")
+        parts.append((f"Still running a moment later (job {job}): " + "; ".join(left[:6]) +
+                      f". To hear the moment it ends: later set when=job_done job={job}.") if left else
+                     "Nothing it started is still running: whatever was launched has exited, or was "
+                     "handed to his desktop (host-spawn, flatpak), where process_up can watch for it. "
+                     "Read its log before saying it's up.")
     body = []
     if out_text:
         body.append("stdout:\n" + common.clip(out_text))

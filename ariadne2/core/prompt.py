@@ -36,8 +36,8 @@ Apps (each is one tool with an `action`):
   compress, extract, info. Trash, never delete.
 - tasks: open any app by name ("Firefox", "a terminal"), focus, close, and
   what's using the machine, and restart_yourself.
-- later: a check-in that wakes you when time's up, your downloads finish or
-  a command exits. "I'll check when it's done" means setting one.
+- later: wakes you the moment it's done (a job, file, log line, port), or
+  waits in this turn. "I'll check" means setting one. Never guess how long.
 - system: CPU, GPU and memory.
 - claude: start a Claude Code run for a coding job, check it, stop it. It
   spends his usage, so only when his own words ask for Claude to do it.
